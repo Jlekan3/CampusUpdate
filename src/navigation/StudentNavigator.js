@@ -19,6 +19,7 @@ import SafetySupportScreen from '../screens/student/SafetySupportScreen';
 import MapScreen from '../screens/common/MapScreen';
 import LocationDetailsScreen from '../screens/common/LocationDetailsScreen';
 import SearchLocationsScreen from '../screens/common/SearchLocationsScreen';
+import QRScannerScreen from '../screens/common/QRScannerScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -97,8 +98,19 @@ const StudentTabs = () => {
           );
         },
         tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: '#93C5FD',
-        tabBarStyle: { backgroundColor: COLORS.white, height: 60, paddingBottom: 8, paddingTop: 8, borderTopColor: '#DBEAFE' },
+        tabBarInactiveTintColor: '#94A3B8',
+        tabBarStyle: {
+          backgroundColor: COLORS.white,
+          height: 60,
+          paddingBottom: 8,
+          paddingTop: 8,
+          borderTopColor: '#E2E8F0',
+          elevation: 8,
+          shadowColor: '#0F172A',
+          shadowOpacity: 0.08,
+          shadowRadius: 8,
+        },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
         headerShown: false,
       })}
     >
@@ -127,6 +139,7 @@ const StudentNavigator = () => (
     <Stack.Screen name="Amenities" component={AmenitiesScreen} options={{ title: 'Campus Amenities', headerShown: true }} />
     <Stack.Screen name="CampusRules" component={CampusRulesScreen} options={{ title: 'Campus Rules', headerShown: true }} />
     <Stack.Screen name="SafetySupport" component={SafetySupportScreen} options={{ title: 'Safety & Support', headerShown: true }} />
+    <Stack.Screen name="QRScanner" component={QRScannerScreen} options={{ title: 'Scan QR Code', headerShown: false }} />
   </Stack.Navigator>
 );
 

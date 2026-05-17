@@ -12,10 +12,72 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import { COLORS } from '../../utils/constants';
+import { subscribeToCampusRules } from '../../services/databaseService';
+
+const DEFAULT_RULE_SECTIONS = [
+  {
+    id: 'academic',
+    title: 'Academic Integrity',
+    subtitle: 'Rules for honesty, assignments, and exams',
+    icon: 'school-outline',
+    rules: [
+      'Submit only original work unless collaboration is explicitly allowed.',
+      'Do not share answers, exam questions, or graded materials.',
+      'Cite all sources used in papers, projects, and presentations.',
+      'Follow all exam instructions and time limits exactly as given.',
+      'Report suspected cheating or plagiarism through the proper channel.',
+    ],
+  },
+  {
+    id: 'conduct',
+    title: 'Campus Conduct',
+    subtitle: 'Rules for respectful behavior and shared spaces',
+    icon: 'people-outline',
+    rules: [
+      'Treat students, staff, and visitors with respect at all times.',
+      'Keep common areas clean and dispose of waste properly.',
+      'Follow posted signs, campus policies, and staff directions.',
+      'Use campus facilities responsibly and avoid damaging property.',
+      'Maintain a quiet, professional environment in study areas and classrooms.',
+    ],
+  },
+  {
+    id: 'safety',
+    title: 'Safety & Security',
+    subtitle: 'Rules for emergencies, access, and campus protection',
+    icon: 'shield-checkmark-outline',
+    rules: [
+      'Carry your student ID and present it when requested by campus staff.',
+      'Do not prop open secure doors or share access credentials.',
+      'Report suspicious activity, hazards, or injuries immediately.',
+      'Follow evacuation routes and emergency instructions during drills or alerts.',
+      'Use designated walkways, lighting, and safe transport options after dark.',
+    ],
+  },
+];
+
+const mapFirestoreRulesToSections = (rules) => {
+  return (rules || []).map((rule) => {
+    const description = (rule.description || '').trim();
+    const lines = description
+      ? description.split(/\n+/).map((line) => line.trim()).filter(Boolean)
+      : [];
+
+    return {
+      id: rule.id,
+      title: rule.title || 'Campus rule',
+      subtitle: 'Official campus policy',
+      icon: 'document-text-outline',
+      rules: lines.length > 0 ? lines : ['No details provided yet.'],
+    };
+  });
+};
 
 const CampusRulesScreen = () => {
   const [expandedCategory, setExpandedCategory] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [firestoreRules, setFirestoreRules] = useState([]);
+  const [rulesLoading, setRulesLoading] = useState(true);
 
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -23,47 +85,28 @@ const CampusRulesScreen = () => {
     }
   }, []);
 
-  const ruleSections = [
-    {
-      id: 'academic',
-      title: 'Academic Integrity',
-      subtitle: 'Rules for honesty, assignments, and exams',
-      icon: 'school-outline',
-      rules: [
-        'Submit only original work unless collaboration is explicitly allowed.',
-        'Do not share answers, exam questions, or graded materials.',
-        'Cite all sources used in papers, projects, and presentations.',
-        'Follow all exam instructions and time limits exactly as given.',
-        'Report suspected cheating or plagiarism through the proper channel.',
-      ],
-    },
-    {
-      id: 'conduct',
-      title: 'Campus Conduct',
-      subtitle: 'Rules for respectful behavior and shared spaces',
-      icon: 'people-outline',
-      rules: [
-        'Treat students, staff, and visitors with respect at all times.',
-        'Keep common areas clean and dispose of waste properly.',
-        'Follow posted signs, campus policies, and staff directions.',
-        'Use campus facilities responsibly and avoid damaging property.',
-        'Maintain a quiet, professional environment in study areas and classrooms.',
-      ],
-    },
-    {
-      id: 'safety',
-      title: 'Safety & Security',
-      subtitle: 'Rules for emergencies, access, and campus protection',
-      icon: 'shield-checkmark-outline',
-      rules: [
-        'Carry your student ID and present it when requested by campus staff.',
-        'Do not prop open secure doors or share access credentials.',
-        'Report suspicious activity, hazards, or injuries immediately.',
-        'Follow evacuation routes and emergency instructions during drills or alerts.',
-        'Use designated walkways, lighting, and safe transport options after dark.',
-      ],
-    },
-  ];
+  useEffect(() => {
+    const unsubscribe = subscribeToCampusRules((items) => {
+      setFirestoreRules(items || []);
+      setRulesLoading(false);
+    });
+
+    return () => {
+      try {
+        unsubscribe?.();
+      } catch (error) {
+        // ignore
+      }
+    };
+  }, []);
+
+  const ruleSections = useMemo(() => {
+    const fromFirestore = mapFirestoreRulesToSections(firestoreRules);
+    if (fromFirestore.length > 0) return fromFirestore;
+    return DEFAULT_RULE_SECTIONS;
+  }, [firestoreRules]);
+
+  const usingFallback = firestoreRules.length === 0 && !rulesLoading;
 
   const filteredSections = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -140,7 +183,9 @@ const CampusRulesScreen = () => {
             <Text style={styles.heroEyebrow}>Student Dashboard</Text>
             <Text style={styles.headerTitle}>Campus Rules</Text>
             <Text style={styles.headerSubtitle}>
-              Review the official RMU campus rules and guidelines.
+              {usingFallback
+                ? 'Showing default guidelines until admin publishes official rules.'
+                : 'Review the official RMU campus rules and guidelines.'}
             </Text>
           </View>
           <View style={styles.heroIconWrap}>

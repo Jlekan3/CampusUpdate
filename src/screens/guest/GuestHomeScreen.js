@@ -99,6 +99,24 @@ const primaryActions = [
     route: 'Map',
     cta: 'Open map',
   },
+  {
+    id: 'favorites',
+    title: 'Favorites',
+    description: 'Save places you visit often for quick access.',
+    icon: 'heart-outline',
+    color: '#E11D48',
+    route: 'Favorites',
+    cta: 'View saved',
+  },
+  {
+    id: 'qr',
+    title: 'Scan QR',
+    description: 'Open a location instantly from a campus QR code.',
+    icon: 'qr-code-outline',
+    color: '#0F766E',
+    route: 'QRScanner',
+    cta: 'Scan now',
+  },
 ];
 
 const secondaryActions = [
@@ -206,6 +224,14 @@ const GuestHomeScreen = ({ navigation }) => {
   });
 
   const handleFeaturePress = (feature) => {
+    if (feature.route === 'QRScanner') {
+      const parent = navigation.getParent?.();
+      if (parent) {
+        parent.navigate('QRScanner');
+        return;
+      }
+    }
+
     navigation.navigate(feature.route, feature.params);
   };
 

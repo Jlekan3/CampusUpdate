@@ -10,10 +10,12 @@ import {
   ScrollView,
   Modal,
   Platform,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
 import * as XLSX from 'xlsx';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import CustomButton from '../../components/CustomButton';
@@ -21,6 +23,7 @@ import { COLORS } from '../../utils/constants';
 import { useAuth } from '../../context/AuthContext';
 import { USER_ROLES } from '../../utils/constants';
 import { addLocation, addLocationsBatch, subscribeToLocations, updateLocation, deleteLocation } from '../../services/databaseService';
+import { uploadLocationImages, deleteLocationImage } from '../../services/storageService';
 
 const AddLocationsScreen = ({ navigation }) => {
   const [locations, setLocations] = useState([]);
@@ -37,6 +40,7 @@ const AddLocationsScreen = ({ navigation }) => {
     longitude: '',
     imageurl: '',
   });
+  const [localImageUri, setLocalImageUri] = useState(null);
   const { userRole, user } = useAuth();
   const [importing, setImporting] = useState(false);
 
@@ -82,6 +86,7 @@ const AddLocationsScreen = ({ navigation }) => {
         longitude: '',
         imageurl: '',
       });
+      setLocalImageUri(null);
       setEditingId(null);
       setIsUploading(false);
     }
@@ -99,6 +104,59 @@ const AddLocationsScreen = ({ navigation }) => {
     'Parking',
     'Other',
   ];
+
+  const pickLocationPhoto = async (source) => {
+    try {
+      const permission =
+        source === 'camera'
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (permission.status !== 'granted') {
+        Alert.alert('Permission needed', 'Allow camera or photo access to add a location image.');
+        return;
+      }
+
+      const result =
+        source === 'camera'
+          ? await ImagePicker.launchCameraAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              quality: 0.85,
+            })
+          : await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              quality: 0.85,
+            });
+
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        setLocalImageUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      Alert.alert('Error', error?.message || 'Could not open image picker.');
+    }
+  };
+
+  const clearLocationPhoto = () => {
+    setLocalImageUri(null);
+    setFormData((current) => ({ ...current, imageurl: '' }));
+  };
+
+  const resolveImageUrl = async (locationId, previousImageUrl) => {
+    if (!localImageUri) {
+      return formData.imageurl.trim() || previousImageUrl || '';
+    }
+
+    if (previousImageUrl && previousImageUrl.includes('firebasestorage.googleapis.com')) {
+      try {
+        await deleteLocationImage(previousImageUrl);
+      } catch (error) {
+        console.log('Previous image cleanup skipped', error?.message);
+      }
+    }
+
+    const uploadedUrls = await uploadLocationImages(locationId, [{ uri: localImageUri }]);
+    return uploadedUrls[0] || formData.imageurl.trim() || previousImageUrl || '';
+  };
 
   const handleAddLocation = async () => {
     if (userRole !== USER_ROLES.ADMIN) {
@@ -123,7 +181,10 @@ const AddLocationsScreen = ({ navigation }) => {
     try {
       setIsUploading(true);
       
-      // Create location document - exactly the format Firestore expects
+      const previousImageUrl = editingId
+        ? locations.find((item) => item.id === editingId)?.imageurl
+        : '';
+
       const newLocation = {
         names: formData.names.trim(),
         description: formData.description.trim(),
@@ -132,24 +193,25 @@ const AddLocationsScreen = ({ navigation }) => {
           latitude: lat,
           longitude: lng,
         },
-        imageurl: formData.imageurl.trim(),
+        imageurl: formData.imageurl.trim() || previousImageUrl || '',
       };
 
-      // Add createdBy only if user UID exists
       if (user?.uid) {
         newLocation.createdBy = user.uid;
       }
 
-      console.log('📤 Saving to Firestore:', JSON.stringify(newLocation, null, 2));
-
       let savedId = editingId;
       if (editingId) {
+        if (localImageUri) {
+          newLocation.imageurl = await resolveImageUrl(editingId, previousImageUrl);
+        }
         await updateLocation(editingId, newLocation);
-        console.log('✅ Successfully updated location with ID:', editingId);
       } else {
-        // Save to Firestore
         savedId = await addLocation(newLocation);
-        console.log('✅ Successfully saved with ID:', savedId);
+        if (localImageUri) {
+          const imageurl = await resolveImageUrl(savedId, '');
+          await updateLocation(savedId, { imageurl });
+        }
       }
       
       // Show success message
@@ -206,6 +268,7 @@ const AddLocationsScreen = ({ navigation }) => {
       longitude: location.coordinates?.longitude?.toString() || location.longitude?.toString() || '',
       imageurl: location.imageurl || '',
     });
+    setLocalImageUri(null);
     setShowModal(true);
   };
 
@@ -677,14 +740,52 @@ const AddLocationsScreen = ({ navigation }) => {
                   />
                 </View>
 
-                {/* Image URL */}
-                <Text style={styles.sectionLabel}>Image URL</Text>
+                {/* Location photo */}
+                <Text style={styles.sectionLabel}>Location photo</Text>
+                <Text style={styles.coordinateHint}>Upload to Firebase Storage, or paste an image URL below.</Text>
+
+                {(localImageUri || formData.imageurl) ? (
+                  <View style={styles.imagesContainer}>
+                    <View style={styles.imagePreviewContainer}>
+                      <Image
+                        source={{ uri: localImageUri || formData.imageurl }}
+                        style={styles.imagePreview}
+                        resizeMode="cover"
+                      />
+                      <TouchableOpacity style={styles.removeImageButton} onPress={clearLocationPhoto}>
+                        <Ionicons name="close-circle" size={28} color="#EF4444" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : null}
+
+                <View style={styles.imageButtons}>
+                  <TouchableOpacity
+                    style={styles.imageButton}
+                    onPress={() => pickLocationPhoto('library')}
+                    disabled={isUploading}
+                  >
+                    <Ionicons name="images-outline" size={18} color={COLORS.primary} />
+                    <Text style={styles.imageButtonText}>Gallery</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.imageButton}
+                    onPress={() => pickLocationPhoto('camera')}
+                    disabled={isUploading}
+                  >
+                    <Ionicons name="camera-outline" size={18} color={COLORS.primary} />
+                    <Text style={styles.imageButtonText}>Camera</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.sectionLabel}>Image URL (optional)</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="https://example.com/image.jpg"
                   value={formData.imageurl}
                   onChangeText={(text) => setFormData({ ...formData, imageurl: text })}
                   placeholderTextColor={COLORS.muted}
+                  editable={!localImageUri}
                 />
 
                 <View style={styles.formButtons}>

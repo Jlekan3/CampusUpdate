@@ -388,6 +388,61 @@ export const updateCampusRule = async (id, data) => {
 
 export const deleteCampusRule = (id) => deleteItem('rules', id);
 
+// Favourites (stored in the 'favourite' collection)
+export const subscribeToUserFavorites = (userId, callback) => {
+  if (!userId) {
+    callback([]);
+    return () => {};
+  }
+
+  const q = query(makeCollectionRef('favourite'), where('userId', '==', userId));
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const items = snap.docs
+        .map((d) => ({ id: d.id, ...normalizeTimestamps(d.data()) }))
+        .sort((a, b) => {
+          const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return bTime - aTime;
+        });
+      callback(items);
+    },
+    (error) => {
+      console.error('subscribeToUserFavorites error:', error?.code, error?.message || error);
+      callback([]);
+    }
+  );
+};
+
+export const toggleFavorite = async (userId, locationId) => {
+  if (!userId || !locationId) {
+    throw new Error('Sign in to save favorites.');
+  }
+
+  const q = query(
+    makeCollectionRef('favourite'),
+    where('userId', '==', userId),
+    where('locationId', '==', locationId)
+  );
+  const snap = await getDocs(q);
+
+  if (!snap.empty) {
+    await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+    return false;
+  }
+
+  await addDoc(makeCollectionRef('favourite'), {
+    userId,
+    locationId,
+    createdAt: serverTimestamp(),
+  });
+  return true;
+};
+
+export const removeFavorite = (favouriteId) => deleteItem('favourite', favouriteId);
+
 // Issue reports (stored in the 'reports' collection)
 export const addIssueReport = async (data) => {
   const ref = await addDoc(makeCollectionRef('reports'), {

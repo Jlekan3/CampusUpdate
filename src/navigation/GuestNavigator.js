@@ -6,6 +6,8 @@ import GuestHomeScreen from '../screens/guest/GuestHomeScreen';
 import MapScreen from '../screens/common/MapScreen';
 import LocationDetailsScreen from '../screens/common/LocationDetailsScreen';
 import SearchLocationsScreen from '../screens/common/SearchLocationsScreen';
+import FavoritesScreen from '../screens/student/FavoritesScreen';
+import QRScannerScreen from '../screens/common/QRScannerScreen';
 import { COLORS } from '../utils/constants';
 
 const Stack = createStackNavigator();
@@ -24,6 +26,8 @@ const GuestTabs = () => {
             iconName = focused ? 'map' : 'map-outline';
           } else if (route.name === 'Search') {
             iconName = focused ? 'search' : 'search-outline';
+          } else if (route.name === 'Favorites') {
+            iconName = focused ? 'heart' : 'heart-outline';
           }
 
           return <Ionicons name={iconName} size={size} color={color} />;
@@ -59,6 +63,11 @@ const GuestTabs = () => {
         component={SearchLocationsScreen}
         options={{ title: 'Search' }}
       />
+      <Tab.Screen
+        name="Favorites"
+        component={FavoritesScreen}
+        options={{ title: 'Favorites' }}
+      />
     </Tab.Navigator>
   );
 };
@@ -88,6 +97,11 @@ const GuestNavigator = () => {
         name="LocationDetails" 
         component={LocationDetailsScreen}
         options={{ title: 'Location Details' }}
+      />
+      <Stack.Screen
+        name="QRScanner"
+        component={QRScannerScreen}
+        options={{ title: 'Scan QR Code', headerShown: false }}
       />
     </Stack.Navigator>
   );

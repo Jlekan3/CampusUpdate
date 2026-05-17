@@ -236,6 +236,14 @@ const MapScreen = ({ navigation, route }) => {
 
   const theme = useMemo(() => THEMES[themeMode] || THEMES.light, [themeMode]);
 
+  const toggleThemeMode = () => {
+    setThemeMode((current) => {
+      const next = current === 'light' ? 'dark' : 'light';
+      AsyncStorage.setItem(STORAGE_KEY, next).catch(() => {});
+      return next;
+    });
+  };
+
   useEffect(() => {
     setActiveLocation(selectedLocation || null);
   }, [selectedLocation]);
@@ -766,6 +774,19 @@ const MapScreen = ({ navigation, route }) => {
     setNavigationMode('idle');
   };
 
+  const handleViewDetails = () => {
+    const target = activeLocation;
+    if (!target?.id) {
+      Alert.alert('No location selected', 'Tap a marker on the map first.');
+      return;
+    }
+
+    navigation.navigate('LocationDetails', {
+      id: target.id,
+      location: target,
+    });
+  };
+
   const handleSuggestionSelect = (location) => {
     if (!location) {
       return;
@@ -840,8 +861,8 @@ const MapScreen = ({ navigation, route }) => {
               <Ionicons name="close" size={18} color={theme.hero} />
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={styles.searchAction} activeOpacity={0.85}>
-              <Ionicons name="mic-outline" size={18} color={theme.hero} />
+            <TouchableOpacity style={styles.searchAction} onPress={toggleThemeMode} activeOpacity={0.85}>
+              <Ionicons name={themeMode === 'dark' ? 'sunny-outline' : 'moon-outline'} size={18} color={theme.hero} />
             </TouchableOpacity>
           )}
         </View>
@@ -876,6 +897,16 @@ const MapScreen = ({ navigation, route }) => {
           <Ionicons name="play-outline" size={18} color={theme.heroText} />
           <Text style={[styles.actionButtonText, { color: theme.heroText }]}>Start</Text>
         </TouchableOpacity>
+        {activeLocation?.id ? (
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: theme.surfaceSoft, borderColor: theme.border }]}
+            onPress={handleViewDetails}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="information-circle-outline" size={18} color={theme.hero} />
+            <Text style={[styles.actionButtonText, { color: theme.textPrimary }]}>Details</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </View>
   );
@@ -989,8 +1020,8 @@ const MapScreen = ({ navigation, route }) => {
                         <Ionicons name="close" size={18} color={theme.hero} />
                       </TouchableOpacity>
                     ) : (
-                      <TouchableOpacity style={styles.searchAction} activeOpacity={0.85}>
-                        <Ionicons name="mic-outline" size={18} color={theme.hero} />
+                      <TouchableOpacity style={styles.searchAction} onPress={toggleThemeMode} activeOpacity={0.85}>
+                        <Ionicons name={themeMode === 'dark' ? 'sunny-outline' : 'moon-outline'} size={18} color={theme.hero} />
                       </TouchableOpacity>
                     )}
                   </View>
@@ -1011,7 +1042,13 @@ const MapScreen = ({ navigation, route }) => {
                   <View style={[styles.mobileTopStatusChip, { backgroundColor: theme.pillBg, borderColor: theme.pillBorder }]}>
                     <Ionicons name="location-outline" size={14} color={theme.textMuted} />
                     <Text style={[styles.mobileTopStatusMutedText, { color: theme.textMuted }]} numberOfLines={1}>
-                      {locationStatus === 'granted' ? 'Location active' : 'Location off'}
+                      {locationStatus === 'granted' ? 'GPS on' : 'GPS off'}
+                    </Text>
+                  </View>
+                  <View style={[styles.mobileTopStatusChip, { backgroundColor: theme.pillBg, borderColor: theme.pillBorder }]}>
+                    <Ionicons name="pin-outline" size={14} color={theme.pillText} />
+                    <Text style={[styles.mobileTopStatusText, { color: theme.pillText }]} numberOfLines={1}>
+                      {normalizedLocations.length} places
                     </Text>
                   </View>
                 </View>
@@ -1027,9 +1064,17 @@ const MapScreen = ({ navigation, route }) => {
                         onPress={() => handleSuggestionSelect(item)}
                         activeOpacity={0.85}
                       >
-                        <Text style={[styles.suggestionText, { color: theme.textPrimary }]}>
-                          {item.name || item.names || item.title || item.building || item.category || 'Location'}
-                        </Text>
+                        <View style={styles.suggestionTextWrap}>
+                          <Text style={[styles.suggestionText, { color: theme.textPrimary }]}>
+                            {item.name || item.names || item.title || item.building || item.category || 'Location'}
+                          </Text>
+                          {item.category || item.type ? (
+                            <Text style={[styles.suggestionMeta, { color: theme.textMuted }]}>
+                              {(item.category || item.type).toString()}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
@@ -1113,6 +1158,16 @@ const MapScreen = ({ navigation, route }) => {
                     <Ionicons name="play-outline" size={18} color={theme.heroText} />
                     <Text style={[styles.actionButtonText, { color: theme.heroText }]}>Start</Text>
                   </TouchableOpacity>
+                  {activeLocation?.id ? (
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.mobileActionButton, { backgroundColor: theme.surfaceSoft, borderColor: theme.border }]}
+                      onPress={handleViewDetails}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="information-circle-outline" size={18} color={theme.hero} />
+                      <Text style={[styles.actionButtonText, { color: theme.textPrimary }]}>Details</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
 
                 {routeDestination && navigationMode === 'preview' && (
@@ -2389,11 +2444,24 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   suggestionItem: {
-    padding: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
     borderBottomWidth: 1,
+    gap: 10,
+  },
+  suggestionTextWrap: {
+    flex: 1,
   },
   suggestionText: {
-    fontSize: 16,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  suggestionMeta: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '500',
+    textTransform: 'capitalize',
   },
 });
 

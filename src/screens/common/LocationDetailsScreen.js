@@ -13,10 +13,16 @@ import { Ionicons } from '@expo/vector-icons';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import CustomButton from '../../components/CustomButton';
 import { COLORS } from '../../utils/constants';
+import { useAuth } from '../../context/AuthContext';
 import { db } from '../../config/firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import {
+  subscribeToUserFavorites,
+  toggleFavorite,
+} from '../../services/databaseService';
 
 const LocationDetailsScreen = ({ navigation, route }) => {
+  const { user } = useAuth();
   // Get location from route params, with fallback to mock data
   const defaultLocation = {
     name: "Engineering Block - Lecture Hall A",
@@ -46,6 +52,30 @@ const LocationDetailsScreen = ({ navigation, route }) => {
 
   const [location, setLocation] = useState(routeLocation || null);
   const [loading, setLoading] = useState(Boolean(routeId) && !routeLocation);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteBusy, setFavoriteBusy] = useState(false);
+
+  const resolvedLocationId = routeId || routeLocation?.id || location?.id;
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setIsFavorite(false);
+      return undefined;
+    }
+
+    const unsubscribe = subscribeToUserFavorites(user.uid, (items) => {
+      const saved = (items || []).some((item) => item.locationId === resolvedLocationId);
+      setIsFavorite(saved);
+    });
+
+    return () => {
+      try {
+        unsubscribe?.();
+      } catch (error) {
+        // ignore
+      }
+    };
+  }, [user?.uid, resolvedLocationId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,6 +142,7 @@ const LocationDetailsScreen = ({ navigation, route }) => {
   }, [routeId, routeLocation]);
 
   const resolvedLocation = location || defaultLocation;
+  const locationImageUri = resolvedLocation?.imageurl || resolvedLocation?.imageUrl || null;
 
   const mapLocation = useMemo(() => {
     if (!resolvedLocation?.coordinates) return null;
@@ -161,6 +192,28 @@ const LocationDetailsScreen = ({ navigation, route }) => {
     navigation.navigate('Map', { selectedLocation: mapLocation });
   };
 
+  const handleToggleFavorite = async () => {
+    if (!user?.uid) {
+      Alert.alert('Sign in required', 'Log in to save locations to your favorites.');
+      return;
+    }
+
+    if (!resolvedLocationId) {
+      Alert.alert('Unavailable', 'This location cannot be saved yet.');
+      return;
+    }
+
+    setFavoriteBusy(true);
+    try {
+      const saved = await toggleFavorite(user.uid, resolvedLocationId);
+      setIsFavorite(saved);
+    } catch (error) {
+      Alert.alert('Error', error?.message || 'Could not update favorite.');
+    } finally {
+      setFavoriteBusy(false);
+    }
+  };
+
   const handleBack = () => {
     if (returnTo === 'Search') {
       const state = navigation.getState?.();
@@ -198,16 +251,35 @@ const LocationDetailsScreen = ({ navigation, route }) => {
           <View style={styles.headerWrapper}>
             <View style={[styles.header, { backgroundColor: headerColor }]}>
               <View style={[styles.headerGlow, { backgroundColor: headerGlowColor }]} />
-              <TouchableOpacity
-                onPress={handleBack}
-                style={[styles.backButton, { backgroundColor: backButtonColor }]}
-              >
-                <Ionicons name="arrow-back" size={22} color={COLORS.white} />
-              </TouchableOpacity>
-
-              <View style={styles.imagePlaceholder}>
-                <Ionicons name="business" size={42} color={accentColor} />
+              <View style={styles.headerActions}>
+                <TouchableOpacity
+                  onPress={handleBack}
+                  style={[styles.backButton, { backgroundColor: backButtonColor }]}
+                >
+                  <Ionicons name="arrow-back" size={22} color={COLORS.white} />
+                </TouchableOpacity>
+                {resolvedLocationId ? (
+                  <TouchableOpacity
+                    onPress={handleToggleFavorite}
+                    disabled={favoriteBusy}
+                    style={[styles.favoriteButton, { backgroundColor: backButtonColor }]}
+                  >
+                    <Ionicons
+                      name={isFavorite ? 'heart' : 'heart-outline'}
+                      size={22}
+                      color={isFavorite ? '#FDA4AF' : COLORS.white}
+                    />
+                  </TouchableOpacity>
+                ) : null}
               </View>
+
+              {locationImageUri ? (
+                <Image source={{ uri: locationImageUri }} style={styles.locationImage} resizeMode="cover" />
+              ) : (
+                <View style={styles.imagePlaceholder}>
+                  <Ionicons name="business" size={42} color={accentColor} />
+                </View>
+              )}
             </View>
           </View>
 
@@ -356,16 +428,38 @@ const styles = StyleSheet.create({
     top: -40,
     right: -40,
   },
-  backButton: {
+  headerActions: {
     position: 'absolute',
     top: 16,
     left: 14,
+    right: 14,
     zIndex: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  favoriteButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  locationImage: {
+    width: 96,
+    height: 96,
+    borderRadius: 20,
+    alignSelf: 'flex-end',
+    marginTop: 24,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.5)',
   },
   imagePlaceholder: {
     width: 80,
