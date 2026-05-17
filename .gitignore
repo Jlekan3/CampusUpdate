@@ -1,0 +1,30 @@
+# Expo
+.expo/
+.expo-shared/
+dist/
+npm-debug.js
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+
+# Node
+node_modules/
+.pnpm-debug.log
+
+# Environment variables (keep credentials secret!)
+.env
+.env.*.local
+.env.local
+firebaseConfig.local.js
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
