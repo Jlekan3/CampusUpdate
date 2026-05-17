@@ -61,3 +61,39 @@ export const USER_ROLES = {
 export const FORCE_REQUIRE_LOGIN = true;
 
 export const ENABLE_DEV_ADMIN_EMAIL_OVERRIDE = false;
+
+/** RMU campus emergency & support contacts (Ghana). Update with official numbers. */
+export const CAMPUS_EMERGENCY_CONTACTS = [
+  {
+    id: 'security',
+    title: 'Campus Security',
+    number: '+233302000000',
+    icon: 'shield-checkmark-outline',
+    description: '24/7 campus security desk',
+    color: '#EF4444',
+  },
+  {
+    id: 'health',
+    title: 'Campus Clinic',
+    number: '+233302000001',
+    icon: 'medical-outline',
+    description: 'Medical assistance on campus',
+    color: '#F59E0B',
+  },
+  {
+    id: 'counseling',
+    title: 'Student Affairs',
+    number: '+233302000002',
+    icon: 'chatbubble-outline',
+    description: 'Counselling and student support',
+    color: '#8B5CF6',
+  },
+  {
+    id: 'national',
+    title: 'National Emergency',
+    number: '112',
+    icon: 'alert-circle-outline',
+    description: 'Ghana national emergency line',
+    color: '#DC2626',
+  },
+];

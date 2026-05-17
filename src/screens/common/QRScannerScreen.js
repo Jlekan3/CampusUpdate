@@ -14,13 +14,28 @@ const QRScannerScreen = ({ navigation }) => {
     return () => { mountedRef.current = false; };
   }, []);
 
+  const navigateToMap = (params) => {
+    const state = navigation.getState?.();
+    const routeNames = state?.routeNames || [];
+
+    if (routeNames.includes('StudentTabs')) {
+      navigation.navigate('StudentTabs', { screen: 'Map', params });
+      return;
+    }
+
+    if (routeNames.includes('GuestTabs')) {
+      navigation.navigate('GuestTabs', { screen: 'Map', params });
+      return;
+    }
+
+    navigation.navigate('Map', params);
+  };
+
   const handleBarCodeScanned = ({ type, data }) => {
     if (scanned) return;
     setScanned(true);
 
-    // Example payloads handled:
-    //  - "location:<id>" => navigate to LocationDetails with { id }
-    //  - "geo:<lat>,<lng>" => navigate to Map with coords
+    // Payloads: "location:<id>" or "geo:<lat>,<lng>"
     try {
       if (typeof data === 'string' && data.startsWith('location:')) {
         const id = data.split(':')[1];
@@ -31,7 +46,7 @@ const QRScannerScreen = ({ navigation }) => {
       if (typeof data === 'string' && data.startsWith('geo:')) {
         const [lat, lng] = data.replace('geo:', '').split(',');
         const coords = { latitude: Number(lat), longitude: Number(lng) };
-        navigation.navigate('Map', { coords });
+        navigateToMap({ coords });
         return;
       }
 

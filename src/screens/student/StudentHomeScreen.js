@@ -55,6 +55,7 @@ const ACTION_ICON_BG = 'rgba(37, 99, 235, 0.12)';
 const quickAccessFeatures = [
   { id: 'map', title: 'Campus Map', icon: 'map-outline', nav: 'Map', color: ACTION_BLUE, cardBg: ACTION_CARD_BG, cardBorder: ACTION_CARD_BORDER },
   { id: 'search', title: 'Search', icon: 'search-outline', nav: 'Search', color: ACTION_BLUE, cardBg: ACTION_CARD_BG, cardBorder: ACTION_CARD_BORDER },
+  { id: 'qr', title: 'Scan QR', icon: 'qr-code-outline', nav: 'QRScanner', color: ACTION_BLUE, cardBg: ACTION_CARD_BG, cardBorder: ACTION_CARD_BORDER },
   {
     id: 'favorites',
     title: 'Favorites',

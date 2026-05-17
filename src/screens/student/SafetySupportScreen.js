@@ -11,42 +11,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenWrapper from '../../components/ScreenWrapper';
-import { COLORS } from '../../utils/constants';
+import { COLORS, CAMPUS_EMERGENCY_CONTACTS } from '../../utils/constants';
 
-const emergencyContacts = [
-  {
-    id: '1',
-    title: 'Campus Security',
-    number: '+1 (555) 123-4567',
-    icon: 'shield-checkmark-outline',
-    description: '24/7 Emergency Response',
-    color: '#EF4444',
-  },
-  {
-    id: '2',
-    title: 'Campus Health Services',
-    number: '+1 (555) 234-5678',
-    icon: 'medical-outline',
-    description: 'Medical Assistance',
-    color: '#F59E0B',
-  },
-  {
-    id: '3',
-    title: 'Counseling Services',
-    number: '+1 (555) 345-6789',
-    icon: 'chatbubble-outline',
-    description: 'Mental Health Support',
-    color: '#8B5CF6',
-  },
-  {
-    id: '4',
-    title: 'Emergency Services',
-    number: '911',
-    icon: 'alert-circle-outline',
-    description: 'Police, Fire, Ambulance',
-    color: '#DC2626',
-  },
-];
+const emergencyContacts = CAMPUS_EMERGENCY_CONTACTS;
 
 const SUPPORT_THEME = '#7F1D1D';
 const SUPPORT_THEME_LIGHT = '#FEF2F2';
