@@ -35,13 +35,15 @@ export const ThemeContext = createContext({
 
 export const ThemeProvider = ({ children }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isReady, setIsReady] = useState(false);
 
-  // Load preference asynchronously — render immediately with light default,
-  // re-render once the stored preference arrives. No blank screen.
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY)
-      .then((stored) => { if (stored === 'true') setIsDarkMode(true); })
-      .catch(() => {});
+      .then((stored) => {
+        if (stored === 'true') setIsDarkMode(true);
+      })
+      .catch(() => {})
+      .finally(() => setIsReady(true));
   }, []);
 
   const toggleDarkMode = useCallback(() => {
@@ -51,6 +53,8 @@ export const ThemeProvider = ({ children }) => {
       return next;
     });
   }, []);
+
+  if (!isReady) return null;
 
   return (
     <ThemeContext.Provider value={{ isDarkMode, toggleDarkMode, colors: buildColors(isDarkMode) }}>

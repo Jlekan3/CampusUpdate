@@ -1,29 +1,28 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import LoginScreen from '../screens/auth/LoginScreen';
+import RegisterScreen from '../screens/auth/RegisterScreen';
+import EmailSentScreen from '../screens/auth/EmailSentScreen';
+import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
+import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
 
 const Stack = createStackNavigator();
 
-const AuthNavigator = () => {
-  return (
-    <Stack.Navigator
-      screenOptions={{
-        headerShown: false,
-        cardStyle: { backgroundColor: '#FFFFFF' },
-        gestureEnabled: true,
-        animationEnabled: true,
-      }}
-    >
-      <Stack.Screen 
-        name="Login" 
-        component={LoginScreen}
-        options={{
-          title: 'Sign In',
-          animationTypeForReplace: 'push',
-        }}
-      />
-    </Stack.Navigator>
-  );
-};
+const AuthNavigator = () => (
+  <Stack.Navigator
+    screenOptions={{
+      headerShown: false,
+      cardStyle: { backgroundColor: '#1A365D' },
+      gestureEnabled: true,
+      animationEnabled: true,
+    }}
+  >
+    <Stack.Screen name="Login" component={LoginScreen} />
+    <Stack.Screen name="Register" component={RegisterScreen} />
+    <Stack.Screen name="EmailSent" component={EmailSentScreen} />
+    <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+    <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+  </Stack.Navigator>
+);
 
 export default AuthNavigator;
