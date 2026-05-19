@@ -1,670 +1,610 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Animated,
+  Easing,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenWrapper from '../../components/ScreenWrapper';
-import CustomButton from '../../components/CustomButton';
-import { COLORS } from '../../utils/constants';
-import { subscribeToBuildings, subscribeToIssueReports, subscribeToLocations, subscribeToUsers } from '../../services/databaseService';
+import { ADMIN_THEME } from '../../utils/constants';
+import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-// import UI moved to AddLocationsScreen
+import {
+  subscribeToBuildings,
+  subscribeToIssueReports,
+  subscribeToLocations,
+  subscribeToUsers,
+  subscribeToEvents,
+  subscribeToNotifications,
+  subscribeToDepartments,
+} from '../../services/databaseService';
 
-const DASHBOARD_THEME = {
-  background: '#F8FAFC',
-  hero: '#0F172A',
-  heroSoft: '#2563EB',
-  accent: '#3B82F6',
-  textDark: '#0F172A',
-  textMuted: '#475569',
-  panel: '#FFFFFF',
+// Animated count-up hook
+const useCountUp = (target, duration = 1000) => {
+  const animVal = useRef(new Animated.Value(0)).current;
+  const [displayed, setDisplayed] = useState(0);
+
+  useEffect(() => {
+    Animated.timing(animVal, {
+      toValue: target,
+      duration,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+    const listener = animVal.addListener(({ value }) => setDisplayed(Math.round(value)));
+    return () => animVal.removeListener(listener);
+  }, [target]);
+
+  return displayed;
 };
 
-const quickActions = [
-  { id: 'people', label: 'Manage People', icon: 'people-outline', nav: 'People', color: '#1E40AF' },
-  { id: 'locations', label: 'Add Locations', icon: 'location-outline', nav: 'AddLocations', color: '#2563EB' },
-  { id: 'buildings', label: 'Manage Buildings', icon: 'business-outline', nav: 'Buildings', color: '#3B82F6' },
-  { id: 'dining', label: 'Dining', icon: 'restaurant-outline', nav: 'ManageDining', color: '#60A5FA' },
-  { id: 'reports', label: 'Reports', icon: 'document-text-outline', nav: 'Reports', color: '#0EA5E9' },
-  { id: 'notifications', label: 'Notifications', icon: 'notifications-outline', nav: 'Notifications', color: '#06B6D4' },
-  { id: 'rules', label: 'Campus Rules', icon: 'shield-outline', nav: 'ManageCampusRules', color: '#0891B2' },
-  { id: 'amenities', label: 'Amenities', icon: 'fitness-outline', nav: 'ManageAmenities', color: '#2563EB' },
-  { id: 'analytics', label: 'Analytics', icon: 'analytics-outline', nav: 'AdminAnalytics', color: '#3B82F6' },
-];
+// Individual animated stat card
+const StatCard = ({ item, anim }) => {
+  const count = useCountUp(item.value);
+  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] });
 
-const stats = [
-  { id: '1', title: 'Buildings', value: 0, icon: 'business-outline', color: '#3B82F6' },
-  { id: '2', title: 'Locations', value: 0, icon: 'location-outline', color: '#2563EB' },
-  { id: '3', title: 'Active Users', value: 0, icon: 'people-outline', color: '#3B82F6' },
+  return (
+    <Animated.View style={{ opacity: anim, transform: [{ translateY }], width: '48%', marginBottom: 12 }}>
+      <View style={[styles.statCard, { backgroundColor: item.bg, borderColor: item.borderColor }]}>
+        <View style={[styles.statIconWrap, { backgroundColor: item.color + '22' }]}>
+          <Ionicons name={item.icon} size={20} color={item.color} />
+        </View>
+        <Text style={[styles.statCount, { color: item.color }]}>{count}</Text>
+        <Text style={styles.statTitle}>{item.title}</Text>
+        <View style={[styles.trendChip, { backgroundColor: item.color + '18' }]}>
+          <Ionicons name="pulse-outline" size={10} color={item.color} />
+          <Text style={[styles.trendText, { color: item.color }]}>Live</Text>
+        </View>
+      </View>
+    </Animated.View>
+  );
+};
+
+const QUICK_ACTIONS = [
+  { label: 'Add Department', icon: 'layers-outline', color: ADMIN_THEME.accent, nav: 'ManageDepartments' },
+  { label: 'Add Building', icon: 'business-outline', color: ADMIN_THEME.primary, nav: 'Buildings' },
+  { label: 'Add Event', icon: 'calendar-outline', color: ADMIN_THEME.success, nav: 'Notifications' },
+  { label: 'Post Announcement', icon: 'megaphone-outline', color: ADMIN_THEME.warning, nav: 'Notifications' },
+  { label: 'Dept. Status', icon: 'toggle-outline', color: ADMIN_THEME.statusAvailable, nav: 'ManageDepartments' },
+  { label: 'View Reports', icon: 'document-text-outline', color: ADMIN_THEME.danger, nav: 'Reports' },
+  { label: 'Manage Users', icon: 'people-outline', color: ADMIN_THEME.info, nav: 'Users' },
+  { label: 'Emergency Alert', icon: 'alert-circle-outline', color: '#E53E3E', nav: 'EmergencyManagement' },
 ];
 
 const AdminDashboard = ({ navigation }) => {
-  const { logout, user } = useAuth();
-  const [counts, setCounts] = React.useState({ buildings: 0, locations: 0, users: 0 });
-  const [reports, setReports] = React.useState([]);
-  const [showAdminTools, setShowAdminTools] = React.useState(true);
+  const { colors } = useTheme();
+  const { user } = useAuth();
 
-  React.useEffect(() => {
-    const unsubscribe = subscribeToIssueReports((items) => {
-      setReports(items || []);
-    });
+  const [users, setUsers] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [reports, setReports] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [buildings, setBuildings] = useState([]);
+  const [locations, setLocations] = useState([]);
 
-    return () => {
-      try {
-        unsubscribe?.();
-      } catch (error) {
-        // ignore
-      }
-    };
+  // 8 entrance animations
+  const cardAnims = useRef([...Array(8)].map(() => new Animated.Value(0))).current;
+  const heroAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Stagger entrance
+    Animated.sequence([
+      Animated.timing(heroAnim, { toValue: 1, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+      Animated.stagger(70, cardAnims.map((a) => Animated.timing(a, { toValue: 1, duration: 380, easing: Easing.out(Easing.back(1.1)), useNativeDriver: false }))),
+    ]).start();
   }, []);
 
-  const unreadNotificationCount = React.useMemo(() => {
-    return reports.reduce((count, report) => {
-      const role = (report?.reporterRole || '').toString().toLowerCase();
-      const isStudentOrStaff = role.includes('student') || role.includes('staff') || role.includes('faculty');
-      const isUnread = !report?.adminReadAt;
+  useEffect(() => {
+    const subs = [
+      subscribeToUsers((items) => setUsers(items || [])),
+      subscribeToDepartments((items) => setDepartments(items || [])),
+      subscribeToEvents((items) => setEvents(items || [])),
+      subscribeToIssueReports((items) => setReports(items || [])),
+      subscribeToNotifications((items) => setNotifications(items || [])),
+      subscribeToBuildings((items) => setBuildings(items || [])),
+      subscribeToLocations((items) => setLocations(items || [])),
+    ];
+    return () => subs.forEach((unsub) => { try { unsub?.(); } catch (e) {} });
+  }, []);
 
-      return isStudentOrStaff && isUnread ? count + 1 : count;
+  const unreadReportCount = useMemo(() => {
+    return reports.reduce((count, r) => {
+      const role = (r?.reporterRole || '').toString().toLowerCase();
+      const isStudentOrStaff = role.includes('student') || role.includes('staff') || role.includes('faculty');
+      return isStudentOrStaff && !r?.adminReadAt ? count + 1 : count;
     }, 0);
   }, [reports]);
-  
 
-  React.useEffect(() => {
-    console.log('AdminDashboard mounted - setting up subscriptions');
-    
-    const unsubBuildings = subscribeToBuildings((items) => {
-      console.log('Buildings updated:', items.length);
-      setCounts((c) => ({ ...c, buildings: items.length }));
-    });
+  const statCards = useMemo(() => [
+    {
+      id: 'students',
+      title: 'Students',
+      value: users.filter((u) => u.role === 'student').length,
+      icon: 'school-outline',
+      color: ADMIN_THEME.info,
+      bg: '#EBF8FF',
+      borderColor: '#BEE3F8',
+    },
+    {
+      id: 'staff',
+      title: 'Staff',
+      value: users.filter((u) => ['faculty', 'staff'].includes(u.role)).length,
+      icon: 'briefcase-outline',
+      color: ADMIN_THEME.primary,
+      bg: '#EBF0FF',
+      borderColor: '#C3DAFE',
+    },
+    {
+      id: 'guests',
+      title: 'Guests',
+      value: users.filter((u) => u.role === 'guest').length,
+      icon: 'person-outline',
+      color: '#6B46C1',
+      bg: '#FAF5FF',
+      borderColor: '#D6BCFA',
+    },
+    {
+      id: 'departments',
+      title: 'Departments',
+      value: departments.length,
+      icon: 'layers-outline',
+      color: ADMIN_THEME.accent,
+      bg: '#FFFFF0',
+      borderColor: '#FAF089',
+    },
+    {
+      id: 'events',
+      title: 'Active Events',
+      value: events.length,
+      icon: 'calendar-outline',
+      color: ADMIN_THEME.success,
+      bg: '#F0FFF4',
+      borderColor: '#C6F6D5',
+    },
+    {
+      id: 'emergency',
+      title: 'Emergency',
+      value: reports.filter((r) => {
+        const cat = (r.category || '').toLowerCase();
+        const priority = (r.priority || '').toLowerCase();
+        return cat === 'emergency' || priority === 'high' || priority === 'critical';
+      }).length,
+      icon: 'alert-circle-outline',
+      color: ADMIN_THEME.danger,
+      bg: '#FFF5F5',
+      borderColor: '#FED7D7',
+    },
+    {
+      id: 'announcements',
+      title: 'Announcements',
+      value: notifications.length,
+      icon: 'megaphone-outline',
+      color: ADMIN_THEME.warning,
+      bg: '#FFFBEB',
+      borderColor: '#FDE68A',
+    },
+    {
+      id: 'activeToday',
+      title: 'Active Today',
+      value: users.filter((u) => {
+        const last = u.lastLoginAt;
+        if (!last) return false;
+        const d = last instanceof Date ? last : (last?.toDate ? last.toDate() : new Date(last));
+        return !isNaN(d.getTime()) && Date.now() - d.getTime() < 86400000;
+      }).length,
+      icon: 'pulse-outline',
+      color: ADMIN_THEME.statusAvailable,
+      bg: '#E6FFFA',
+      borderColor: '#B2F5EA',
+    },
+  ], [users, departments, events, reports, notifications]);
 
-    const unsubLocations = subscribeToLocations((items) => {
-      console.log('Locations updated:', items.length);
-      setCounts((c) => ({ ...c, locations: items.length }));
-    });
+  const greeting = () => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
 
-    const unsubUsers = subscribeToUsers((items) => {
-      console.log('Users fetched from Firebase:', items);
-      console.log('User count:', items.length);
-      setCounts((c) => ({ ...c, users: items.length }));
-    });
-
-    return () => {
-      console.log('AdminDashboard cleanup - unsubscribing');
-      unsubBuildings();
-      unsubLocations();
-      unsubUsers();
-    };
-  }, []);
-
-  const renderStat = ({ item }) => (
-    <View style={[styles.statCard, { borderLeftColor: item.color }]}> 
-      <View style={styles.statTopRow}>
-        <View style={[styles.statIcon, { backgroundColor: `${item.color}1A` }]}>
-          <Ionicons name={item.icon} size={22} color={item.color} />
-        </View>
-        <View style={styles.statBadge}>
-          <Text style={styles.statBadgeText}>Live</Text>
-        </View>
-      </View>
-      <View style={styles.statContent}>
-        <Text style={styles.statValue}>{
-          item.id === '1' ? counts.buildings : item.id === '2' ? counts.locations : counts.users
-        }</Text>
-        <Text style={styles.statTitle}>{item.title}</Text>
-        <Text style={styles.statHint}>Synced from Firebase</Text>
-      </View>
-    </View>
-  );
-
-  const renderAction = ({ item }) => (
-    <TouchableOpacity
-      key={item.id}
-      style={styles.dropdownActionCard}
-      onPress={() => navigation.navigate(item.nav)}
-    >
-      <View style={styles.dropdownActionTopRow}>
-        <View style={[styles.iconWrap, { backgroundColor: `${item.color}1F` }]}> 
-          <Ionicons name={item.icon} size={24} color={item.color} />
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={DASHBOARD_THEME.textMuted} />
-      </View>
-      <Text style={styles.cardTitle}>{item.label}</Text>
-    </TouchableOpacity>
-  );
+  const heroTranslate = heroAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] });
 
   return (
-    <ScreenWrapper backgroundColor={DASHBOARD_THEME.background} statusBarStyle="dark-content">
-      <ScrollView
-        style={styles.container}
-        showsVerticalScrollIndicator={true}
-        contentContainerStyle={styles.scrollContent}
-      >
-        <View style={styles.bgOrbTop} />
-        <View style={styles.bgOrbSecondary} />
+    <ScreenWrapper backgroundColor={colors.background} statusBarStyle="light-content">
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
 
-        {/* Hero / Header */}
-        <View style={styles.heroCard}>
-          <View style={styles.heroGlow} />
-          <View style={styles.heroAccentBar} />
-          <View style={styles.header}>
-            <View style={styles.headerTextBlock}>
-              <Text style={styles.heroEyebrow}>Admin Dashboard</Text>
-              <Text style={styles.title}>Admin Control Center</Text>
-              <Text style={styles.subtitle}>Manage people, buildings, events and alerts</Text>
+        {/* Hero Card */}
+        <Animated.View style={[styles.heroCard, { opacity: heroAnim, transform: [{ translateY: heroTranslate }] }]}>
+          <View style={styles.heroGoldBar} />
+          {/* Gold glow orb */}
+          <View style={styles.heroGoldOrb} />
+          <View style={styles.heroNavyOrb} />
+
+          {/* Header row */}
+          <View style={styles.heroHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.heroGreeting}>{greeting()},</Text>
+              <Text style={styles.heroName} numberOfLines={1}>
+                {user?.displayName || user?.email?.split('@')[0] || 'Admin'}
+              </Text>
+              <Text style={styles.heroSub}>RMU Campus Administration</Text>
             </View>
-            <View style={styles.headerActions}>
+            <View style={styles.heroActions}>
               <TouchableOpacity
+                style={styles.heroIconBtn}
                 onPress={() => navigation.navigate('Reports')}
-                style={styles.iconButton}
               >
-                <Ionicons name="notifications-outline" size={22} color={DASHBOARD_THEME.hero} />
-                {unreadNotificationCount > 0 ? (
-                  <View style={styles.notificationBadge}>
-                    <Text style={styles.notificationBadgeText}>
-                      {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
-                    </Text>
+                <Ionicons name="notifications-outline" size={20} color="#fff" />
+                {unreadReportCount > 0 && (
+                  <View style={styles.heroBadge}>
+                    <Text style={styles.heroBadgeText}>{unreadReportCount > 9 ? '9+' : unreadReportCount}</Text>
                   </View>
-                ) : null}
+                )}
               </TouchableOpacity>
-              <TouchableOpacity onPress={logout} style={styles.iconButton}>
-                <Ionicons name="log-out-outline" size={22} color={DASHBOARD_THEME.hero} />
+              <TouchableOpacity
+                style={styles.heroIconBtn}
+                onPress={() => navigation.navigate('AdminSettings')}
+              >
+                <Ionicons name="settings-outline" size={20} color="#fff" />
               </TouchableOpacity>
             </View>
           </View>
 
-          <View style={styles.heroStatsRow}>
-            <View style={[styles.heroPill, styles.heroPillPrimary]}>
-              <Ionicons name="business-outline" size={16} color={COLORS.white} />
-              <Text style={styles.heroPillText}>{counts.buildings} buildings</Text>
+          {/* Hero pills */}
+          <View style={styles.heroPillRow}>
+            <View style={styles.heroPill}>
+              <Ionicons name="business-outline" size={13} color="rgba(255,255,255,0.85)" />
+              <Text style={styles.heroPillText}>{buildings.length} buildings</Text>
             </View>
             <View style={styles.heroPill}>
-              <Ionicons name="location-outline" size={16} color={COLORS.white} />
-              <Text style={styles.heroPillText}>{counts.locations} locations</Text>
+              <Ionicons name="location-outline" size={13} color="rgba(255,255,255,0.85)" />
+              <Text style={styles.heroPillText}>{locations.length} locations</Text>
             </View>
-            <View style={styles.heroPill}>
-              <Ionicons name="people-outline" size={16} color={COLORS.white} />
-              <Text style={styles.heroPillText}>{counts.users} users</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Overview Stats */}
-        <View style={styles.overviewSection}>
-          <View style={styles.overviewHeaderRow}>
-            <View>
-              <Text style={styles.sectionTitle}>Overview</Text>
-              <Text style={styles.overviewSubtitle}>A quick snapshot of campus data activity</Text>
-            </View>
-            <View style={styles.overviewBadge}>
-              <Ionicons name="pulse-outline" size={12} color={DASHBOARD_THEME.heroSoft} />
-              <Text style={styles.overviewBadgeText}>Live status</Text>
+            <View style={[styles.heroPill, styles.heroPillGold]}>
+              <Ionicons name="people-outline" size={13} color={ADMIN_THEME.primary} />
+              <Text style={[styles.heroPillText, { color: ADMIN_THEME.primary }]}>{users.length} users</Text>
             </View>
           </View>
+        </Animated.View>
 
-          <View style={styles.overviewPanel}>
-            <View style={styles.statsContainer}>
-              {stats.map((item) => renderStat({ item }))}
+        {/* Stats Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={[styles.sectionTitle, { color: colors.textDark }]}>Campus Overview</Text>
+            <View style={styles.liveBadge}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>Live</Text>
             </View>
+          </View>
+          <Text style={[styles.sectionSub, { color: colors.textMuted }]}>Real-time campus statistics</Text>
+
+          <View style={styles.statsGrid}>
+            {statCards.map((item, i) => (
+              <StatCard key={item.id} item={item} anim={cardAnims[i]} />
+            ))}
           </View>
         </View>
 
         {/* Quick Actions */}
-        <View style={styles.dropdownSection}>
-          <TouchableOpacity
-            style={styles.dropdownTrigger}
-            onPress={() => setShowAdminTools((current) => !current)}
-            activeOpacity={0.85}
-          >
-            <View>
-              <Text style={styles.sectionTitle}>Admin Tools</Text>
-              <Text style={styles.dropdownSubtitle}>Open to manage campus features</Text>
-            </View>
-            <View style={styles.dropdownTriggerRight}>
-              <Text style={styles.dropdownCount}>{quickActions.length} tools</Text>
-              <Ionicons
-                name={showAdminTools ? 'chevron-up' : 'chevron-down'}
-                size={20}
-                color={DASHBOARD_THEME.textMuted}
-              />
-            </View>
-          </TouchableOpacity>
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.textDark }]}>Quick Actions</Text>
+          <Text style={[styles.sectionSub, { color: colors.textMuted }]}>Jump to any admin module</Text>
 
-          {showAdminTools ? (
-            <View style={styles.dropdownPanel}>
-              {quickActions.map((item) => renderAction({ item }))}
-            </View>
-          ) : null}
+          <View style={styles.actionsGrid}>
+            {QUICK_ACTIONS.map((action) => (
+              <TouchableOpacity
+                key={action.label}
+                style={[styles.actionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => navigation.navigate(action.nav)}
+                activeOpacity={0.75}
+              >
+                <View style={[styles.actionIconWrap, { backgroundColor: action.color + '18' }]}>
+                  <Ionicons name={action.icon} size={22} color={action.color} />
+                </View>
+                <Text style={[styles.actionLabel, { color: colors.textDark }]}>{action.label}</Text>
+                <View style={[styles.actionArrow, { backgroundColor: action.color + '14' }]}>
+                  <Ionicons name="arrow-forward" size={12} color={action.color} />
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
-        {/* Info Card */}
-        <View style={styles.infoCard}>
-          <View style={styles.infoIcon}>
-            <Ionicons name="information-circle-outline" size={24} color={COLORS.white} />
+        {/* Info banner */}
+        <View style={styles.infoBanner}>
+          <View style={styles.infoBannerAccent} />
+          <View style={[styles.infoBannerIcon, { backgroundColor: ADMIN_THEME.accent }]}>
+            <Ionicons name="compass-outline" size={22} color={ADMIN_THEME.primary} />
           </View>
-          <View style={styles.infoContent}>
-            <Text style={styles.infoTitle}>Campus Data Management</Text>
-            <Text style={styles.infoText}>
-              Add students and staff, create locations with photos, review reports, and manage buildings,
-              events, and notifications in one place.
+          <View style={{ flex: 1 }}>
+            <Text style={styles.infoBannerTitle}>Smart Campus Platform</Text>
+            <Text style={styles.infoBannerText}>
+              Manage departments, locations, users, events, and emergency alerts from one unified dashboard.
             </Text>
           </View>
         </View>
+
       </ScrollView>
     </ScreenWrapper>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingTop: 16,
+  scrollContent: { paddingBottom: 32 },
+
+  // Hero
+  heroCard: {
+    backgroundColor: ADMIN_THEME.primary,
+    marginHorizontal: 0,
     paddingHorizontal: 20,
+    paddingTop: 52,
+    paddingBottom: 24,
+    overflow: 'hidden',
   },
-  scrollContent: {
-    paddingBottom: 20,
-    flexGrow: 1,
-  },
-  bgOrbTop: {
+  heroGoldBar: {
     position: 'absolute',
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: 'rgba(20, 184, 166, 0.12)',
-    top: -90,
-    right: -80,
+    top: 0, left: 0, right: 0,
+    height: 4,
+    backgroundColor: ADMIN_THEME.accent,
   },
-  bgOrbSecondary: {
+  heroGoldOrb: {
     position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: 'rgba(29, 78, 216, 0.08)',
-    top: 120,
-    left: -90,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(197,160,71,0.12)',
+    top: -60,
+    right: -60,
   },
-  header: {
-    marginBottom: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  heroNavyOrb: {
+    position: 'absolute',
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    bottom: -40,
+    left: -40,
   },
-  headerTextBlock: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  heroEyebrow: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: 'rgba(255,255,255,0.72)',
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-    marginBottom: 8,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: COLORS.white,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.82)',
-    marginTop: 6,
-    maxWidth: 260,
-    lineHeight: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: DASHBOARD_THEME.textDark,
-    marginBottom: 0,
-    marginTop: 0,
-  },
-  overviewSection: {
-    marginBottom: 6,
-  },
-  overviewHeaderRow: {
+  heroHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 12,
-  },
-  overviewSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    color: DASHBOARD_THEME.textMuted,
-    lineHeight: 18,
-  },
-  overviewBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#E0F2FE',
-  },
-  overviewBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: DASHBOARD_THEME.heroSoft,
-  },
-  overviewPanel: {
-    backgroundColor: COLORS.white,
-    borderRadius: 22,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
     marginBottom: 18,
   },
-  heroCard: {
-    backgroundColor: DASHBOARD_THEME.hero,
-    borderRadius: 28,
-    paddingHorizontal: 18,
-    paddingVertical: 18,
-    marginBottom: 22,
-    overflow: 'hidden',
-    shadowColor: '#020617',
-    shadowOpacity: 0.28,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 8,
+  heroGreeting: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.65)',
+    fontWeight: '500',
   },
-  heroGlow: {
-    position: 'absolute',
-    width: 210,
-    height: 210,
-    borderRadius: 105,
-    backgroundColor: DASHBOARD_THEME.heroSoft,
-    opacity: 0.22,
-    top: -50,
-    right: -48,
+  heroName: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#fff',
+    marginTop: 2,
   },
-  heroAccentBar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 4,
-    backgroundColor: DASHBOARD_THEME.accent,
+  heroSub: {
+    fontSize: 13,
+    color: ADMIN_THEME.accent,
+    marginTop: 3,
+    fontWeight: '600',
   },
-  heroStatsRow: {
+  heroActions: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
     marginTop: 4,
+  },
+  heroIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    overflow: 'visible',
+  },
+  heroBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    backgroundColor: '#E53E3E',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: ADMIN_THEME.primary,
+  },
+  heroBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+  heroPillRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
   },
   heroPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.16)',
-    borderRadius: 16,
+    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 20,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 6,
+    paddingVertical: 7,
   },
-  heroPillPrimary: {
-    backgroundColor: 'rgba(20, 184, 166, 0.22)',
-    borderColor: 'rgba(20, 184, 166, 0.32)',
+  heroPillGold: {
+    backgroundColor: 'rgba(197,160,71,0.22)',
+    borderColor: 'rgba(197,160,71,0.4)',
   },
   heroPillText: {
-    color: COLORS.white,
+    color: 'rgba(255,255,255,0.9)',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
   },
-  statsContainer: {
-    gap: 12,
-    marginBottom: 0,
+
+  // Sections
+  section: {
+    paddingHorizontal: 16,
+    paddingTop: 22,
   },
-  statCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    padding: 16,
-    borderLeftWidth: 4,
-    borderWidth: 1,
-    borderLeftColor: COLORS.primary,
-    borderColor: '#E2E8F0',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
-  },
-  statIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  statTopRow: {
+  sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  sectionSub: {
+    fontSize: 13,
+    marginBottom: 14,
+    marginTop: 2,
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#F0FFF4',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#C6F6D5',
+  },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#38A169' },
+  liveText: { fontSize: 11, fontWeight: '700', color: '#38A169' },
+
+  // Stat cards grid
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  statCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  statIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 10,
   },
-  statContent: {
-    flex: 1,
-  },
-  statValue: {
-    fontSize: 26,
+  statCount: {
+    fontSize: 28,
     fontWeight: '800',
-    color: COLORS.dark,
+    lineHeight: 34,
   },
   statTitle: {
     fontSize: 12,
-    color: COLORS.muted,
-    marginTop: 2,
     fontWeight: '600',
-  },
-  statHint: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 6,
-  },
-  statBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  statBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: DASHBOARD_THEME.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  dropdownSection: {
-    marginBottom: 20,
-  },
-  dropdownTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
-  },
-  dropdownSubtitle: {
-    fontSize: 12,
-    color: DASHBOARD_THEME.textMuted,
+    color: '#718096',
     marginTop: 2,
+    marginBottom: 8,
   },
-  dropdownTriggerRight: {
+  trendChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
   },
-  dropdownCount: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: DASHBOARD_THEME.textMuted,
-  },
-  dropdownPanel: {
-    marginTop: 10,
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+  trendText: { fontSize: 10, fontWeight: '700' },
+
+  // Quick actions
+  actionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
-  },
-  dropdownActionCard: {
-    width: '48%',
-    aspectRatio: 1,
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    borderRadius: 18,
-    padding: 14,
-    marginBottom: 10,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  dropdownActionTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    justifyContent: 'space-between',
-    width: '100%',
-  },
-  card: {
-    width: '48%',
-    backgroundColor: DASHBOARD_THEME.panel,
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 12,
-    alignItems: 'center',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  iconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  cardTitle: {
-    fontWeight: '700',
-    color: DASHBOARD_THEME.textDark,
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  infoCard: {
-    flexDirection: 'row',
-    backgroundColor: '#0B1220',
-    borderRadius: 22,
-    padding: 16,
-    alignItems: 'center',
-    marginBottom: 30,
-    shadowColor: '#020617',
-    shadowOpacity: 0.22,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 5,
-  },
-  headerButton: {
-    padding: 8,
-    borderRadius: 8,
-  },
-  infoIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    backgroundColor: 'rgba(20, 184, 166, 0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  infoContent: {
-    flex: 1,
-  },
-  infoTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.white,
-  },
-  infoText: {
-    fontSize: 13,
-    color: 'rgba(241, 245, 249, 0.95)',
-    marginTop: 4,
-    lineHeight: 18,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 10,
   },
-  iconButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+  actionCard: {
+    width: '48%',
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.7)',
-    position: 'relative',
-    overflow: 'visible',
+    padding: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 1,
   },
-  notificationBadge: {
-    position: 'absolute',
-    top: -5,
-    right: -5,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 5,
-    backgroundColor: '#EF4444',
+  actionIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: COLORS.white,
+    marginBottom: 10,
   },
-  notificationBadgeText: {
-    color: COLORS.white,
-    fontSize: 10,
+  actionLabel: {
+    fontSize: 13,
     fontWeight: '700',
+    flex: 1,
+  },
+  actionArrow: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+    alignSelf: 'flex-end',
+  },
+
+  // Info banner
+  infoBanner: {
+    flexDirection: 'row',
+    backgroundColor: ADMIN_THEME.primary,
+    borderRadius: 20,
+    padding: 16,
+    marginHorizontal: 16,
+    marginTop: 24,
+    alignItems: 'center',
+    gap: 14,
+    overflow: 'hidden',
+  },
+  infoBannerAccent: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+    height: 3,
+    backgroundColor: ADMIN_THEME.accent,
+  },
+  infoBannerIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  infoBannerTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  infoBannerText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.75)',
+    lineHeight: 17,
   },
 });
 

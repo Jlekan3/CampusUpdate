@@ -29,76 +29,83 @@ const MOBILE_BOTTOM_SHEET_COLLAPSED_HEIGHT = 104;
 const MOBILE_BOTTOM_SHEET_BASE_HEIGHT = 232;
 const MOBILE_BOTTOM_SHEET_EXTENDED_HEIGHT = 360;
 
+// Professional navy + gold map theme
+const NAVY  = '#1A365D';
+const GOLD  = '#C5A047';
+const GOLD_SOFT = 'rgba(197,160,71,0.14)';
+
 const THEMES = {
   light: {
-    background: '#F8FAFF',
-    surface: '#FFFFFF',
-    surfaceSoft: '#F1F5FF',
-    heroPanelBg: '#FFFFFF',
-    heroPanelBorder: 'rgba(11, 27, 59, 0.12)',
-    heroPanelGlow: 'rgba(29, 78, 216, 0.1)',
-    textPrimary: '#0B1B3B',
-    textMuted: '#5B6B8A',
-    border: 'rgba(11, 27, 59, 0.12)',
-    hero: '#0B1B3B',
-    heroSoft: 'rgba(29, 78, 216, 0.35)',
-    heroText: '#FFFFFF',
-    chipBg: '#F1F5FF',
-    chipBorder: 'rgba(11, 27, 59, 0.12)',
-    chipActiveBg: 'rgba(29, 78, 216, 0.12)',
-    chipActiveBorder: 'rgba(29, 78, 216, 0.24)',
-    chipActiveText: '#1D4ED8',
-    chipText: '#0B1B3B',
-    searchBg: '#EEF2FF',
-    searchBorder: 'rgba(29, 78, 216, 0.2)',
-    searchIcon: '#1D4ED8',
-    pillBg: 'rgba(255, 255, 255, 0.96)',
-    pillBorder: 'rgba(11, 27, 59, 0.12)',
-    pillText: '#1D4ED8',
-    rowBg: '#F8FAFF',
-    rowBorder: 'rgba(11, 27, 59, 0.12)',
-    rowIconBg: '#DBEAFE',
-    rowIcon: '#1D4ED8',
-    bottomSheetBg: '#FFFFFF',
-    noResultsBg: '#F1F5FF',
-    webBg: '#F8FAFF',
-    previewBg: '#FFFFFF',
-    cardShadow: '#0F172A',
+    background:      '#F4F7FB',
+    surface:         '#FFFFFF',
+    surfaceSoft:     '#EDF1F9',
+    heroPanelBg:     '#FFFFFF',
+    heroPanelBorder: 'rgba(26,54,93,0.10)',
+    heroPanelGlow:   GOLD_SOFT,
+    textPrimary:     '#1A2744',
+    textMuted:       '#5C6B8A',
+    border:          'rgba(26,54,93,0.09)',
+    hero:            NAVY,
+    heroSoft:        'rgba(197,160,71,0.22)',
+    heroText:        '#FFFFFF',
+    gold:            GOLD,
+    chipBg:          '#EDF1F9',
+    chipBorder:      'rgba(26,54,93,0.10)',
+    chipActiveBg:    GOLD_SOFT,
+    chipActiveBorder:'rgba(197,160,71,0.32)',
+    chipActiveText:  '#8A6B1A',
+    chipText:        '#1A2744',
+    searchBg:        '#FBF8EE',
+    searchBorder:    'rgba(197,160,71,0.30)',
+    searchIcon:      GOLD,
+    pillBg:          'rgba(255,255,255,0.96)',
+    pillBorder:      'rgba(26,54,93,0.10)',
+    pillText:        NAVY,
+    rowBg:           '#F4F7FB',
+    rowBorder:       'rgba(26,54,93,0.09)',
+    rowIconBg:       GOLD_SOFT,
+    rowIcon:         GOLD,
+    bottomSheetBg:   '#FFFFFF',
+    noResultsBg:     '#EDF1F9',
+    webBg:           '#F4F7FB',
+    previewBg:       '#FFFFFF',
+    cardShadow:      '#060F1E',
   },
   dark: {
-    background: '#071224',
-    surface: '#0B162E',
-    surfaceSoft: '#0E1A33',
-    heroPanelBg: '#0B1B3B',
-    heroPanelBorder: 'rgba(255,255,255,0.1)',
-    heroPanelGlow: 'rgba(29, 78, 216, 0.24)',
-    textPrimary: '#F8FAFC',
-    textMuted: '#C7D2FE',
-    border: 'rgba(255,255,255,0.12)',
-    hero: '#0B1B3B',
-    heroSoft: 'rgba(29, 78, 216, 0.42)',
-    heroText: '#FFFFFF',
-    chipBg: 'rgba(29, 78, 216, 0.12)',
-    chipBorder: 'rgba(255,255,255,0.12)',
-    chipActiveBg: 'rgba(29, 78, 216, 0.28)',
-    chipActiveBorder: 'rgba(29, 78, 216, 0.38)',
-    chipActiveText: '#BFDBFE',
-    chipText: '#E2E8F0',
-    searchBg: 'rgba(255,255,255,0.08)',
-    searchBorder: 'rgba(255,255,255,0.12)',
-    searchIcon: '#BFDBFE',
-    pillBg: 'rgba(11, 22, 46, 0.95)',
-    pillBorder: 'rgba(255,255,255,0.12)',
-    pillText: '#BFDBFE',
-    rowBg: '#0B162E',
-    rowBorder: 'rgba(255,255,255,0.12)',
-    rowIconBg: 'rgba(29, 78, 216, 0.24)',
-    rowIcon: '#BFDBFE',
-    bottomSheetBg: '#0B162E',
-    noResultsBg: '#0B162E',
-    webBg: '#071224',
-    previewBg: '#0B162E',
-    cardShadow: '#000000',
+    background:      '#080F1E',
+    surface:         '#0D1A30',
+    surfaceSoft:     '#111E33',
+    heroPanelBg:     '#0D1A30',
+    heroPanelBorder: 'rgba(197,160,71,0.14)',
+    heroPanelGlow:   'rgba(197,160,71,0.10)',
+    textPrimary:     '#DDE5F5',
+    textMuted:       '#7E8EAD',
+    border:          'rgba(197,160,71,0.14)',
+    hero:            '#0F2444',
+    heroSoft:        'rgba(197,160,71,0.15)',
+    heroText:        '#FFFFFF',
+    gold:            GOLD,
+    chipBg:          'rgba(197,160,71,0.10)',
+    chipBorder:      'rgba(197,160,71,0.20)',
+    chipActiveBg:    'rgba(197,160,71,0.22)',
+    chipActiveBorder:'rgba(197,160,71,0.40)',
+    chipActiveText:  '#E8C96A',
+    chipText:        '#DDE5F5',
+    searchBg:        'rgba(197,160,71,0.08)',
+    searchBorder:    'rgba(197,160,71,0.22)',
+    searchIcon:      '#E8C96A',
+    pillBg:          'rgba(8,15,30,0.95)',
+    pillBorder:      'rgba(197,160,71,0.18)',
+    pillText:        '#E8C96A',
+    rowBg:           '#0D1A30',
+    rowBorder:       'rgba(197,160,71,0.14)',
+    rowIconBg:       'rgba(197,160,71,0.14)',
+    rowIcon:         '#E8C96A',
+    bottomSheetBg:   '#0D1A30',
+    noResultsBg:     '#0D1A30',
+    webBg:           '#080F1E',
+    previewBg:       '#0D1A30',
+    cardShadow:      '#000000',
   },
 };
 
@@ -890,12 +897,12 @@ const MapScreen = ({ navigation, route }) => {
           <Text style={[styles.actionButtonText, { color: theme.textPrimary }]}>Direction</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.actionButton, styles.actionButtonPrimary, { backgroundColor: theme.hero }]}
+          style={[styles.actionButton, styles.actionButtonPrimary, { backgroundColor: GOLD }]}
           onPress={handleStartPress}
           activeOpacity={0.85}
         >
-          <Ionicons name="play-outline" size={18} color={theme.heroText} />
-          <Text style={[styles.actionButtonText, { color: theme.heroText }]}>Start</Text>
+          <Ionicons name="play-outline" size={18} color="#0F2444" />
+          <Text style={[styles.actionButtonText, { color: '#0F2444' }]}>Start</Text>
         </TouchableOpacity>
         {activeLocation?.id ? (
           <TouchableOpacity
@@ -1151,12 +1158,12 @@ const MapScreen = ({ navigation, route }) => {
                     <Text style={[styles.actionButtonText, { color: theme.textPrimary }]}>Direction</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.actionButton, styles.mobileActionButton, styles.actionButtonPrimary, { backgroundColor: theme.hero }]}
+                    style={[styles.actionButton, styles.mobileActionButton, styles.actionButtonPrimary, { backgroundColor: GOLD }]}
                     onPress={handleStartPress}
                     activeOpacity={0.85}
                   >
-                    <Ionicons name="play-outline" size={18} color={theme.heroText} />
-                    <Text style={[styles.actionButtonText, { color: theme.heroText }]}>Start</Text>
+                    <Ionicons name="play-outline" size={18} color="#0F2444" />
+                    <Text style={[styles.actionButtonText, { color: '#0F2444' }]}>Start</Text>
                   </TouchableOpacity>
                   {activeLocation?.id ? (
                     <TouchableOpacity
@@ -1334,10 +1341,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     padding: 8,
+    borderTopColor: GOLD,
+    borderTopWidth: 3,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.10,
     shadowRadius: 12,
     elevation: 5,
+    overflow: 'hidden',
   },
   mobileSearchRow: {
     flexDirection: 'row',
@@ -1394,9 +1404,11 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    backgroundColor: COLORS.primary,
+    backgroundColor: NAVY,
+    borderTopWidth: 3,
+    borderTopColor: GOLD,
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.18,
+    shadowOpacity: 0.22,
     shadowRadius: 14,
     elevation: 5,
   },
@@ -1430,6 +1442,8 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
     borderWidth: 1,
+    borderTopColor: GOLD,
+    borderTopWidth: 3,
     borderBottomWidth: 0,
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.16,
@@ -1440,13 +1454,15 @@ const styles = StyleSheet.create({
   mobileBottomHandleTouch: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 8,
+    paddingTop: 10,
     paddingBottom: 6,
   },
   mobileBottomHandle: {
-    width: 52,
-    height: 5,
+    width: 44,
+    height: 4,
     borderRadius: 999,
+    backgroundColor: GOLD,
+    opacity: 0.5,
   },
   mobileBottomScroll: {
     flex: 1,
@@ -1594,7 +1610,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 999,
-    backgroundColor: COLORS.secondary,
+    backgroundColor: '#38A169',
   },
   livePillText: {
     fontSize: 11,
@@ -1651,7 +1667,7 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: COLORS.primary,
+    backgroundColor: GOLD,
     marginRight: 10,
   },
   mapInfoTextWrap: {
@@ -1756,7 +1772,9 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    backgroundColor: COLORS.primary,
+    backgroundColor: NAVY,
+    borderTopWidth: 3,
+    borderTopColor: GOLD,
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.22,
     shadowRadius: 18,

@@ -6,10 +6,11 @@ import { useAuth } from '../context/AuthContext';
 import { USER_ROLES, COLORS } from '../utils/constants';
 
 // Import navigators
-import AuthNavigator from './AuthNavigator';
-import GuestNavigator from './GuestNavigator';
+import AuthNavigator    from './AuthNavigator';
+import GuestNavigator   from './GuestNavigator';
 import StudentNavigator from './StudentNavigator';
-import AdminNavigator from './AdminNavigator';
+import StaffNavigator   from './StaffNavigator';
+import AdminNavigator   from './AdminNavigator';
 
 const Stack = createStackNavigator();
 
@@ -73,10 +74,17 @@ const RootNavigator = () => {
               animationTypeForReplace: 'push',
             }}
           />
-        ) : userRole === USER_ROLES.STUDENT || userRole === USER_ROLES.FACULTY ? (
-          // Student/Faculty user
-          <Stack.Screen 
-            name="StudentMain" 
+        ) : userRole === USER_ROLES.FACULTY ? (
+          // Staff / Faculty user — dedicated staff dashboard
+          <Stack.Screen
+            name="StaffMain"
+            component={StaffNavigator}
+            options={{ animationTypeForReplace: 'push' }}
+          />
+        ) : userRole === USER_ROLES.STUDENT ? (
+          // Student user
+          <Stack.Screen
+            name="StudentMain"
             component={StudentNavigator}
             options={{
               animationTypeForReplace: 'push',

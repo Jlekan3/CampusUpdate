@@ -62,6 +62,32 @@ export const FORCE_REQUIRE_LOGIN = true;
 
 export const ENABLE_DEV_ADMIN_EMAIL_OVERRIDE = false;
 
+export const ADMIN_THEME = {
+  primary: '#1A365D',
+  accent: '#C5A047',
+  background: '#F8F9FA',
+  surface: '#FFFFFF',
+  textDark: '#2D3748',
+  textMuted: '#718096',
+  border: '#E2E8F0',
+  darkBackground: '#0D1117',
+  darkSurface: '#161B22',
+  darkBorder: '#30363D',
+  darkText: '#E6EDF3',
+  darkMuted: '#8B949E',
+  success: '#38A169',
+  danger: '#E53E3E',
+  warning: '#D69E2E',
+  info: '#3182CE',
+  statusOpen: '#38A169',
+  statusClosed: '#E53E3E',
+  statusBusy: '#D69E2E',
+  statusAvailable: '#319795',
+  glassBackground: 'rgba(255,255,255,0.12)',
+  glassBorder: 'rgba(255,255,255,0.25)',
+  glassDark: 'rgba(0,0,0,0.25)',
+};
+
 /** RMU campus emergency & support contacts (Ghana). Update with official numbers. */
 export const CAMPUS_EMERGENCY_CONTACTS = [
   {

@@ -29,7 +29,7 @@ const FavoritesScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    if (!user?.uid) {
+    if (!user?.uid || user?.isAnonymous) {
       setFavorites([]);
       setLoading(false);
       return undefined;
@@ -105,18 +105,20 @@ const FavoritesScreen = ({ navigation }) => {
     setTimeout(() => setRefreshing(false), 600);
   };
 
-  if (!user?.uid) {
+  if (!user?.uid || user?.isAnonymous) {
     return (
       <ScreenWrapper backgroundColor="#F3F8FF" statusBarStyle="dark-content">
         <View style={styles.container}>
           <View style={styles.heroCard}>
             <Text style={styles.heroTitle}>Favorites</Text>
-            <Text style={styles.heroSubtitle}>Continue as guest or sign in to save favorite places.</Text>
+            <Text style={styles.heroSubtitle}>Sign in to save and access your favourite campus places.</Text>
           </View>
           <View style={styles.emptyStateCard}>
-            <Ionicons name="log-in-outline" size={34} color={COLORS.primary} />
-            <Text style={styles.emptyTitle}>Session required</Text>
-            <Text style={styles.emptyText}>Use Guest access or log in from the home screen to enable favorites.</Text>
+            <Ionicons name="heart-outline" size={40} color="#C5A047" />
+            <Text style={styles.emptyTitle}>Sign in required</Text>
+            <Text style={styles.emptyText}>
+              Favorites are available to registered students and staff. Create an account or log in to start saving places.
+            </Text>
           </View>
         </View>
       </ScreenWrapper>

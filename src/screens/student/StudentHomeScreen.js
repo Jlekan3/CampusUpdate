@@ -1,623 +1,694 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Image, Alert } from 'react-native';
+import React, {
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import {
+  Alert,
+  Animated,
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import CustomButton from '../../components/CustomButton';
-import { COLORS, USER_ROLES } from '../../utils/constants';
 import { useAuth } from '../../context/AuthContext';
 import { CampusUpdatesContext } from '../../context/CampusUpdatesContext';
-import * as ImagePicker from 'expo-image-picker';
-import { addIssueReport, subscribeToUserNotificationReads } from '../../services/databaseService';
-import { db } from '../../config/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import {
+  addIssueReport,
+  subscribeToUserNotificationReads,
+  subscribeToDepartments,
+} from '../../services/databaseService';
+import { USER_ROLES } from '../../utils/constants';
 
-const DASHBOARD_THEME = {
-  background: '#EFF6FF',
-  hero: '#1E40AF',
-  heroSoft: '#60A5FA',
-  accent: '#3B82F6',
-  textDark: '#0F172A',
-  textMuted: '#475569',
-  panel: '#FFFFFF',
+// ── Brand palette ─────────────────────────────────────────────────────────────
+const C = {
+  navy:      '#1A365D',
+  navyDk:    '#0F2444',
+  gold:      '#C5A047',
+  goldSoft:  'rgba(197,160,71,0.14)',
+  bg:        '#F8F9FA',
+  darkText:  '#2D3748',
+  blue:      '#2563EB',
+  green:     '#38A169',
+  red:       '#E53E3E',
+  amber:     '#D69E2E',
+  teal:      '#0D9488',
+  purple:    '#6D28D9',
+  muted:     '#718096',
 };
 
-const STORAGE_KEY = 'guest-dashboard-mode';
+const STORAGE_KEY = 'student-dashboard-mode';
 
 const THEMES = {
   light: {
-    background: '#F8FAFC',
-    hero: '#1E40AF',
-    heroSoft: '#60A5FA',
-    panel: '#FFFFFF',
-    surface: '#FFFFFF',
-    surfaceBorder: 'rgba(37, 99, 235, 0.18)',
-    textPrimary: '#0F172A',
-    textMuted: '#475569',
+    bg:         C.bg,
+    surface:    '#FFFFFF',
+    surfaceAlt: '#EDF1F8',
+    text:       C.darkText,
+    muted:      C.muted,
+    border:     'rgba(26,54,93,0.09)',
+    statusBar:  'dark-content',
   },
   dark: {
-    background: '#0B1220',
-    hero: '#2563EB',
-    heroSoft: '#93C5FD',
-    panel: '#111827',
-    surface: '#111827',
-    surfaceBorder: 'rgba(255, 255, 255, 0.10)',
-    textPrimary: '#F8FAFC',
-    textMuted: '#CBD5E1',
+    bg:         '#0A1628',
+    surface:    '#0F2038',
+    surfaceAlt: '#131D35',
+    text:       '#E8EDF8',
+    muted:      '#8B9BC4',
+    border:     'rgba(197,160,71,0.14)',
+    statusBar:  'light-content',
   },
 };
 
-const ACTION_BLUE = '#2563EB';
-const ACTION_CARD_BG = '#FFFFFF';
-const ACTION_CARD_BORDER = 'rgba(37, 99, 235, 0.35)';
-const ACTION_ICON_BG = 'rgba(37, 99, 235, 0.12)';
-
-const quickAccessFeatures = [
-  { id: 'map', title: 'Campus Map', icon: 'map-outline', nav: 'Map', color: ACTION_BLUE, cardBg: ACTION_CARD_BG, cardBorder: ACTION_CARD_BORDER },
-  { id: 'search', title: 'Search', icon: 'search-outline', nav: 'Search', color: ACTION_BLUE, cardBg: ACTION_CARD_BG, cardBorder: ACTION_CARD_BORDER },
-  { id: 'qr', title: 'Scan QR', icon: 'qr-code-outline', nav: 'QRScanner', color: ACTION_BLUE, cardBg: ACTION_CARD_BG, cardBorder: ACTION_CARD_BORDER },
-  {
-    id: 'favorites',
-    title: 'Favorites',
-    icon: 'heart-outline',
-    nav: 'Favorites',
-    color: ACTION_BLUE,
-    cardBg: ACTION_CARD_BG,
-    cardBorder: ACTION_CARD_BORDER,
-  },
-  { id: 'notifications', title: 'Notifications', icon: 'notifications-outline', nav: 'Notifications', color: ACTION_BLUE, cardBg: ACTION_CARD_BG, cardBorder: ACTION_CARD_BORDER },
+// ── Quick actions ─────────────────────────────────────────────────────────────
+const PRIMARY_ACTIONS = [
+  { id: 'map',       label: 'Campus Map',   icon: 'map-outline',            color: C.navy,   nav: 'Map'          },
+  { id: 'search',    label: 'Search',       icon: 'search-outline',         color: C.gold,   nav: 'Search'       },
+  { id: 'events',    label: 'Events',       icon: 'calendar-outline',       color: C.green,  nav: 'CampusEvents' },
+  { id: 'notifs',    label: 'Alerts',       icon: 'notifications-outline',  color: C.purple, nav: 'Notifications', badge: true },
+  { id: 'favorites', label: 'Saved',        icon: 'heart-outline',          color: C.red,    nav: 'Favorites'    },
+  { id: 'emergency', label: 'Emergency',    icon: 'alert-circle-outline',   color: C.red,    nav: 'SafetySupport' },
 ];
 
-const discoveryFeatures = [
-  { id: 'events', title: 'Events', icon: 'calendar-outline', nav: 'CampusEvents', color: ACTION_BLUE, cardBg: ACTION_CARD_BG, cardBorder: ACTION_CARD_BORDER },
-  { id: 'dining', title: 'Dining', icon: 'restaurant-outline', nav: 'Dining', color: ACTION_BLUE, cardBg: ACTION_CARD_BG, cardBorder: ACTION_CARD_BORDER },
-  { id: 'amenities', title: 'Amenities', icon: 'fitness-outline', nav: 'Amenities', color: ACTION_BLUE, cardBg: ACTION_CARD_BG, cardBorder: ACTION_CARD_BORDER },
-  { id: 'rules', title: 'Campus Rules', icon: 'shield-outline', nav: 'CampusRules', color: ACTION_BLUE, cardBg: ACTION_CARD_BG, cardBorder: ACTION_CARD_BORDER },
+const UTIL_ACTIONS = [
+  { id: 'dining',    label: 'Dining',    icon: 'restaurant-outline', color: C.amber, nav: 'Dining'    },
+  { id: 'amenities', label: 'Amenities', icon: 'fitness-outline',    color: C.teal,  nav: 'Amenities' },
+  { id: 'qr',        label: 'Scan QR',   icon: 'qr-code-outline',    color: C.blue,  nav: 'QRScanner' },
 ];
 
-const supportFeatures = [
-  { id: 'safety', title: 'Safety & Support', icon: 'alert-circle-outline', nav: 'SafetySupport', color: '#1E40AF' },
-];
+const DEPT_STATUS = {
+  Open:      { color: C.green,  icon: 'checkmark-circle-outline' },
+  Closed:    { color: C.red,    icon: 'close-circle-outline'     },
+  Busy:      { color: C.amber,  icon: 'time-outline'             },
+  Available: { color: C.teal,   icon: 'ellipse-outline'          },
+};
 
+const NOTICE_PRIORITY = {
+  emergency: { label: 'Emergency', color: C.red,   bg: '#FEE2E2' },
+  urgent:    { label: 'Urgent',    color: C.amber, bg: '#FEF3C7' },
+  event:     { label: 'Event',     color: C.blue,  bg: '#DBEAFE' },
+  default:   { label: 'Notice',    color: C.navy,  bg: C.goldSoft },
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const getGreeting = () => {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good Morning';
+  if (h < 17) return 'Good Afternoon';
+  return 'Good Evening';
+};
+
+const fmtDate = (d) =>
+  d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
+const fmtTime = (d) =>
+  d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+const toDate = (v) => {
+  if (!v) return null;
+  if (v instanceof Date) return v;
+  if (typeof v?.toDate === 'function') return v.toDate();
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+};
+
+const fmtRelative = (v) => {
+  const d = toDate(v);
+  if (!d) return '';
+  const diff = Date.now() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+};
+
+const getNoticePriority = (item) => {
+  const cat = (item?.category || item?.type || '').toLowerCase();
+  if (cat.includes('emergency')) return NOTICE_PRIORITY.emergency;
+  if (cat.includes('urgent'))    return NOTICE_PRIORITY.urgent;
+  if (cat.includes('event'))     return NOTICE_PRIORITY.event;
+  return NOTICE_PRIORITY.default;
+};
+
+const getInitials = (name) => {
+  if (!name) return '?';
+  return name.trim().split(/\s+/).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
+};
+
+// ── Component ─────────────────────────────────────────────────────────────────
 const StudentHomeScreen = ({ navigation }) => {
-  const { notifications } = React.useContext(CampusUpdatesContext);
   const { logout, user, userRole } = useAuth();
-  const [mode, setMode] = React.useState('light');
-  const [showReportModal, setShowReportModal] = React.useState(false);
-  const [showMoreActions, setShowMoreActions] = React.useState(false);
-  const [issueTitle, setIssueTitle] = React.useState('');
-  const [issueDescription, setIssueDescription] = React.useState('');
-  const [issueCategory, setIssueCategory] = React.useState('Technical');
-  const [photos, setPhotos] = React.useState([]);
-  const [readMap, setReadMap] = React.useState({});
-  const [profile, setProfile] = React.useState(null);
+  const { notifications, events } = useContext(CampusUpdatesContext);
 
-  React.useEffect(() => {
-    let mounted = true;
+  const [mode, setMode]               = useState('light');
+  const [profile, setProfile]         = useState(null);
+  const [departments, setDepartments] = useState([]);
+  const [readMap, setReadMap]         = useState({});
+  const [now, setNow]                 = useState(new Date());
+  const [showReport, setShowReport]   = useState(false);
+  const [issueTitle, setIssueTitle]   = useState('');
+  const [issueDesc, setIssueDesc]     = useState('');
+  const [issueCat, setIssueCat]       = useState('Technical');
+  const [photos, setPhotos]           = useState([]);
 
-    (async () => {
-      try {
-        const savedMode = await AsyncStorage.getItem(STORAGE_KEY);
-        if (mounted && (savedMode === 'light' || savedMode === 'dark')) {
-          setMode(savedMode);
-        }
-      } catch (error) {
-        console.log('StudentHomeScreen theme load error', error);
-      }
-    })();
+  // Animations
+  const heroAnim    = useRef(new Animated.Value(0)).current;
+  const bodyAnim    = useRef(new Animated.Value(0)).current;
+  const primAnims   = useRef(PRIMARY_ACTIONS.map(() => new Animated.Value(0))).current;
+  const utilAnims   = useRef(UTIL_ACTIONS.map(() => new Animated.Value(0))).current;
 
-    return () => {
-      mounted = false;
-    };
+  // ── Load theme ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    let alive = true;
+    AsyncStorage.getItem(STORAGE_KEY).then((v) => {
+      if (alive && (v === 'light' || v === 'dark')) setMode(v);
+    }).catch(() => {});
+    return () => { alive = false; };
   }, []);
 
-  React.useEffect(() => {
-    AsyncStorage.setItem(STORAGE_KEY, mode).catch((error) => {
-      console.log('StudentHomeScreen theme save error', error);
-    });
+  useEffect(() => {
+    AsyncStorage.setItem(STORAGE_KEY, mode).catch(() => {});
   }, [mode]);
 
-  const theme = THEMES[mode] || THEMES.light;
+  // ── Live clock (every minute) ───────────────────────────────────────────────
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
-  React.useEffect(() => {
-    if (!user?.uid) {
-      setProfile(null);
-      setReadMap({});
-      return undefined;
-    }
+  // ── Entrance animations ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const allCardAnims = [...primAnims, ...utilAnims];
+    const seq = Animated.sequence([
+      Animated.timing(heroAnim, { toValue: 1, duration: 480, useNativeDriver: true }),
+      Animated.timing(bodyAnim, { toValue: 1, duration: 360, useNativeDriver: true }),
+      Animated.stagger(60, allCardAnims.map((a) =>
+        Animated.timing(a, { toValue: 1, duration: 300, useNativeDriver: true })
+      )),
+    ]);
+    seq.start();
+    return () => seq.stop();
+  }, []);
 
+  // ── Profile & notification reads ────────────────────────────────────────────
+  useEffect(() => {
+    if (!user?.uid) { setProfile(null); setReadMap({}); return; }
     let cancelled = false;
 
-    (async () => {
-      try {
-        const snap = await getDoc(doc(db, 'users', user.uid));
+    getDoc(doc(db, 'users', user.uid))
+      .then((snap) => { if (!cancelled && snap.exists()) setProfile({ id: snap.id, ...snap.data() }); })
+      .catch(() => {});
 
-        if (cancelled) {
-          return;
-        }
-
-        if (snap.exists()) {
-          setProfile({ id: snap.id, ...(snap.data() || {}) });
-        } else {
-          setProfile(null);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          console.log('StudentHomeScreen profile load error', error);
-          setProfile(null);
-        }
-      }
-    })();
-
-    const unsubscribe = subscribeToUserNotificationReads(user.uid, (entries) => {
-      setReadMap(entries || {});
-    });
-
-    return () => {
-      cancelled = true;
-      try {
-        unsubscribe?.();
-      } catch (error) {
-        // ignore
-      }
-    };
+    const unsub = subscribeToUserNotificationReads(user.uid, (e) => setReadMap(e || {}));
+    return () => { cancelled = true; try { unsub?.(); } catch (_) {} };
   }, [user?.uid]);
 
-  const profileName = React.useMemo(() => {
-    const displayName = (profile?.name || user?.displayName || '').trim();
-    if (displayName) return displayName;
+  // ── Departments live ────────────────────────────────────────────────────────
+  useEffect(() => {
+    const unsub = subscribeToDepartments((items) => setDepartments(items || []));
+    return () => { try { unsub?.(); } catch (_) {} };
+  }, []);
 
-    const email = (user?.email || '').trim();
-    if (!email) return '';
+  // ── Derived values ──────────────────────────────────────────────────────────
+  const t = THEMES[mode] || THEMES.light;
 
-    const localPart = email.split('@')[0] || '';
-    if (!localPart) return '';
+  const profileName = useMemo(() => {
+    const raw = (profile?.name || profile?.fullName || user?.displayName || '').trim();
+    if (raw) return raw;
+    const local = (user?.email || '').split('@')[0];
+    return local.replace(/[._-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }, [profile, user]);
 
-    const cleaned = localPart.replace(/[._-]+/g, ' ').trim();
-    if (!cleaned) return '';
+  const firstName = profileName.split(' ')[0] || 'Student';
 
-    return cleaned
-      .split(' ')
-      .filter(Boolean)
-      .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
-      .join(' ');
-  }, [profile?.name, user?.displayName, user?.email]);
+  const isStaff    = userRole === USER_ROLES.FACULTY || userRole === USER_ROLES.ADMIN;
+  const indexNo    = profile?.studentID || profile?.indexNumber || profile?.staffId || '—';
+  const programme  = profile?.programme || profile?.department || '—';
 
-  const profileIndexNumber = React.useMemo(() => {
-    return (
-      profile?.studentID ||
-      profile?.studentId ||
-      profile?.indexNumber ||
-      profile?.indexNo ||
-      profile?.idNumber ||
-      profile?.staffId ||
-      profile?.employeeId ||
-      profile?.uid ||
-      user?.uid ||
-      ''
-    );
-  }, [profile, user?.uid]);
+  const unreadCount = useMemo(() => {
+    return notifications.reduce((n, item) => {
+      const read = readMap[item.id]?.readAt;
+      return read ? n : n + 1;
+    }, 0);
+  }, [notifications, readMap]);
 
-  const profileProgramme = (profile?.programme || '').trim();
-  const profileDepartment = (profile?.department || '').trim();
-  const isStaffProfile = userRole === USER_ROLES.FACULTY || userRole === USER_ROLES.ADMIN;
+  const latestNotices = useMemo(() =>
+    [...notifications].slice(0, 3),
+    [notifications]
+  );
 
-  const handleNavigate = (screen) => {
+  const upcomingEvents = useMemo(() => {
+    const now2 = Date.now();
+    return [...events]
+      .filter((e) => {
+        const d = toDate(e.startDate || e.date || e.createdAt);
+        return d && d.getTime() >= now2 - 86400000; // include today
+      })
+      .sort((a, b) => {
+        const da = toDate(a.startDate || a.date || a.createdAt);
+        const db2 = toDate(b.startDate || b.date || b.createdAt);
+        return (da?.getTime() || 0) - (db2?.getTime() || 0);
+      })
+      .slice(0, 3);
+  }, [events]);
+
+  // ── Navigation helpers ──────────────────────────────────────────────────────
+  const goTo = (screen) => {
+    if (screen === 'QRScanner') {
+      navigation.getParent?.()?.navigate('QRScanner') || navigation.navigate(screen);
+      return;
+    }
     navigation.navigate(screen);
   };
 
-  const pickImage = async () => {
-    try {
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
-        aspect: [4, 3],
-        quality: 0.8,
-      });
+  const cardStyle = (anims, i) => ({
+    opacity:   anims[i],
+    transform: [{ translateY: anims[i].interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }],
+  });
 
-      if (!result.cancelled) {
-        setPhotos([...photos, result.uri]);
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to pick image');
+  // ── Issue report ────────────────────────────────────────────────────────────
+  const handleReport = () => {
+    if (!issueTitle.trim() || !issueDesc.trim()) {
+      Alert.alert('Incomplete', 'Please fill in all fields.'); return;
     }
-  };
-
-  const handleReportSubmit = () => {
-    if (!issueTitle.trim() || !issueDescription.trim()) {
-      Alert.alert('Validation Error', 'Please fill in all fields');
-      return;
-    }
-
     addIssueReport({
       title: issueTitle.trim(),
-      description: issueDescription.trim(),
-      category: issueCategory,
+      description: issueDesc.trim(),
+      category: issueCat,
       photoUris: photos,
       photoCount: photos.length,
       reporterId: user?.uid || '',
-      reporterName: user?.displayName || '',
+      reporterName: profileName,
       reporterEmail: user?.email || '',
-      reporterRole: userRole || user?.role || user?.userRole || 'student',
+      reporterRole: userRole || 'student',
       status: 'open',
-    })
-      .then(() => {
-        Alert.alert('Success', 'Issue reported successfully!');
-        setShowReportModal(false);
-        setIssueTitle('');
-        setIssueDescription('');
-        setIssueCategory('Technical');
-        setPhotos([]);
-      })
-      .catch((error) => {
-        Alert.alert('Error', error?.message || 'Failed to submit issue report');
-      });
+    }).then(() => {
+      Alert.alert('Submitted', 'Your report has been sent.');
+      setShowReport(false); setIssueTitle(''); setIssueDesc('');
+      setIssueCat('Technical'); setPhotos([]);
+    }).catch((err) => Alert.alert('Error', err?.message || 'Failed to submit.'));
   };
 
-  const removePhoto = (index) => {
-    setPhotos(photos.filter((_, i) => i !== index));
+  const pickPhoto = async () => {
+    try {
+      const res = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+      if (!res.cancelled && res.uri) setPhotos((p) => [...p, res.uri]);
+    } catch (_) {}
   };
 
-  const visibleNotifications = React.useMemo(() => {
-    const userId = user?.uid;
-    const staffRoles = [USER_ROLES.ADMIN, USER_ROLES.FACULTY];
-
-    return notifications.filter((item) => {
-      const audience = (item.audience || 'everyone').toString().toLowerCase();
-      const recipientIds = Array.isArray(item.recipientIds)
-        ? item.recipientIds.filter(Boolean)
-        : item.recipientId
-          ? [item.recipientId]
-          : [];
-      const isDirect = audience === 'direct' || recipientIds.length > 0;
-
-      if (isDirect) {
-        if (!userId) return false;
-        return recipientIds.includes(userId);
-      }
-
-      if (audience === 'staff') {
-        return staffRoles.includes(userRole);
-      }
-
-      return true;
-    });
-  }, [notifications, user?.uid, userRole]);
-
-  const unreadNotificationCount = React.useMemo(() => {
-    return visibleNotifications.reduce((count, item) => {
-      return readMap[item.id]?.readAt ? count : count + 1;
-    }, 0);
-  }, [readMap, visibleNotifications]);
+  // ── Render ──────────────────────────────────────────────────────────────────
+  const heroSlide = heroAnim.interpolate({ inputRange: [0, 1], outputRange: [-28, 0] });
+  const bodySlide = bodyAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] });
 
   return (
-    <ScreenWrapper backgroundColor={theme.background} statusBarStyle={mode === 'dark' ? 'light-content' : 'dark-content'}>
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.bgOrbTop} />
-        <View style={styles.bgOrbSecondary} />
+    <ScreenWrapper backgroundColor={t.bg} statusBarStyle={t.statusBar}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
 
-        {/* Header */}
-        <View style={[styles.heroCard, { backgroundColor: theme.hero }]}>
-          <View style={[styles.heroGlow, { backgroundColor: theme.heroSoft }]} />
-          <View style={styles.header}>
-            <View>
-              <Text style={[styles.title, { color: COLORS.white }]}>{profileName ? `Welcome, ${profileName}` : 'Welcome'}</Text>
-              <Text style={[styles.identityLine, { color: 'rgba(255,255,255,0.92)' }]}>
-                {profileName || 'Campus member'}
-              </Text>
-              {isStaffProfile ? (
-                <>
-                  <Text style={[styles.identityLine, { color: 'rgba(255,255,255,0.88)' }]}>
-                    Department: {profileDepartment || 'N/A'}
-                  </Text>
-                  <Text style={[styles.identityLine, { color: 'rgba(255,255,255,0.88)' }]}>
-                    ID Number: {profileIndexNumber || 'N/A'}
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Text style={[styles.identityLine, { color: 'rgba(255,255,255,0.88)' }]}>
-                    Index Number: {profileIndexNumber || 'N/A'}
-                  </Text>
-                  <Text style={[styles.identityLine, { color: 'rgba(255,255,255,0.88)' }]}>
-                    Programme: {profileProgramme || 'N/A'}
-                  </Text>
-                </>
-              )}
-              <Text style={styles.subtitle}>Your campus hub for navigation, events, and support</Text>
+        {/* ── HERO ───────────────────────────────────────────────────────────── */}
+        <Animated.View style={[styles.hero, { opacity: heroAnim, transform: [{ translateY: heroSlide }] }]}>
+          <View style={styles.heroGoldBar} />
+          <View style={styles.heroOrbA} />
+          <View style={styles.heroOrbB} />
+
+          {/* Top row: avatar + controls */}
+          <View style={styles.heroTopRow}>
+            {/* Avatar */}
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{getInitials(firstName)}</Text>
             </View>
-            <View style={styles.headerActions}>
+
+            {/* Controls */}
+            <View style={styles.heroControls}>
               <TouchableOpacity
-                style={styles.themeMiniButton}
-                onPress={() => setMode((current) => (current === 'dark' ? 'light' : 'dark'))}
-                activeOpacity={0.85}
+                style={styles.heroBtn}
+                onPress={() => setMode((m) => (m === 'dark' ? 'light' : 'dark'))}
+                activeOpacity={0.8}
               >
-                <Ionicons name={mode === 'dark' ? 'sunny-outline' : 'moon-outline'} size={16} color={COLORS.white} />
+                <Ionicons name={mode === 'dark' ? 'sunny-outline' : 'moon-outline'} size={16} color="#fff" />
               </TouchableOpacity>
-              <View style={styles.headerActionStack}>
-                <TouchableOpacity onPress={() => handleNavigate('Notifications')} style={styles.iconButton}>
-                  <Ionicons name="notifications-outline" size={22} color={theme.hero} />
-                  {unreadNotificationCount > 0 ? (
-                    <View style={styles.notificationBadge}>
-                      <Text style={styles.notificationBadgeText}>
-                        {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
-                      </Text>
-                    </View>
-                  ) : null}
-                </TouchableOpacity>
-                <TouchableOpacity onPress={logout} style={styles.iconButton}>
-                  <Ionicons name="log-out-outline" size={22} color={theme.hero} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-          <View style={styles.heroStatsRow}>
-            <View style={styles.heroPill}>
-              <Ionicons name="calendar-outline" size={16} color={COLORS.white} />
-              <Text style={styles.heroPillText}>Stay Updated</Text>
-            </View>
-            <View style={styles.heroPill}>
-              <Ionicons name="navigate-outline" size={16} color={COLORS.white} />
-              <Text style={styles.heroPillText}>Find Spaces Fast</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={[styles.hoursCard, { backgroundColor: theme.panel, borderColor: theme.surfaceBorder }]}>
-          <View style={styles.hoursHeader}>
-            <View style={[styles.hoursIconWrap, { backgroundColor: `${theme.hero}1A` }]}>
-              <Ionicons name="time-outline" size={18} color={theme.hero} />
-            </View>
-            <Text style={[styles.hoursTitle, { color: theme.textPrimary }]}>Working Hours</Text>
-          </View>
-          <Text style={[styles.hoursBody, { color: theme.textMuted }]}>School working hours are from 9 AM to 4 PM.</Text>
-        </View>
-
-        {/* Quick Access Section */}
-        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Quick Access</Text>
-        <View style={styles.grid}>
-          {quickAccessFeatures.map((f) => (
-            <TouchableOpacity
-              key={f.id}
-              style={[
-                styles.actionCard,
-                {
-                  backgroundColor: mode === 'dark' ? theme.surface : (f.cardBg || `${f.color}12`),
-                  borderColor: mode === 'dark' ? theme.surfaceBorder : (f.cardBorder || `${f.color}33`),
-                },
-              ]}
-              onPress={() => handleNavigate(f.nav)}
-              activeOpacity={0.85}
-            >
-              <View style={[styles.actionAccent, { backgroundColor: f.color }]} />
-              <View style={styles.actionBody}>
-                <View style={styles.actionHeader}>
-                  <View style={[styles.actionIconWrap, { backgroundColor: mode === 'dark' ? 'rgba(255,255,255,0.06)' : `${f.color}1F` }]}>
-                    <Ionicons name={f.icon} size={24} color={f.color} />
+              <TouchableOpacity
+                style={styles.heroBtn}
+                onPress={() => goTo('Notifications')}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="notifications-outline" size={16} color="#fff" />
+                {unreadCount > 0 && (
+                  <View style={styles.heroBadge}>
+                    <Text style={styles.heroBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
-                </View>
-                <Text style={[styles.actionTitle, { color: theme.textPrimary }]}>{f.title}</Text>
-                <View style={styles.actionFooter}>
-                  <Text style={[styles.actionTag, { color: f.color }]}>Open feature</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <TouchableOpacity
-          style={[styles.moreActionsToggle, { backgroundColor: theme.hero }]}
-          onPress={() => setShowMoreActions((current) => !current)}
-          activeOpacity={0.85}
-        >
-          <View>
-            <Text style={styles.moreActionsTitle}>More Actions</Text>
-            <Text style={styles.moreActionsSubtitle}>
-              Tap to discover events, dining, amenities, support, and reports
-            </Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.heroBtn} onPress={logout} activeOpacity={0.8}>
+                <Ionicons name="log-out-outline" size={16} color="#fff" />
+              </TouchableOpacity>
+            </View>
           </View>
-          <Ionicons
-            name={showMoreActions ? 'chevron-up' : 'chevron-down'}
-            size={22}
-            color={COLORS.white}
-          />
-        </TouchableOpacity>
 
-        {showMoreActions && (
-          <View style={styles.moreActionsPanel}>
-            {/* Information Discovery Section */}
-            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Discover</Text>
-            <View style={styles.grid}>
-              {discoveryFeatures.map((f) => (
+          {/* Greeting */}
+          <Text style={styles.heroGreeting}>{getGreeting()} 👋</Text>
+          <Text style={styles.heroName}>{firstName}</Text>
+
+          {/* Date / time */}
+          <Text style={styles.heroDate}>{fmtDate(now)}  ·  {fmtTime(now)}</Text>
+
+          {/* Student details */}
+          <View style={styles.heroPillRow}>
+            <View style={styles.heroPill}>
+              <Ionicons name={isStaff ? 'briefcase-outline' : 'school-outline'} size={13} color={C.gold} />
+              <Text style={styles.heroPillText}>{isStaff ? 'Staff' : `Index: ${indexNo}`}</Text>
+            </View>
+            {!isStaff && (
+              <View style={styles.heroPill}>
+                <Ionicons name="book-outline" size={13} color={C.gold} />
+                <Text style={styles.heroPillText} numberOfLines={1}>{programme}</Text>
+              </View>
+            )}
+            <View style={styles.heroPill}>
+              <Ionicons name="navigate-outline" size={13} color={C.gold} />
+              <Text style={styles.heroPillText}>RMU Campus</Text>
+            </View>
+          </View>
+        </Animated.View>
+
+        {/* ── BODY ───────────────────────────────────────────────────────────── */}
+        <Animated.View style={[styles.body, { opacity: bodyAnim, transform: [{ translateY: bodySlide }] }]}>
+
+          {/* ── QUICK ACTIONS ─────────────────────────────────────────────── */}
+          <Text style={[styles.eyebrow, { color: C.gold }]}>Navigate</Text>
+          <Text style={[styles.sectionTitle, { color: t.text }]}>Quick Access</Text>
+
+          <View style={styles.primaryGrid}>
+            {PRIMARY_ACTIONS.map((item, i) => (
+              <Animated.View key={item.id} style={[styles.primaryCardWrap, cardStyle(primAnims, i)]}>
                 <TouchableOpacity
-                  key={f.id}
-                  style={[
-                    styles.actionCard,
-                    {
-                      backgroundColor: mode === 'dark' ? theme.surface : (f.cardBg || `${f.color}12`),
-                      borderColor: mode === 'dark' ? theme.surfaceBorder : (f.cardBorder || `${f.color}33`),
-                    },
-                  ]}
-                  onPress={() => handleNavigate(f.nav)}
-                  activeOpacity={0.85}
+                  style={[styles.primaryCard, { backgroundColor: t.surface, borderColor: t.border }]}
+                  onPress={() => goTo(item.nav)}
+                  activeOpacity={0.82}
                 >
-                  <View style={[styles.actionAccent, { backgroundColor: f.color }]} />
-                  <View style={styles.actionBody}>
-                    <View style={styles.actionHeader}>
-                      <View style={[styles.actionIconWrap, { backgroundColor: mode === 'dark' ? 'rgba(255,255,255,0.06)' : `${f.color}1F` }]}>
-                        <Ionicons name={f.icon} size={24} color={f.color} />
+                  <View style={[styles.primaryTopBar, { backgroundColor: item.color }]} />
+                  <View style={[styles.primaryIconBox, { backgroundColor: `${item.color}18` }]}>
+                    <Ionicons name={item.icon} size={26} color={item.color} />
+                    {item.badge && unreadCount > 0 && (
+                      <View style={styles.cardBadge}>
+                        <Text style={styles.cardBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
                       </View>
-                      <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
-                    </View>
-                    <Text style={[styles.actionTitle, { color: theme.textPrimary }]}>{f.title}</Text>
-                    <View style={styles.actionFooter}>
-                      <Text style={[styles.actionTag, { color: f.color }]}>Open feature</Text>
-                    </View>
+                    )}
                   </View>
+                  <Text style={[styles.primaryLabel, { color: t.text }]}>{item.label}</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
+              </Animated.View>
+            ))}
+          </View>
 
-            {/* Safety & Support Section */}
-            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Support</Text>
-            <View style={styles.supportRow}>
-              <TouchableOpacity
-                style={[
-                  styles.actionCard,
-                  styles.squareActionCard,
-                  {
-                    backgroundColor: mode === 'dark' ? theme.surface : ACTION_CARD_BG,
-                    borderColor: mode === 'dark' ? theme.surfaceBorder : ACTION_CARD_BORDER,
-                  },
-                ]}
-                onPress={() => handleNavigate('SafetySupport')}
-                activeOpacity={0.85}
-              >
-                <View style={[styles.actionAccent, { backgroundColor: ACTION_BLUE }]} />
-                <View style={styles.actionBodySquare}>
-                  <View style={styles.actionHeader}>
-                    <View style={[styles.actionIconWrap, { backgroundColor: mode === 'dark' ? 'rgba(255,255,255,0.06)' : ACTION_ICON_BG }]}> 
-                      <Ionicons name="alert-circle-outline" size={24} color={ACTION_BLUE} />
-                    </View>
-                    <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+          {/* ── UTILITIES ─────────────────────────────────────────────────── */}
+          <View style={styles.utilRow}>
+            {UTIL_ACTIONS.map((item, i) => (
+              <Animated.View key={item.id} style={[styles.utilCardWrap, cardStyle(utilAnims, i)]}>
+                <TouchableOpacity
+                  style={[styles.utilCard, { backgroundColor: t.surface, borderColor: t.border }]}
+                  onPress={() => goTo(item.nav)}
+                  activeOpacity={0.82}
+                >
+                  <View style={[styles.utilIconBox, { backgroundColor: `${item.color}18` }]}>
+                    <Ionicons name={item.icon} size={20} color={item.color} />
                   </View>
-                  <Text style={[styles.actionTitle, { color: theme.textPrimary }]}>Safety & Support</Text>
-                  <Text style={[styles.actionDescription, { color: theme.textMuted }]} numberOfLines={2}>Emergency contacts, campus rules & alerts</Text>
-                  <View style={styles.actionFooter}>
-                    <Text style={[styles.actionTag, { color: ACTION_BLUE }]}>Open feature</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
+                  <Text style={[styles.utilLabel, { color: t.text }]}>{item.label}</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            ))}
+          </View>
 
-              <TouchableOpacity
-                style={[
-                  styles.actionCard,
-                  styles.squareActionCard,
-                  {
-                    backgroundColor: mode === 'dark' ? theme.surface : ACTION_CARD_BG,
-                    borderColor: mode === 'dark' ? theme.surfaceBorder : ACTION_CARD_BORDER,
-                  },
-                ]}
-                onPress={() => setShowReportModal(true)}
-                activeOpacity={0.85}
-              >
-                <View style={[styles.actionAccent, { backgroundColor: ACTION_BLUE }]} />
-                <View style={styles.actionBodySquare}>
-                  <View style={styles.actionHeader}>
-                    <View style={[styles.actionIconWrap, { backgroundColor: mode === 'dark' ? 'rgba(255,255,255,0.06)' : ACTION_ICON_BG }]}> 
-                      <Ionicons name="alert-circle-outline" size={24} color={ACTION_BLUE} />
-                    </View>
-                    <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
-                  </View>
-                  <Text style={[styles.actionTitle, { color: mode === 'dark' ? theme.textPrimary : DASHBOARD_THEME.textDark }]}>Report Issue</Text>
-                  <Text style={styles.actionDescription} numberOfLines={2}>Report campus problems, damages, or concerns</Text>
-                  <View style={styles.actionFooter}>
-                    <Text style={[styles.actionTag, { color: ACTION_BLUE }]}>Open form</Text>
-                  </View>
+          {/* ── DEPARTMENT STATUS ─────────────────────────────────────────── */}
+          {departments.length > 0 && (
+            <>
+              <View style={styles.sectionHeaderRow}>
+                <View>
+                  <Text style={[styles.eyebrow, { color: C.gold }]}>Live Status</Text>
+                  <Text style={[styles.sectionTitle, { color: t.text }]}>Departments</Text>
                 </View>
-              </TouchableOpacity>
+                <View style={styles.liveChip}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.liveText}>Live</Text>
+                </View>
+              </View>
+
+              <View style={[styles.deptCard, { backgroundColor: t.surface, borderColor: t.border }]}>
+                <View style={[styles.deptGoldBar, { backgroundColor: C.gold }]} />
+                {departments.slice(0, 5).map((dept, idx) => {
+                  const status = dept.availabilityStatus || 'Open';
+                  const cfg    = DEPT_STATUS[status] || DEPT_STATUS.Open;
+                  return (
+                    <View
+                      key={dept.id || idx}
+                      style={[styles.deptRow, idx < Math.min(departments.length, 5) - 1 && { borderBottomWidth: 1, borderBottomColor: t.border }]}
+                    >
+                      <View style={styles.deptLeft}>
+                        <View style={[styles.deptDot, { backgroundColor: cfg.color }]} />
+                        <View>
+                          <Text style={[styles.deptName, { color: t.text }]} numberOfLines={1}>{dept.name}</Text>
+                          {dept.operatingHours ? (
+                            <Text style={[styles.deptHours, { color: t.muted }]}>{dept.operatingHours}</Text>
+                          ) : null}
+                        </View>
+                      </View>
+                      <View style={[styles.deptBadge, { backgroundColor: `${cfg.color}18`, borderColor: `${cfg.color}30` }]}>
+                        <Ionicons name={cfg.icon} size={12} color={cfg.color} />
+                        <Text style={[styles.deptBadgeText, { color: cfg.color }]}>{status}</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+                {departments.length > 5 && (
+                  <Text style={[styles.deptMore, { color: t.muted }]}>
+                    +{departments.length - 5} more departments
+                  </Text>
+                )}
+              </View>
+            </>
+          )}
+
+          {/* ── ANNOUNCEMENTS ─────────────────────────────────────────────── */}
+          {latestNotices.length > 0 && (
+            <>
+              <View style={styles.sectionHeaderRow}>
+                <View>
+                  <Text style={[styles.eyebrow, { color: C.gold }]}>Updates</Text>
+                  <Text style={[styles.sectionTitle, { color: t.text }]}>Announcements</Text>
+                </View>
+                <TouchableOpacity onPress={() => goTo('Notifications')} style={styles.seeAllBtn}>
+                  <Text style={styles.seeAllText}>See all</Text>
+                  <Ionicons name="arrow-forward" size={13} color={C.gold} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.noticeList}>
+                {latestNotices.map((item, idx) => {
+                  const pri   = getNoticePriority(item);
+                  const isNew = !readMap[item.id]?.readAt;
+                  return (
+                    <TouchableOpacity
+                      key={item.id || idx}
+                      style={[styles.noticeCard, { backgroundColor: t.surface, borderColor: t.border }]}
+                      onPress={() => goTo('Notifications')}
+                      activeOpacity={0.85}
+                    >
+                      <View style={[styles.noticeLeftBar, { backgroundColor: pri.color }]} />
+                      <View style={styles.noticeBody}>
+                        <View style={styles.noticeTopRow}>
+                          <View style={[styles.noticePri, { backgroundColor: pri.bg }]}>
+                            <Text style={[styles.noticePriText, { color: pri.color }]}>{pri.label}</Text>
+                          </View>
+                          {isNew && <View style={styles.newDot} />}
+                          <Text style={[styles.noticeTime, { color: t.muted }]}>{fmtRelative(item.createdAt)}</Text>
+                        </View>
+                        <Text style={[styles.noticeTitle, { color: t.text }]} numberOfLines={1}>
+                          {item.title || item.subject || 'Campus notice'}
+                        </Text>
+                        <Text style={[styles.noticePreview, { color: t.muted }]} numberOfLines={2}>
+                          {item.message || item.body || item.description || ''}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
+
+          {/* ── UPCOMING EVENTS ───────────────────────────────────────────── */}
+          {upcomingEvents.length > 0 && (
+            <>
+              <View style={styles.sectionHeaderRow}>
+                <View>
+                  <Text style={[styles.eyebrow, { color: C.gold }]}>Calendar</Text>
+                  <Text style={[styles.sectionTitle, { color: t.text }]}>Upcoming Events</Text>
+                </View>
+                <TouchableOpacity onPress={() => goTo('CampusEvents')} style={styles.seeAllBtn}>
+                  <Text style={styles.seeAllText}>See all</Text>
+                  <Ionicons name="arrow-forward" size={13} color={C.gold} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.eventList}>
+                {upcomingEvents.map((ev, idx) => {
+                  const evDate = toDate(ev.startDate || ev.date || ev.createdAt);
+                  const day    = evDate ? evDate.toLocaleDateString([], { day: '2-digit' }) : '—';
+                  const mon    = evDate ? evDate.toLocaleDateString([], { month: 'short' }).toUpperCase() : '';
+                  const time   = evDate ? fmtTime(evDate) : '';
+                  return (
+                    <TouchableOpacity
+                      key={ev.id || idx}
+                      style={[styles.eventCard, { backgroundColor: t.surface, borderColor: t.border }]}
+                      onPress={() => goTo('CampusEvents')}
+                      activeOpacity={0.85}
+                    >
+                      <View style={styles.eventDateBlock}>
+                        <Text style={styles.eventDay}>{day}</Text>
+                        <Text style={styles.eventMon}>{mon}</Text>
+                      </View>
+                      <View style={styles.eventInfo}>
+                        <Text style={[styles.eventTitle, { color: t.text }]} numberOfLines={1}>
+                          {ev.title || ev.name || 'Campus Event'}
+                        </Text>
+                        {ev.location ? (
+                          <View style={styles.eventMeta}>
+                            <Ionicons name="location-outline" size={12} color={t.muted} />
+                            <Text style={[styles.eventMetaText, { color: t.muted }]} numberOfLines={1}>{ev.location}</Text>
+                          </View>
+                        ) : null}
+                        {time ? (
+                          <View style={styles.eventMeta}>
+                            <Ionicons name="time-outline" size={12} color={t.muted} />
+                            <Text style={[styles.eventMetaText, { color: t.muted }]}>{time}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <View style={styles.eventCta}>
+                        <Text style={styles.eventCtaText}>View</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
+
+          {/* ── CAMPUS INFO + REPORT ──────────────────────────────────────── */}
+          <View style={[styles.infoCard, { backgroundColor: t.surface, borderColor: t.border }]}>
+            <View style={[styles.infoGoldBar, { backgroundColor: C.gold }]} />
+            <View style={styles.infoRow}>
+              <View style={[styles.infoIconBox, { backgroundColor: C.goldSoft }]}>
+                <Ionicons name="time-outline" size={18} color={C.gold} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.infoTitle, { color: t.text }]}>Campus Hours</Text>
+                <Text style={[styles.infoBody, { color: t.muted }]}>Monday – Friday  ·  9:00 AM – 4:00 PM</Text>
+              </View>
             </View>
           </View>
-        )}
+
+          <TouchableOpacity
+            style={styles.reportBtn}
+            onPress={() => setShowReport(true)}
+            activeOpacity={0.85}
+          >
+            <View style={[styles.reportIconBox, { backgroundColor: `${C.red}18` }]}>
+              <Ionicons name="flag-outline" size={20} color={C.red} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.reportTitle}>Report an Issue</Text>
+              <Text style={styles.reportSub}>Flag campus problems or concerns</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={C.muted} />
+          </TouchableOpacity>
+
+        </Animated.View>
       </ScrollView>
 
-      {/* Report Issue Modal */}
-      <Modal
-        visible={showReportModal}
-        animationType="slide"
-        transparent={false}
-        onRequestClose={() => setShowReportModal(false)}
-      >
-        <ScreenWrapper backgroundColor={theme.hero} statusBarStyle="light-content">
-          <ScrollView style={styles.modalContainer} showsVerticalScrollIndicator={false}>
-            {/* Modal Header */}
+      {/* ── REPORT MODAL ──────────────────────────────────────────────────────── */}
+      <Modal visible={showReport} animationType="slide" transparent={false} onRequestClose={() => setShowReport(false)}>
+        <ScreenWrapper backgroundColor={C.navy} statusBarStyle="light-content">
+          <ScrollView contentContainerStyle={styles.modalScroll} showsVerticalScrollIndicator={false}>
+
             <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setShowReportModal(false)}>
-                <Ionicons name="close" size={28} color={COLORS.white} />
+              <TouchableOpacity onPress={() => setShowReport(false)}>
+                <Ionicons name="close" size={26} color="#fff" />
               </TouchableOpacity>
               <Text style={styles.modalTitle}>Report an Issue</Text>
-              <View style={{ width: 28 }} />
+              <View style={{ width: 26 }} />
             </View>
 
-            {/* Form Content */}
-            <View style={styles.formContainer}>
-              {/* Category Selection */}
-              <Text style={styles.formLabel}>Category</Text>
-              <View style={styles.categoryContainer}>
+            <View style={styles.modalForm}>
+              <Text style={styles.modalLabel}>Category</Text>
+              <View style={styles.catRow}>
                 {['Technical', 'Facility', 'Safety', 'Other'].map((cat) => (
                   <TouchableOpacity
                     key={cat}
-                    style={[styles.categoryButton, issueCategory === cat && styles.categoryButtonActive]}
-                    onPress={() => setIssueCategory(cat)}
+                    style={[styles.catBtn, issueCat === cat && styles.catBtnActive]}
+                    onPress={() => setIssueCat(cat)}
                   >
-                    <Text style={[styles.categoryButtonText, issueCategory === cat && styles.categoryButtonTextActive]}>
-                      {cat}
-                    </Text>
+                    <Text style={[styles.catBtnText, issueCat === cat && styles.catBtnTextActive]}>{cat}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
 
-              {/* Title Input */}
-              <Text style={styles.formLabel}>Issue Title</Text>
+              <Text style={styles.modalLabel}>Issue Title</Text>
               <TextInput
-                style={styles.textInput}
+                style={styles.modalInput}
                 placeholder="Brief title of the issue"
-                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                placeholderTextColor="rgba(255,255,255,0.45)"
                 value={issueTitle}
                 onChangeText={setIssueTitle}
               />
 
-              {/* Description Input */}
-              <Text style={styles.formLabel}>Description</Text>
+              <Text style={styles.modalLabel}>Description</Text>
               <TextInput
-                style={[styles.textInput, styles.textAreaInput]}
-                placeholder="Detailed description of the issue"
-                placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                value={issueDescription}
-                onChangeText={setIssueDescription}
+                style={[styles.modalInput, styles.modalTextArea]}
+                placeholder="Describe the issue in detail"
+                placeholderTextColor="rgba(255,255,255,0.45)"
+                value={issueDesc}
+                onChangeText={setIssueDesc}
                 multiline
                 numberOfLines={5}
+                textAlignVertical="top"
               />
 
-              {/* Photo Section */}
-              <Text style={styles.formLabel}>Photos (Optional)</Text>
-              <TouchableOpacity style={styles.photoButton} onPress={pickImage}>
-                <Ionicons name="camera" size={24} color={COLORS.white} />
-                <Text style={styles.photoButtonText}>Take Photo</Text>
+              <Text style={styles.modalLabel}>Photos (optional)</Text>
+              <TouchableOpacity style={styles.photoBtn} onPress={pickPhoto}>
+                <Ionicons name="camera-outline" size={22} color="#fff" />
+                <Text style={styles.photoBtnText}>Take Photo</Text>
               </TouchableOpacity>
 
-              {/* Display Selected Photos */}
               {photos.length > 0 && (
-                <View style={styles.photosContainer}>
-                  {photos.map((photo, index) => (
-                    <View key={index} style={styles.photoPreview}>
-                      <Image source={{ uri: photo }} style={styles.photoImage} />
-                      <TouchableOpacity
-                        style={styles.removePhotoButton}
-                        onPress={() => removePhoto(index)}
-                      >
-                        <Ionicons name="close" size={20} color={COLORS.white} />
+                <View style={styles.photoRow}>
+                  {photos.map((uri, i) => (
+                    <View key={i} style={styles.photoWrap}>
+                      <Image source={{ uri }} style={styles.photoImg} />
+                      <TouchableOpacity style={styles.photoRemove} onPress={() => setPhotos((p) => p.filter((_, j) => j !== i))}>
+                        <Ionicons name="close" size={16} color="#fff" />
                       </TouchableOpacity>
                     </View>
                   ))}
                 </View>
               )}
 
-              {/* Submit Button */}
-              <CustomButton
-                title="Submit Report"
-                onPress={handleReportSubmit}
-                style={styles.submitButton}
-              />
-
-              {/* Cancel Button */}
-              <CustomButton
-                title="Cancel"
-                onPress={() => setShowReportModal(false)}
-                variant="outline"
-                style={styles.cancelButton}
-              />
+              <CustomButton title="Submit Report" onPress={handleReport} style={{ marginTop: 24, marginBottom: 12 }} />
+              <CustomButton title="Cancel" onPress={() => setShowReport(false)} variant="outline" style={{ marginBottom: 32 }} />
             </View>
           </ScrollView>
         </ScreenWrapper>
@@ -626,409 +697,188 @@ const StudentHomeScreen = ({ navigation }) => {
   );
 };
 
+// ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    paddingTop: 16,
-  },
-  scrollContent: {
-    paddingBottom: 20,
-  },
-  bgOrbTop: {
-    position: 'absolute',
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: 'rgba(20, 184, 166, 0.18)',
-    top: -80,
-    right: -60,
-  },
-  bgOrbSecondary: {
-    position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: 'rgba(14, 165, 233, 0.12)',
-    top: 120,
-    left: -70,
-  },
-  heroCard: {
-    backgroundColor: DASHBOARD_THEME.hero,
-    borderRadius: 24,
-    paddingHorizontal: 18,
-    paddingVertical: 18,
-    marginBottom: 22,
+  scroll: { paddingBottom: 40 },
+
+  // ── Hero
+  hero: {
+    backgroundColor: C.navy,
+    paddingTop: 54,
+    paddingBottom: 30,
+    paddingHorizontal: 22,
+    borderBottomLeftRadius: 36,
+    borderBottomRightRadius: 36,
     overflow: 'hidden',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowColor: '#060F1E',
+    shadowOpacity: 0.32,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 12,
+    marginBottom: 0,
   },
-  hoursCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 14,
-    marginBottom: 18,
-  },
-  hoursHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 6,
-  },
-  hoursIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  hoursTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  hoursBody: {
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  heroGlow: {
-    position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: DASHBOARD_THEME.heroSoft,
-    opacity: 0.45,
-    top: -30,
-    right: -30,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  title: { 
-    fontSize: 22, 
-    fontWeight: '700', 
-    color: COLORS.white 
-  },
-  identityLine: {
-    marginTop: 4,
-    fontSize: 13,
-    fontWeight: '600',
-    lineHeight: 18,
-  },
-  subtitle: { 
-    color: 'rgba(255, 255, 255, 0.9)', 
-    marginTop: 4,
-    fontSize: 13,
-    maxWidth: 230,
-  },
-  heroStatsRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  heroPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.25)',
-    borderRadius: 16,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 6,
-  },
-  heroPillText: {
-    color: COLORS.white,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  sectionTitle: { 
-    fontSize: 18,
-    fontWeight: '700',
-    color: DASHBOARD_THEME.textDark,
-    marginBottom: 12,
-    marginTop: 8,
-  },
-  grid: { 
-    flexDirection: 'row', 
-    flexWrap: 'wrap', 
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  actionCard: {
-    width: '48%',
-    borderRadius: 22,
-    overflow: 'hidden',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.09,
-    shadowRadius: 16,
-    elevation: 5,
-    borderWidth: 1,
-    minHeight: 112,
-    marginBottom: 12,
-  },
-  actionAccent: {
-    width: 10,
-  },
-  actionBody: {
-    flex: 1,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-  },
-  actionBodySquare: {
-    flex: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-  },
-  actionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  actionIconWrap: {
-    width: 50,
-    height: 50,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: DASHBOARD_THEME.textDark,
-    marginBottom: 6,
-  },
-  actionDescription: {
-    fontSize: 13,
-    color: DASHBOARD_THEME.textMuted,
-    lineHeight: 19,
-  },
-  squareActionCard: {
-    width: '48%',
-    minHeight: 170,
-  },
-  supportRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 18,
-  },
-  actionFooter: {
-    marginTop: 12,
-    alignItems: 'flex-start',
-  },
-  actionTag: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  quickActions: {
-    marginBottom: 18,
-  },
-  moreActionsToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: DASHBOARD_THEME.hero,
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.24)',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.10,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  moreActionsTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.white,
-  },
-  moreActionsSubtitle: {
-    marginTop: 3,
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.88)',
-  },
-  moreActionsPanel: {
-    marginBottom: 18,
-    paddingTop: 4,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    alignItems: 'flex-start',
-  },
-  headerActionStack: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 8,
-  },
-  themeMiniButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.24)',
-  },
-  iconButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.65)',
-    position: 'relative',
+  heroGoldBar: { position: 'absolute', top: 0, left: 0, right: 0, height: 4, backgroundColor: C.gold },
+  heroOrbA:    { position: 'absolute', width: 260, height: 260, borderRadius: 130, backgroundColor: C.gold, opacity: 0.08, top: -80, right: -70 },
+  heroOrbB:    { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: C.blue, opacity: 0.08, bottom: -60, left: -50 },
+
+  heroTopRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  avatar:        { width: 54, height: 54, borderRadius: 27, backgroundColor: C.gold, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.4)' },
+  avatarText:    { fontSize: 20, fontWeight: '800', color: C.navyDk },
+  heroControls:  { flexDirection: 'row', gap: 10 },
+  heroBtn: {
+    width: 38, height: 38, borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
+    justifyContent: 'center', alignItems: 'center',
     overflow: 'visible',
   },
-  notificationBadge: {
-    position: 'absolute',
-    top: -5,
-    right: -5,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 5,
-    backgroundColor: '#EF4444',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: COLORS.white,
+  heroBadge:     { position: 'absolute', top: -6, right: -6, minWidth: 17, height: 17, borderRadius: 9, backgroundColor: C.red, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4, borderWidth: 1.5, borderColor: C.navy },
+  heroBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+  heroGreeting:  { fontSize: 14, color: 'rgba(255,255,255,0.72)', fontWeight: '600', marginBottom: 4 },
+  heroName:      { fontSize: 30, fontWeight: '800', color: '#fff', letterSpacing: 0.2, marginBottom: 6 },
+  heroDate:      { fontSize: 12, color: 'rgba(255,255,255,0.60)', marginBottom: 18 },
+  heroPillRow:   { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  heroPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderRadius: 20, borderWidth: 1,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderColor: 'rgba(255,255,255,0.20)',
   },
-  notificationBadgeText: {
-    color: COLORS.white,
-    fontSize: 10,
-    fontWeight: '700',
+  heroPillText: { fontSize: 12, fontWeight: '600', color: '#fff' },
+
+  // ── Body
+  body: { paddingHorizontal: 16, paddingTop: 24 },
+
+  // ── Section headers
+  eyebrow:          { fontSize: 11, fontWeight: '800', letterSpacing: 1.6, textTransform: 'uppercase', marginBottom: 4 },
+  sectionTitle:     { fontSize: 22, fontWeight: '800', letterSpacing: 0.2, marginBottom: 16 },
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 0 },
+  seeAllBtn:        { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 16 },
+  seeAllText:       { fontSize: 13, fontWeight: '700', color: C.gold },
+
+  // ── Primary action grid (3-col)
+  primaryGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 14 },
+  primaryCardWrap: { width: '30.5%' },
+  primaryCard: {
+    borderRadius: 20, paddingTop: 18, paddingBottom: 14, paddingHorizontal: 12,
+    borderWidth: 1, overflow: 'hidden', alignItems: 'center',
+    shadowColor: '#060F1E', shadowOpacity: 0.07, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 }, elevation: 3,
   },
-  /* Modal Styles */
-  modalContainer: {
-    flex: 1,
-    paddingHorizontal: 0,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: COLORS.white,
-    textAlign: 'center',
-  },
-  formContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 24,
-  },
-  formLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.white,
-    marginBottom: 10,
-    marginTop: 16,
-  },
-  categoryContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 20,
-  },
-  categoryButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  categoryButtonActive: {
-    backgroundColor: COLORS.white,
-  },
-  categoryButtonText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  categoryButtonTextActive: {
-    color: '#1e40af',
-  },
-  textInput: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-    padding: 14,
-    color: COLORS.white,
-    fontSize: 14,
-    marginBottom: 16,
-  },
-  textAreaInput: {
-    minHeight: 120,
-    textAlignVertical: 'top',
-  },
-  photoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 10,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderColor: 'rgba(255, 255, 255, 0.5)',
-    paddingVertical: 20,
-    marginBottom: 16,
-    gap: 10,
-  },
-  photoButtonText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  photosContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 20,
-  },
-  photoPreview: {
+  primaryTopBar:  { position: 'absolute', top: 0, left: 0, right: 0, height: 4 },
+  primaryIconBox: {
+    width: 52, height: 52, borderRadius: 16,
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: 10, overflow: 'visible',
     position: 'relative',
-    width: '48%',
-    aspectRatio: 1,
   },
-  photoImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 10,
+  primaryLabel: { fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  cardBadge:    { position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: C.red, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3 },
+  cardBadgeText:{ color: '#fff', fontSize: 9, fontWeight: '800' },
+
+  // ── Util row (3-col horizontal)
+  utilRow:     { flexDirection: 'row', gap: 12, marginBottom: 28 },
+  utilCardWrap:{ flex: 1 },
+  utilCard:    { borderRadius: 18, padding: 14, borderWidth: 1, alignItems: 'center', gap: 8, shadowColor: '#060F1E', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  utilIconBox: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  utilLabel:   { fontSize: 12, fontWeight: '700', textAlign: 'center' },
+
+  // ── Live chip
+  liveChip:  { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#F0FFF4', borderWidth: 1, borderColor: '#C6F6D5', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, marginBottom: 16 },
+  liveDot:   { width: 7, height: 7, borderRadius: 4, backgroundColor: C.green },
+  liveText:  { fontSize: 11, fontWeight: '700', color: C.green },
+
+  // ── Department card
+  deptCard: {
+    borderRadius: 22, borderWidth: 1, overflow: 'hidden',
+    marginBottom: 28,
+    shadowColor: '#060F1E', shadowOpacity: 0.07, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 }, elevation: 3,
   },
-  removePhotoButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    borderRadius: 16,
-    padding: 6,
+  deptGoldBar: { height: 3 },
+  deptRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 13 },
+  deptLeft:    { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  deptDot:     { width: 10, height: 10, borderRadius: 5 },
+  deptName:    { fontSize: 14, fontWeight: '700' },
+  deptHours:   { fontSize: 11, marginTop: 2 },
+  deptBadge:   { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, borderWidth: 1 },
+  deptBadgeText:{ fontSize: 11, fontWeight: '700' },
+  deptMore:    { textAlign: 'center', fontSize: 12, fontStyle: 'italic', paddingVertical: 10 },
+
+  // ── Notice cards
+  noticeList: { gap: 10, marginBottom: 28 },
+  noticeCard: {
+    flexDirection: 'row', borderRadius: 20, borderWidth: 1, overflow: 'hidden',
+    shadowColor: '#060F1E', shadowOpacity: 0.06, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 }, elevation: 2,
   },
-  submitButton: {
-    marginBottom: 12,
+  noticeLeftBar: { width: 4 },
+  noticeBody:    { flex: 1, padding: 14 },
+  noticeTopRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  noticePri:     { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  noticePriText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  newDot:        { width: 7, height: 7, borderRadius: 4, backgroundColor: C.blue },
+  noticeTime:    { fontSize: 11, marginLeft: 'auto' },
+  noticeTitle:   { fontSize: 14, fontWeight: '700', marginBottom: 4 },
+  noticePreview: { fontSize: 12, lineHeight: 17 },
+
+  // ── Event cards
+  eventList: { gap: 10, marginBottom: 28 },
+  eventCard: {
+    flexDirection: 'row', alignItems: 'center', borderRadius: 20, borderWidth: 1,
+    padding: 14, gap: 14,
+    shadowColor: '#060F1E', shadowOpacity: 0.06, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 }, elevation: 2,
   },
-  cancelButton: {
-    marginBottom: 30,
+  eventDateBlock: { width: 50, alignItems: 'center', backgroundColor: C.goldSoft, borderRadius: 14, paddingVertical: 10 },
+  eventDay:       { fontSize: 22, fontWeight: '800', color: C.navy },
+  eventMon:       { fontSize: 11, fontWeight: '700', color: C.gold },
+  eventInfo:      { flex: 1, gap: 4 },
+  eventTitle:     { fontSize: 14, fontWeight: '700' },
+  eventMeta:      { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  eventMetaText:  { fontSize: 12 },
+  eventCta:       { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 12, backgroundColor: C.goldSoft },
+  eventCtaText:   { fontSize: 12, fontWeight: '700', color: C.gold },
+
+  // ── Info card
+  infoCard: { borderRadius: 20, borderWidth: 1, overflow: 'hidden', marginBottom: 14, shadowColor: '#060F1E', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  infoGoldBar: { height: 3 },
+  infoRow:    { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
+  infoIconBox: { width: 40, height: 40, borderRadius: 13, justifyContent: 'center', alignItems: 'center' },
+  infoTitle:   { fontSize: 13, fontWeight: '700', marginBottom: 3 },
+  infoBody:    { fontSize: 12, lineHeight: 17 },
+
+  // ── Report button
+  reportBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    padding: 16, borderRadius: 20, borderWidth: 1,
+    borderColor: `${C.red}30`, backgroundColor: '#FFF5F5',
+    marginBottom: 8,
   },
+  reportIconBox: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
+  reportTitle:   { fontSize: 15, fontWeight: '700', color: C.red, marginBottom: 3 },
+  reportSub:     { fontSize: 12, color: C.muted },
+
+  // ── Modal
+  modalScroll: { paddingBottom: 32 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.15)' },
+  modalTitle:  { fontSize: 18, fontWeight: '800', color: '#fff' },
+  modalForm:   { paddingHorizontal: 20, paddingTop: 22 },
+  modalLabel:  { fontSize: 14, fontWeight: '700', color: '#fff', marginBottom: 10, marginTop: 18 },
+  catRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  catBtn:      { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' },
+  catBtnActive:    { backgroundColor: C.gold },
+  catBtnText:      { color: '#fff', fontSize: 13, fontWeight: '600' },
+  catBtnTextActive:{ color: C.navyDk },
+  modalInput:  { backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', padding: 14, color: '#fff', fontSize: 14, marginBottom: 4 },
+  modalTextArea:   { minHeight: 110, textAlignVertical: 'top' },
+  photoBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 12, borderWidth: 1.5, borderStyle: 'dashed', borderColor: 'rgba(255,255,255,0.40)', paddingVertical: 18 },
+  photoBtnText:    { color: '#fff', fontWeight: '600', fontSize: 14 },
+  photoRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 },
+  photoWrap:   { width: '47%', aspectRatio: 1, position: 'relative' },
+  photoImg:    { width: '100%', height: '100%', borderRadius: 10 },
+  photoRemove: { position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 12, padding: 4 },
 });
 
 export default StudentHomeScreen;

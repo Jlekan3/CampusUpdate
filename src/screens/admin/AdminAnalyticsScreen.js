@@ -4,7 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import ScreenWrapper from '../../components/ScreenWrapper';
-import { COLORS, USER_ROLES } from '../../utils/constants';
+import { COLORS, USER_ROLES, ADMIN_THEME } from '../../utils/constants';
+import { useTheme } from '../../context/ThemeContext';
 import {
   subscribeToBuildings,
   subscribeToLocations,
@@ -12,6 +13,7 @@ import {
   subscribeToEvents,
   subscribeToNotifications,
   subscribeToIssueReports,
+  subscribeToDepartments,
 } from '../../services/databaseService';
 
 const getRoleFromUser = (user) => {
@@ -70,7 +72,16 @@ const getUserActivityDate = (user) => (
   || toDateValue(user?.createdAt)
 );
 
+const DEPT_STATUS_OPTIONS = [
+  { value: 'Open', color: '#38A169', icon: 'checkmark-circle-outline' },
+  { value: 'Closed', color: '#E53E3E', icon: 'close-circle-outline' },
+  { value: 'Busy', color: '#D69E2E', icon: 'time-outline' },
+  { value: 'Available', color: '#319795', icon: 'ellipse-outline' },
+];
+
 const AdminAnalyticsScreen = () => {
+  const { colors } = useTheme();
+  const [departments, setDepartments] = useState([]);
   const [entityCounts, setEntityCounts] = useState({
     buildings: 0,
     locations: 0,
@@ -161,6 +172,8 @@ const AdminAnalyticsScreen = () => {
       setLatestByRole(latest);
     });
 
+    const unsubDepartments = subscribeToDepartments((items) => setDepartments(items || []));
+
     return () => {
       try {
         unsubBuildings && unsubBuildings();
@@ -169,6 +182,7 @@ const AdminAnalyticsScreen = () => {
         unsubNotifications && unsubNotifications();
         unsubReports && unsubReports();
         unsubUsers && unsubUsers();
+        unsubDepartments && unsubDepartments();
       } catch (error) {
         // ignore cleanup errors
       }
@@ -446,6 +460,16 @@ const AdminAnalyticsScreen = () => {
         ${renderRows(latestRows)}
       </tbody>
     </table>
+
+    <h2>Departments (${escapeHtml(String(departments.length))} total)</h2>
+    <table>
+      <tbody>
+        ${renderRows(DEPT_STATUS_OPTIONS.map((opt) => [
+          opt.value,
+          departments.filter((d) => (d.availabilityStatus || 'Open') === opt.value).length,
+        ]))}
+      </tbody>
+    </table>
   </body>
 </html>`;
   };
@@ -647,6 +671,52 @@ const AdminAnalyticsScreen = () => {
               </View>
             ))}
           </View>
+
+          <Text style={styles.sectionTitle}>Departments</Text>
+          <Text style={styles.sectionSubtitle}>
+            {departments.length} {departments.length === 1 ? 'department' : 'departments'} registered
+          </Text>
+          <View style={styles.deptStatusGrid}>
+            {DEPT_STATUS_OPTIONS.map((opt) => {
+              const count = departments.filter((d) => (d.availabilityStatus || 'Open') === opt.value).length;
+              return (
+                <View key={opt.value} style={styles.deptStatusCard}>
+                  <View style={[styles.deptStatusIconWrap, { backgroundColor: `${opt.color}18` }]}>
+                    <Ionicons name={opt.icon} size={16} color={opt.color} />
+                  </View>
+                  <Text style={[styles.deptStatusCount, { color: opt.color }]}>{count}</Text>
+                  <Text style={styles.deptStatusLabel}>{opt.value}</Text>
+                </View>
+              );
+            })}
+          </View>
+
+          {departments.length > 0 && (
+            <View style={styles.deptListCard}>
+              {departments.slice(0, 8).map((dept, idx) => {
+                const status = dept.availabilityStatus || 'Open';
+                const statusColor = DEPT_STATUS_OPTIONS.find((o) => o.value === status)?.color || '#38A169';
+                const isLast = idx === Math.min(departments.length, 8) - 1;
+                return (
+                  <View key={dept.id || idx} style={[styles.deptRow, !isLast && styles.deptRowBorder]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.deptRowName} numberOfLines={1}>{dept.name || 'Unnamed'}</Text>
+                      {dept.category ? (
+                        <Text style={styles.deptRowCategory}>{dept.category}</Text>
+                      ) : null}
+                    </View>
+                    <View style={[styles.deptStatusBadge, { backgroundColor: `${statusColor}18`, borderColor: `${statusColor}30` }]}>
+                      <View style={[styles.deptStatusDot, { backgroundColor: statusColor }]} />
+                      <Text style={[styles.deptStatusBadgeText, { color: statusColor }]}>{status}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+              {departments.length > 8 && (
+                <Text style={styles.deptMoreText}>+{departments.length - 8} more departments</Text>
+              )}
+            </View>
+          )}
         </ScrollView>
       </View>
     </ScreenWrapper>
@@ -1066,6 +1136,101 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#475569',
     fontWeight: '500',
+  },
+  deptStatusGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 12,
+  },
+  deptStatusCard: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+  },
+  deptStatusIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  deptStatusCount: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  deptStatusLabel: {
+    fontSize: 11,
+    color: COLORS.muted,
+    marginTop: 2,
+    fontWeight: '600',
+  },
+  deptListCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 20,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    marginBottom: 10,
+  },
+  deptRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  deptRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  deptRowName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.dark,
+  },
+  deptRowCategory: {
+    fontSize: 11,
+    color: COLORS.muted,
+    marginTop: 2,
+  },
+  deptStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginLeft: 10,
+  },
+  deptStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  deptStatusBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  deptMoreText: {
+    fontSize: 12,
+    color: COLORS.muted,
+    textAlign: 'center',
+    paddingTop: 8,
+    fontStyle: 'italic',
   },
 });
 

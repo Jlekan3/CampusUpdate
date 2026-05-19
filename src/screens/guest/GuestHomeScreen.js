@@ -1,12 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  Platform,
   ScrollView,
-  View,
-  Text,
   StyleSheet,
+  Text,
   TouchableOpacity,
+  View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,358 +13,264 @@ import { useAuth } from '../../context/AuthContext';
 import ScreenWrapper from '../../components/ScreenWrapper';
 
 const STORAGE_KEY = 'guest-dashboard-mode';
-
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
-const FONT = {
-  display: Platform.select({ ios: 'Georgia', android: 'serif' }),
-  heading: Platform.select({ ios: 'AvenirNext-DemiBold', android: 'sans-serif-medium' }),
-  body: Platform.select({ ios: 'AvenirNext-Regular', android: 'sans-serif' }),
+// ── Palette ─────────────────────────────────────────────────────────────────
+const P = {
+  navy:    '#1A365D',
+  navyDk:  '#0F2444',
+  gold:    '#C5A047',
+  goldSoft:'rgba(197,160,71,0.14)',
+  blue:    '#2563EB',
+  blueMid: '#1D4ED8',
 };
 
 const THEMES = {
   light: {
-    background: '#F8FAFF',
-    hero: '#0B1B3B',
-    heroSoft: '#1D4ED8',
-    panel: '#FFFFFF',
-    panelAlt: '#F1F5FF',
-    textPrimary: '#0B1B3B',
-    textMuted: '#5B6B8A',
-    surfaceBorder: 'rgba(11, 27, 59, 0.12)',
-    accent: '#0B1B3B',
-    accentSoft: 'rgba(11, 27, 59, 0.12)',
-    crest: 'rgba(255, 255, 255, 0.18)',
-    crestBorder: 'rgba(255, 255, 255, 0.3)',
-    heroText: '#FFFFFF',
-    heroMuted: 'rgba(255, 255, 255, 0.78)',
-    heroPillBg: 'rgba(255, 255, 255, 0.14)',
-    heroPillBorder: 'rgba(255, 255, 255, 0.3)',
+    bg:          '#F4F7FB',
+    surface:     '#FFFFFF',
+    surfaceAlt:  '#EDF1F9',
+    text:        '#1A2744',
+    muted:       '#5C6B8A',
+    border:      'rgba(26,54,93,0.09)',
+    heroText:    '#FFFFFF',
+    heroMuted:   'rgba(255,255,255,0.70)',
+    pillBg:      'rgba(255,255,255,0.13)',
+    pillBorder:  'rgba(255,255,255,0.26)',
+    statusBar:   'dark-content',
   },
   dark: {
-    background: '#071224',
-    hero: '#0B1B3B',
-    heroSoft: '#1D4ED8',
-    panel: '#0B162E',
-    panelAlt: '#0E1A33',
-    textPrimary: '#F8FAFC',
-    textMuted: '#C7D2FE',
-    surfaceBorder: 'rgba(148, 163, 184, 0.2)',
-    accent: '#FFFFFF',
-    accentSoft: 'rgba(255, 255, 255, 0.1)',
-    crest: 'rgba(255, 255, 255, 0.12)',
-    crestBorder: 'rgba(255, 255, 255, 0.24)',
-    heroText: '#FFFFFF',
-    heroMuted: 'rgba(255, 255, 255, 0.74)',
-    heroPillBg: 'rgba(255, 255, 255, 0.12)',
-    heroPillBorder: 'rgba(255, 255, 255, 0.24)',
+    bg:          '#080F1E',
+    surface:     '#0D1A30',
+    surfaceAlt:  '#111E33',
+    text:        '#DDE5F5',
+    muted:       '#7E8EAD',
+    border:      'rgba(197,160,71,0.14)',
+    heroText:    '#FFFFFF',
+    heroMuted:   'rgba(255,255,255,0.62)',
+    pillBg:      'rgba(255,255,255,0.09)',
+    pillBorder:  'rgba(255,255,255,0.18)',
+    statusBar:   'light-content',
   },
 };
 
-const heroHighlights = [
-  {
-    id: 'routes',
-    icon: 'navigate-outline',
-    label: 'Map routes ready',
-  },
-  {
-    id: 'access',
-    icon: 'shield-checkmark-outline',
-    label: 'Guest access enabled',
-  },
+const HERO_PILLS = [
+  { id: 'nav',    icon: 'navigate-outline',         label: 'Live map ready'  },
+  { id: 'access', icon: 'shield-checkmark-outline', label: 'Guest access'    },
+  { id: 'hours',  icon: 'time-outline',             label: '9 AM – 4 PM'    },
 ];
 
-const visitorNotes = [
-  'Open directions with one tap',
-  'Explore campus services freely',
+const PRIMARY = [
+  { id: 'search',    title: 'Search',      subtitle: 'Find classrooms, offices & services',    icon: 'search-outline',    color: P.blue,    route: 'Search',    cta: 'Search now'  },
+  { id: 'map',       title: 'Campus Map',  subtitle: 'Navigate with the full interactive map', icon: 'map-outline',       color: P.gold,    route: 'Map',       cta: 'Open map'    },
+  { id: 'favorites', title: 'Favorites',   subtitle: 'Quick access to your saved places',      icon: 'heart-outline',     color: P.blue,    route: 'Favorites', cta: 'View saved'  },
+  { id: 'qr',        title: 'Scan QR',     subtitle: 'Open a campus location instantly',       icon: 'qr-code-outline',   color: P.gold,    route: 'QRScanner', cta: 'Scan now'    },
 ];
 
-const primaryActions = [
-  {
-    id: 'search',
-    title: 'Search Locations',
-    description: 'Find classrooms, offices, labs, and services fast.',
-    icon: 'search-outline',
-    color: '#1D4ED8',
-    route: 'Search',
-    cta: 'Start search',
-  },
-  {
-    id: 'map',
-    title: 'Campus Map',
-    description: 'Navigate with the full campus map in seconds.',
-    icon: 'map-outline',
-    color: '#0B1B3B',
-    route: 'Map',
-    cta: 'Open map',
-  },
-  {
-    id: 'favorites',
-    title: 'Favorites',
-    description: 'Save places you visit often for quick access.',
-    icon: 'heart-outline',
-    color: '#E11D48',
-    route: 'Favorites',
-    cta: 'View saved',
-  },
-  {
-    id: 'qr',
-    title: 'Scan QR',
-    description: 'Open a location instantly from a campus QR code.',
-    icon: 'qr-code-outline',
-    color: '#0F766E',
-    route: 'QRScanner',
-    cta: 'Scan now',
-  },
+const UTILITIES = [
+  { id: 'buildings',  title: 'All Buildings',   subtitle: 'Browse and navigate to any building',      icon: 'business-outline',          color: P.blue,  route: 'Search', params: { mode: 'buildings' } },
+  { id: 'directions', title: 'Get Directions',  subtitle: 'Step-by-step to any campus location',      icon: 'navigate-circle-outline',   color: P.gold,  route: 'Map'    },
+  { id: 'events',     title: 'Campus Events',   subtitle: "Discover what's happening on campus today", icon: 'calendar-outline',          color: P.blue,  route: 'Search' },
 ];
 
-const secondaryActions = [
-  {
-    id: 'buildings',
-    title: 'Find Buildings',
-    description: 'Browse buildings and jump to directions.',
-    icon: 'business-outline',
-    color: '#1E3A8A',
-    route: 'Search',
-    params: { mode: 'buildings' },
-  },
-];
-
-const actionSequence = [...primaryActions, ...secondaryActions];
+const ALL = [...PRIMARY, ...UTILITIES];
 
 const GuestHomeScreen = ({ navigation }) => {
   const { logout } = useAuth();
   const [mode, setMode] = useState('light');
-  const heroAnim = useRef(new Animated.Value(0)).current;
-  const noticeAnim = useRef(new Animated.Value(0)).current;
-  const actionAnims = useRef(actionSequence.map(() => new Animated.Value(0))).current;
 
+  const heroAnim    = useRef(new Animated.Value(0)).current;
+  const contentAnim = useRef(new Animated.Value(0)).current;
+  const cardAnims   = useRef(ALL.map(() => new Animated.Value(0))).current;
+
+  // Load persisted theme
   useEffect(() => {
-    let mounted = true;
-
-    (async () => {
-      try {
-        const savedMode = await AsyncStorage.getItem(STORAGE_KEY);
-        if (mounted && (savedMode === 'light' || savedMode === 'dark')) {
-          setMode(savedMode);
-        }
-      } catch (error) {
-        console.log('GuestHomeScreen theme load error', error);
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
+    let alive = true;
+    AsyncStorage.getItem(STORAGE_KEY)
+      .then((v) => { if (alive && (v === 'light' || v === 'dark')) setMode(v); })
+      .catch(() => {});
+    return () => { alive = false; };
   }, []);
 
+  // Persist theme
   useEffect(() => {
-    AsyncStorage.setItem(STORAGE_KEY, mode).catch((error) => {
-      console.log('GuestHomeScreen theme save error', error);
-    });
+    AsyncStorage.setItem(STORAGE_KEY, mode).catch(() => {});
   }, [mode]);
 
+  // Entrance sequence — all useNativeDriver:true (opacity + translateY only)
   useEffect(() => {
-    const animation = Animated.sequence([
-      Animated.timing(heroAnim, {
-        toValue: 1,
-        duration: 420,
-        useNativeDriver: true,
-      }),
-      Animated.timing(noticeAnim, {
-        toValue: 1,
-        duration: 360,
-        useNativeDriver: true,
-      }),
-      Animated.stagger(
-        90,
-        actionAnims.map((anim) =>
-          Animated.timing(anim, {
-            toValue: 1,
-            duration: 320,
-            useNativeDriver: true,
-          })
-        )
-      ),
+    const seq = Animated.sequence([
+      Animated.timing(heroAnim,    { toValue: 1, duration: 460, useNativeDriver: true }),
+      Animated.timing(contentAnim, { toValue: 1, duration: 380, useNativeDriver: true }),
+      Animated.stagger(65, cardAnims.map((a) =>
+        Animated.timing(a, { toValue: 1, duration: 310, useNativeDriver: true })
+      )),
     ]);
+    seq.start();
+    return () => seq.stop();
+  }, []);
 
-    animation.start();
+  const t = THEMES[mode] || THEMES.light;
 
-    return () => {
-      animation.stop();
-    };
-  }, [actionAnims, heroAnim, noticeAnim]);
+  const heroSlide    = heroAnim.interpolate({ inputRange: [0, 1], outputRange: [-22, 0] });
+  const contentSlide = contentAnim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] });
 
-  const theme = THEMES[mode] || THEMES.light;
-  const heroAnimStyle = {
-    opacity: heroAnim,
-    transform: [
-      {
-        translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }),
-      },
-    ],
-  };
-  const noticeAnimStyle = {
-    opacity: noticeAnim,
-    transform: [
-      {
-        translateY: noticeAnim.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }),
-      },
-    ],
-  };
-
-  const getActionAnimStyle = (index) => ({
-    opacity: actionAnims[index],
-    transform: [
-      {
-        translateY: actionAnims[index].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }),
-      },
-    ],
+  const cardStyle = (i) => ({
+    opacity:   cardAnims[i],
+    transform: [{ translateY: cardAnims[i].interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
   });
 
-  const handleFeaturePress = (feature) => {
-    if (feature.route === 'QRScanner') {
-      const parent = navigation.getParent?.();
-      if (parent) {
-        parent.navigate('QRScanner');
-        return;
-      }
+  const handleNav = (item) => {
+    if (item.route === 'QRScanner') {
+      navigation.getParent?.()?.navigate('QRScanner');
+      return;
     }
-
-    navigation.navigate(feature.route, feature.params);
-  };
-
-  const handleLogout = async () => {
-    await logout();
+    navigation.navigate(item.route, item.params);
   };
 
   return (
-    <ScreenWrapper backgroundColor={theme.background} statusBarStyle={mode === 'dark' ? 'light-content' : 'dark-content'}>
-      <View style={[styles.bgHalo, { backgroundColor: theme.accentSoft }]} />
-      <View style={[styles.bgRing, { borderColor: theme.accentSoft }]} />
-      <View style={[styles.bgSweep, { backgroundColor: theme.accentSoft }]} />
+    <ScreenWrapper backgroundColor={t.bg} statusBarStyle={t.statusBar}>
+      {/* Background decoration */}
+      <View style={[styles.bgOrb1, { backgroundColor: P.goldSoft }]} />
+      <View style={[styles.bgOrb2, { backgroundColor: mode === 'dark' ? 'rgba(37,99,235,0.07)' : 'rgba(37,99,235,0.04)' }]} />
 
-      <ScrollView
-        style={styles.container}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        <Animated.View style={[styles.heroCard, { backgroundColor: theme.hero }, heroAnimStyle]}>
-          <View style={[styles.heroGlow, { backgroundColor: theme.heroSoft }]} />
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+
+        {/* ── HERO — full-bleed edge-to-edge ───────────────────────────── */}
+        <Animated.View style={[styles.hero, { backgroundColor: P.navy }, { opacity: heroAnim, transform: [{ translateY: heroSlide }] }]}>
+          <View style={styles.heroGoldBar} />
+          <View style={styles.heroOrbA} />
+          <View style={styles.heroOrbB} />
+
+          {/* Top row */}
           <View style={styles.heroTopRow}>
-            <View style={styles.heroBrandRow}>
-              <View style={[styles.crestBadge, { backgroundColor: theme.crest, borderColor: theme.crestBorder }]}>
-                <Ionicons name="school-outline" size={26} color={theme.heroText} />
+            <View style={styles.heroBrand}>
+              <View style={styles.heroCrest}>
+                <Ionicons name="school-outline" size={26} color={P.gold} />
               </View>
               <View>
-                <Text style={[styles.heroEyebrow, { color: theme.heroMuted }]}>RMU CAMPUS</Text>
-                <Text style={[styles.heroTitle, { color: theme.heroText }]}>Guest Access</Text>
+                <Text style={styles.heroEyebrow}>RMU CAMPUS</Text>
+                <Text style={[styles.heroTitle, { color: t.heroText }]}>Guest Portal</Text>
               </View>
             </View>
-            <View style={styles.heroHeaderActions}>
+            <View style={styles.heroActions}>
               <TouchableOpacity
-                style={[styles.iconButton, { borderColor: theme.crestBorder }]}
-                onPress={() => setMode((current) => (current === 'dark' ? 'light' : 'dark'))}
-                activeOpacity={0.85}
+                style={styles.heroIconBtn}
+                onPress={() => setMode((m) => (m === 'dark' ? 'light' : 'dark'))}
+                activeOpacity={0.8}
               >
-                <Ionicons name={mode === 'dark' ? 'sunny-outline' : 'moon-outline'} size={16} color={theme.heroText} />
+                <Ionicons name={mode === 'dark' ? 'sunny-outline' : 'moon-outline'} size={16} color="#fff" />
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.iconButton, { borderColor: theme.crestBorder }]} onPress={handleLogout} activeOpacity={0.85}>
-                <Ionicons name="log-out-outline" size={16} color={theme.heroText} />
+              <TouchableOpacity style={styles.heroIconBtn} onPress={logout} activeOpacity={0.8}>
+                <Ionicons name="log-out-outline" size={16} color="#fff" />
               </TouchableOpacity>
             </View>
           </View>
 
-          <Text style={[styles.heroSubtext, { color: theme.heroMuted }]}>
-            Modern campus guidance for visitors. Navigate, search, and explore services without signing in.
+          {/* Description */}
+          <Text style={[styles.heroDesc, { color: t.heroMuted }]}>
+            Navigate, search, and explore campus services without an account.
           </Text>
 
-          <View style={styles.heroPills}>
-            {heroHighlights.map((item) => (
-              <View key={item.id} style={[styles.heroPill, { backgroundColor: theme.heroPillBg, borderColor: theme.heroPillBorder }]}>
-                <Ionicons name={item.icon} size={16} color={theme.heroText} />
-                <Text style={[styles.heroPillText, { color: theme.heroText }]}>{item.label}</Text>
+          {/* Status pills */}
+          <View style={styles.heroPillRow}>
+            {HERO_PILLS.map((p) => (
+              <View key={p.id} style={[styles.heroPill, { backgroundColor: t.pillBg, borderColor: t.pillBorder }]}>
+                <Ionicons name={p.icon} size={13} color={P.gold} />
+                <Text style={[styles.heroPillText, { color: t.heroText }]}>{p.label}</Text>
               </View>
             ))}
           </View>
         </Animated.View>
 
-        <Animated.View style={[styles.noticeCard, { backgroundColor: theme.panel, borderColor: theme.surfaceBorder }, noticeAnimStyle]}>
-          <View style={styles.noticeHeader}>
-            <Ionicons name="ribbon-outline" size={18} color={theme.accent} />
-            <Text style={[styles.noticeTitle, { color: theme.textPrimary }]}>Visitor Orientation</Text>
-          </View>
-          <Text style={[styles.noticeBody, { color: theme.textMuted }]}>Start with Search to locate a building, then tap a result for directions or the map.</Text>
-          <View style={styles.noticeChips}>
-            {visitorNotes.map((note) => (
-              <View key={note} style={[styles.noticeChip, { backgroundColor: theme.accentSoft, borderColor: theme.surfaceBorder }] }>
-                <Text style={[styles.noticeChipText, { color: theme.textPrimary }]}>{note}</Text>
-              </View>
-            ))}
-          </View>
-        </Animated.View>
+        {/* ── BODY — padded content below the hero ─────────────────────── */}
+        <View style={styles.body}>
 
-        <View style={[styles.hoursCard, { backgroundColor: theme.panel, borderColor: theme.surfaceBorder }]}>
-          <View style={styles.hoursHeader}>
-            <View style={[styles.hoursIconWrap, { backgroundColor: theme.accentSoft, borderColor: theme.surfaceBorder }]}>
-              <Ionicons name="time-outline" size={18} color={theme.accent} />
+          {/* Info cards row */}
+          <Animated.View style={[styles.infoRow, { opacity: contentAnim, transform: [{ translateY: contentSlide }] }]}>
+            <View style={[styles.infoCard, { backgroundColor: t.surface, borderColor: t.border }]}>
+              <View style={[styles.infoStripe, { backgroundColor: P.gold }]} />
+              <View style={[styles.infoIconBox, { backgroundColor: P.goldSoft }]}>
+                <Ionicons name="ribbon-outline" size={19} color={P.gold} />
+              </View>
+              <Text style={[styles.infoTitle, { color: t.text }]}>Getting Started</Text>
+              <Text style={[styles.infoBody, { color: t.muted }]}>
+                Search for a building, then tap for directions or map view.
+              </Text>
             </View>
-            <Text style={[styles.hoursTitle, { color: theme.textPrimary }]}>Working Hours</Text>
+
+            <View style={[styles.infoCard, { backgroundColor: t.surface, borderColor: t.border }]}>
+              <View style={[styles.infoStripe, { backgroundColor: P.blue }]} />
+              <View style={[styles.infoIconBox, { backgroundColor: `${P.blue}14` }]}>
+                <Ionicons name="time-outline" size={19} color={P.blue} />
+              </View>
+              <Text style={[styles.infoTitle, { color: t.text }]}>Campus Hours</Text>
+              <Text style={[styles.infoBody, { color: t.muted }]}>
+                Open weekdays{'\n'}9 AM – 4 PM
+              </Text>
+            </View>
+          </Animated.View>
+
+          {/* Quick actions */}
+          <Text style={[styles.eyebrow, { color: P.gold }]}>Explore</Text>
+          <Text style={[styles.sectionTitle, { color: t.text }]}>Quick Actions</Text>
+
+          <View style={styles.primaryGrid}>
+            {PRIMARY.map((item, i) => (
+              <AnimatedTouchable
+                key={item.id}
+                style={[styles.primaryCard, { backgroundColor: t.surface, borderColor: t.border }, cardStyle(i)]}
+                onPress={() => handleNav(item)}
+                activeOpacity={0.82}
+              >
+                <View style={[styles.primaryTopBar, { backgroundColor: item.color }]} />
+                <View style={[styles.primaryIconBox, { backgroundColor: `${item.color}18` }]}>
+                  <Ionicons name={item.icon} size={28} color={item.color} />
+                </View>
+                <Text style={[styles.primaryLabel, { color: t.text }]}>{item.title}</Text>
+                <Text style={[styles.primarySub, { color: t.muted }]}>{item.subtitle}</Text>
+                <View style={styles.primaryCta}>
+                  <Text style={[styles.primaryCtaText, { color: item.color }]}>{item.cta}</Text>
+                  <Ionicons name="arrow-forward" size={14} color={item.color} />
+                </View>
+              </AnimatedTouchable>
+            ))}
           </View>
-          <Text style={[styles.hoursBody, { color: theme.textMuted }]}>School working hours are from 9 AM to 4 PM.</Text>
-        </View>
 
-        <Text style={[styles.sectionEyebrow, { color: theme.textMuted }]}>Explore</Text>
-        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Quick Actions</Text>
-        <View style={styles.primaryGrid}>
-          {primaryActions.map((action, index) => (
-            <AnimatedTouchable
-              key={action.id}
-              style={[
-                styles.primaryCard,
-                { backgroundColor: theme.panel, borderColor: theme.surfaceBorder },
-                getActionAnimStyle(index),
-              ]}
-              onPress={() => handleFeaturePress(action)}
-              activeOpacity={0.85}
-            >
-              <View style={[styles.primaryIcon, { backgroundColor: `${action.color}1F` }]}>
-                <Ionicons name={action.icon} size={24} color={action.color} />
-              </View>
-              <Text style={[styles.primaryTitle, { color: theme.textPrimary }]}>{action.title}</Text>
-              <Text style={[styles.primarySubtitle, { color: theme.textMuted }]}>{action.description}</Text>
-              <View style={styles.primaryFooter}>
-                <Text style={[styles.primaryCta, { color: action.color }]}>{action.cta}</Text>
-                <Ionicons name="arrow-forward" size={16} color={action.color} />
-              </View>
-            </AnimatedTouchable>
-          ))}
-        </View>
+          {/* Visitor utilities */}
+          <Text style={[styles.eyebrow, { color: P.gold }]}>Tools</Text>
+          <Text style={[styles.sectionTitle, { color: t.text }]}>Visitor Utilities</Text>
 
-        <Text style={[styles.sectionEyebrow, { color: theme.textMuted }]}>Tools</Text>
-        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Visitor Utilities</Text>
-        <View style={styles.secondaryList}>
-          {secondaryActions.map((action, index) => (
-            <AnimatedTouchable
-              key={action.id}
-              style={[
-                styles.secondaryCard,
-                { backgroundColor: theme.panelAlt, borderColor: theme.surfaceBorder },
-                getActionAnimStyle(primaryActions.length + index),
-              ]}
-              onPress={() => handleFeaturePress(action)}
-              activeOpacity={0.85}
-            >
-              <View style={[styles.secondaryIconWrap, { backgroundColor: `${action.color}1A` }]}>
-                <Ionicons name={action.icon} size={22} color={action.color} />
-              </View>
-              <View style={styles.secondaryTextWrap}>
-                <Text style={[styles.secondaryTitle, { color: theme.textPrimary }]}>{action.title}</Text>
-                <Text style={[styles.secondarySubtitle, { color: theme.textMuted }]}>{action.description}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
-            </AnimatedTouchable>
-          ))}
+          <View style={styles.utilList}>
+            {UTILITIES.map((item, i) => (
+              <AnimatedTouchable
+                key={item.id}
+                style={[styles.utilCard, { backgroundColor: t.surface, borderColor: t.border }, cardStyle(PRIMARY.length + i)]}
+                onPress={() => handleNav(item)}
+                activeOpacity={0.82}
+              >
+                <View style={[styles.utilIconBox, { backgroundColor: `${item.color}18` }]}>
+                  <Ionicons name={item.icon} size={22} color={item.color} />
+                </View>
+                <View style={styles.utilText}>
+                  <Text style={[styles.utilTitle, { color: t.text }]}>{item.title}</Text>
+                  <Text style={[styles.utilSub, { color: t.muted }]}>{item.subtitle}</Text>
+                </View>
+                <View style={[styles.utilArrow, { backgroundColor: `${item.color}14` }]}>
+                  <Ionicons name="arrow-forward" size={16} color={item.color} />
+                </View>
+              </AnimatedTouchable>
+            ))}
+          </View>
+
+          {/* Footer note */}
+          <View style={[styles.footer, { backgroundColor: t.surfaceAlt, borderColor: t.border }]}>
+            <Ionicons name="information-circle-outline" size={16} color={t.muted} style={{ marginTop: 1 }} />
+            <Text style={[styles.footerText, { color: t.muted }]}>
+              Sign in or register for full campus access — events, announcements, and personalised features.
+            </Text>
+          </View>
+
         </View>
       </ScrollView>
     </ScreenWrapper>
@@ -373,297 +278,140 @@ const GuestHomeScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingTop: 16,
-    paddingBottom: 32,
-    paddingHorizontal: 20,
-  },
-  bgHalo: {
-    position: 'absolute',
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    top: -120,
-    right: -140,
-    opacity: 0.6,
-  },
-  bgRing: {
-    position: 'absolute',
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    borderWidth: 1,
-    top: 140,
-    left: -120,
-    opacity: 0.5,
-  },
-  bgSweep: {
-    position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 48,
-    bottom: -60,
-    right: -40,
-    opacity: 0.25,
-  },
-  heroCard: {
-    borderRadius: 28,
-    padding: 20,
-    marginBottom: 18,
+  // Scroll: no horizontal padding — hero handles its own
+  scroll: { paddingBottom: 40 },
+
+  // Background orbs
+  bgOrb1: { position: 'absolute', width: 320, height: 320, borderRadius: 160, top: -110, right: -130 },
+  bgOrb2: { position: 'absolute', width: 200, height: 200, borderRadius: 100, bottom: 100, left: -80 },
+
+  // ── Hero — full-bleed, no side radius, flush left & right
+  hero: {
+    paddingTop: 54,
+    paddingBottom: 30,
+    paddingHorizontal: 22,
     overflow: 'hidden',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.24,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.18)',
+    backgroundColor: P.navy,
+    // rounded only at the bottom
+    borderBottomLeftRadius: 36,
+    borderBottomRightRadius: 36,
+    shadowColor: '#060F1E',
+    shadowOpacity: 0.34,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 12,
+    marginBottom: 0,
   },
-  heroGlow: {
+  heroGoldBar: {
     position: 'absolute',
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    opacity: 0.28,
-    top: -60,
-    right: -50,
+    top: 0, left: 0, right: 0,
+    height: 4,
+    backgroundColor: P.gold,
   },
-  heroTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  heroOrbA: {
+    position: 'absolute',
+    width: 280, height: 280, borderRadius: 140,
+    backgroundColor: P.gold,
+    opacity: 0.09,
+    top: -80, right: -80,
   },
-  heroBrandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  heroOrbB: {
+    position: 'absolute',
+    width: 180, height: 180, borderRadius: 90,
+    backgroundColor: P.blue,
+    opacity: 0.09,
+    bottom: -60, left: -50,
   },
-  crestBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  heroHeaderActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  heroBrand:  { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  heroCrest: {
+    width: 52, height: 52, borderRadius: 17,
+    backgroundColor: 'rgba(197,160,71,0.18)',
+    borderWidth: 1, borderColor: 'rgba(197,160,71,0.40)',
+    justifyContent: 'center', alignItems: 'center',
   },
   heroEyebrow: {
-    fontSize: 10,
-    letterSpacing: 1.8,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    fontFamily: FONT.heading,
+    fontSize: 10, fontWeight: '800', letterSpacing: 2.2,
+    textTransform: 'uppercase', color: P.gold, marginBottom: 3,
   },
-  heroTitle: {
-    fontSize: 24,
-    fontFamily: FONT.display,
-    fontWeight: '700',
+  heroTitle:   { fontSize: 26, fontWeight: '800', letterSpacing: 0.2 },
+  heroActions: { flexDirection: 'row', gap: 10 },
+  heroIconBtn: {
+    width: 38, height: 38, borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.24)',
+    justifyContent: 'center', alignItems: 'center',
   },
-  heroSubtext: {
-    fontSize: 13,
-    lineHeight: 20,
-    marginTop: 14,
-    fontFamily: FONT.body,
-  },
-  heroPills: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 14,
-    gap: 8,
-  },
+  heroDesc: { fontSize: 14, lineHeight: 22, marginBottom: 18 },
+  heroPillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   heroPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 16,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 6,
-    borderWidth: 1,
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingHorizontal: 13, paddingVertical: 8,
+    borderRadius: 22, borderWidth: 1,
   },
-  heroPillText: {
-    fontSize: 12,
-    fontFamily: FONT.heading,
+  heroPillText: { fontSize: 12, fontWeight: '600' },
+
+  // ── Body — padded content below the hero
+  body: { paddingHorizontal: 16, paddingTop: 22 },
+
+  // ── Info row
+  infoRow: { flexDirection: 'row', gap: 14, marginBottom: 28 },
+  infoCard: {
+    flex: 1, borderRadius: 22, padding: 16, paddingTop: 20,
+    borderWidth: 1, overflow: 'hidden',
+    shadowColor: '#060F1E', shadowOpacity: 0.07, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 }, elevation: 3,
   },
-  iconButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+  infoStripe: { position: 'absolute', top: 0, left: 0, right: 0, height: 3 },
+  infoIconBox: {
+    width: 40, height: 40, borderRadius: 13,
+    justifyContent: 'center', alignItems: 'center', marginBottom: 12,
   },
-  noticeCard: {
-    borderRadius: 22,
-    padding: 16,
-    borderWidth: 1,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    marginBottom: 18,
-  },
-  noticeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  noticeTitle: {
-    fontSize: 15,
-    fontFamily: FONT.heading,
-  },
-  noticeBody: {
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.body,
-  },
-  noticeChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 12,
-  },
-  noticeChip: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 1,
-  },
-  noticeChipText: {
-    fontSize: 11,
-    fontFamily: FONT.heading,
-  },
-  hoursCard: {
-    borderRadius: 22,
-    padding: 16,
-    borderWidth: 1,
-    marginBottom: 18,
-  },
-  hoursHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 8,
-  },
-  hoursIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  hoursTitle: {
-    fontSize: 15,
-    fontFamily: FONT.heading,
-  },
-  hoursBody: {
-    fontSize: 12,
-    lineHeight: 18,
-    fontFamily: FONT.body,
-  },
-  sectionEyebrow: {
-    fontSize: 11,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-    marginBottom: 4,
-    fontFamily: FONT.heading,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontFamily: FONT.display,
-    fontWeight: '700',
-    marginBottom: 14,
-  },
-  primaryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 18,
-    gap: 14,
-  },
+  infoTitle: { fontSize: 14, fontWeight: '800', marginBottom: 6 },
+  infoBody:  { fontSize: 12, lineHeight: 18 },
+
+  // ── Section headers
+  eyebrow:      { fontSize: 11, fontWeight: '800', letterSpacing: 1.6, textTransform: 'uppercase', marginBottom: 4 },
+  sectionTitle: { fontSize: 22, fontWeight: '800', letterSpacing: 0.2, marginBottom: 16 },
+
+  // ── Primary action cards — 2-col, expanded to fill body width
+  primaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginBottom: 28 },
   primaryCard: {
-    width: '47%',
-    borderRadius: 20,
-    padding: 16,
-    borderWidth: 1,
-    minHeight: 168,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-  },
-  primaryIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  primaryTitle: {
-    fontSize: 15,
-    fontFamily: FONT.heading,
-    marginBottom: 6,
-  },
-  primarySubtitle: {
-    fontSize: 12,
-    lineHeight: 17,
-    fontFamily: FONT.body,
-  },
-  primaryFooter: {
-    marginTop: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  primaryCta: {
-    fontSize: 12,
-    fontFamily: FONT.heading,
-  },
-  secondaryList: {
-    gap: 12,
-    marginBottom: 14,
-  },
-  secondaryCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: 18,
-    borderWidth: 1,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  secondaryIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  secondaryTextWrap: {
+    // flex: 1 with a minWidth so they pair up in rows of 2
     flex: 1,
+    minWidth: '45%',
+    borderRadius: 22, padding: 18, paddingTop: 22,
+    borderWidth: 1, minHeight: 196, overflow: 'hidden',
+    shadowColor: '#060F1E', shadowOpacity: 0.08, shadowRadius: 14,
+    shadowOffset: { width: 0, height: 7 }, elevation: 4,
   },
-  secondaryTitle: {
-    fontSize: 14,
-    fontFamily: FONT.heading,
-    marginBottom: 4,
+  primaryTopBar:  { position: 'absolute', top: 0, left: 0, right: 0, height: 4 },
+  primaryIconBox: { width: 54, height: 54, borderRadius: 17, justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
+  primaryLabel:   { fontSize: 16, fontWeight: '800', marginBottom: 6 },
+  primarySub:     { fontSize: 12, lineHeight: 17 },
+  primaryCta:     { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 14 },
+  primaryCtaText: { fontSize: 13, fontWeight: '700' },
+
+  // ── Utility cards (full-width list)
+  utilList: { gap: 12, marginBottom: 24 },
+  utilCard: {
+    flexDirection: 'row', alignItems: 'center', padding: 16,
+    borderRadius: 20, borderWidth: 1,
+    shadowColor: '#060F1E', shadowOpacity: 0.06, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 }, elevation: 2,
   },
-  secondarySubtitle: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontFamily: FONT.body,
+  utilIconBox: { width: 50, height: 50, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+  utilText:    { flex: 1 },
+  utilTitle:   { fontSize: 15, fontWeight: '700', marginBottom: 4 },
+  utilSub:     { fontSize: 12, lineHeight: 17 },
+  utilArrow:   { width: 34, height: 34, borderRadius: 11, justifyContent: 'center', alignItems: 'center' },
+
+  // ── Footer
+  footer: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    padding: 16, borderRadius: 18, borderWidth: 1,
   },
+  footerText: { flex: 1, fontSize: 12, lineHeight: 19 },
 });
 
 export default GuestHomeScreen;

@@ -97,20 +97,20 @@ const StudentTabs = () => {
             </View>
           );
         },
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: '#94A3B8',
+        tabBarActiveTintColor: '#C5A047',
+        tabBarInactiveTintColor: 'rgba(255,255,255,0.42)',
         tabBarStyle: {
-          backgroundColor: COLORS.white,
-          height: 60,
-          paddingBottom: 8,
+          backgroundColor: '#1A365D',
+          height: 62,
+          paddingBottom: 10,
           paddingTop: 8,
-          borderTopColor: '#E2E8F0',
-          elevation: 8,
-          shadowColor: '#0F172A',
-          shadowOpacity: 0.08,
-          shadowRadius: 8,
+          borderTopColor: 'rgba(197,160,71,0.22)',
+          elevation: 10,
+          shadowColor: '#060F1E',
+          shadowOpacity: 0.22,
+          shadowRadius: 12,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
         headerShown: false,
       })}
     >
@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: COLORS.white,
+    borderColor: '#1A365D',
   },
   tabBadgeText: {
     color: COLORS.white,

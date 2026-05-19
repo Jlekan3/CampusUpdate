@@ -626,6 +626,55 @@ export const removeUserEventInterest = async (userId, eventId) => {
   });
 };
 
+// Departments (stored in the 'departments' collection)
+
+const normalizeDepartment = (item) => ({
+  ...item,
+  name: item.name || 'Unnamed Department',
+  description: item.description || '',
+  category: item.category || 'General',
+  imageUrl: item.imageUrl || '',
+  operatingHours: item.operatingHours || '',
+  availabilityStatus: item.availabilityStatus || 'Open',
+  createdAt: item.createdAt || null,
+  updatedAt: item.updatedAt || null,
+});
+
+export const subscribeToDepartments = (cb) => {
+  return onSnapshot(
+    query(makeCollectionRef('departments'), orderBy('createdAt', 'desc')),
+    (snap) => {
+      const items = snap.docs
+        .map((d) => ({ id: d.id, ...normalizeTimestamps(d.data()) }))
+        .map(normalizeDepartment);
+      cb(items);
+    },
+    (error) => {
+      console.error('subscribeToDepartments - Error:', error.code, error.message);
+      cb([]);
+    }
+  );
+};
+
+export const addDepartment = async (data) => {
+  const ref = await addDoc(makeCollectionRef('departments'), {
+    ...data,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return ref.id;
+};
+
+export const updateDepartment = async (id, data) => {
+  const ref = doc(db, 'departments', id);
+  await updateDoc(ref, {
+    ...data,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+export const deleteDepartment = (id) => deleteItem('departments', id);
+
 // Create user with Firebase Auth + Firestore
 // This function creates a user in Firebase Auth with email/password
 // Then creates a user document in Firestore with the UID as the document ID
