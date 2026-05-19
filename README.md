@@ -1,434 +1,773 @@
 # RMU Campus Navigation
 
-React Native (Expo) mobile app for **Regional Maritime University (RMU)** campus navigation. Students, faculty, guests, and admins can browse an interactive campus map, search locations, save favorites, scan QR codes, view campus updates, and manage campus data through Firebase.
-
-This document covers **what the app does**, **recent implementation work**, and **how to set up the project** after pulling the repository.
+React Native (Expo) mobile app for **Regional Maritime University (RMU)** campus navigation. Students, faculty, and admins can browse an interactive campus map, search locations, save favourites, scan QR codes, view campus updates, register accounts, and manage campus data through Supabase.
 
 ---
 
-## Table of contents
+## Table of Contents
 
-1. [Features by role](#features-by-role)
-2. [Recent work completed](#recent-work-completed)
-3. [Tech stack](#tech-stack)
-4. [Prerequisites](#prerequisites)
-5. [Project setup](#project-setup)
-6. [Firebase setup](#firebase-setup)
-7. [Google Maps API](#google-maps-api)
-8. [Deploy security rules](#deploy-security-rules)
-9. [Running the app](#running-the-app)
-10. [Project structure](#project-structure)
-11. [Firestore collections](#firestore-collections)
-12. [QR codes](#qr-codes)
-13. [Testing checklist](#testing-checklist)
-14. [Troubleshooting](#troubleshooting)
-15. [Security notes](#security-notes)
+1. [System Diagrams](#system-diagrams)
+   - [System Flowchart](#1-system-flowchart)
+   - [Use Case Diagram](#2-use-case-diagram)
+   - [Sequence Diagram](#3-system-sequence-diagram)
+   - [Entity Relationship Diagram](#4-entity-relationship-diagram)
+   - [Activity Diagram](#5-activity-diagram)
+   - [User Flow Diagram](#6-user-flow-diagram)
+2. [Features by Role](#features-by-role)
+3. [Tech Stack](#tech-stack)
+4. [Project Setup](#project-setup)
+5. [Project Structure](#project-structure)
+6. [Database Schema](#database-schema)
+7. [QR Codes](#qr-codes)
+8. [Running the App](#running-the-app)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
-## Features by role
+## System Diagrams
 
-### Student / Faculty
-- Home dashboard with quick actions (map, search, favorites, notifications, QR scan)
-- Interactive campus map with GPS, search, turn-by-turn routing (OSRM)
-- Save **favorites** (heart icon on location details)
-- Campus events, dining, amenities, rules, safety contacts
-- Issue reporting with optional photos
-- Push-style notification list with read/unread state
+### 1. System Flowchart
 
-### Guest
-- Anonymous Firebase session (guest login)
-- Map, search, **favorites** (same Firestore `favourite` collection as signed-in users)
-- QR scanner and location details
-- Limited feature set vs student (no full notifications stack on tabs)
+Shows the high-level flow of the entire application from launch through role-based navigation to feature access.
+
+```mermaid
+flowchart TD
+    A([App Launch]) --> B{Auth State\nLoading}
+    B --> C{User\nAuthenticated?}
+
+    C -- No --> D[Auth Screens]
+    D --> D1[Login Screen]
+    D --> D2[Register Screen]
+    D --> D3[Forgot Password]
+
+    D1 -- Valid Credentials --> E[Supabase Auth]
+    D2 -- Fill Form + Submit --> F[Email Confirmation Sent]
+    F --> G[User Confirms Email]
+    G --> E
+    D3 -- Enter Email --> H[Reset Link Sent]
+    H --> I[Reset Password Screen]
+    I --> E
+
+    E --> J{Resolve Role}
+    J -- admin email / DB role --> K[Admin Navigator]
+    J -- role = student --> L[Student Navigator]
+    J -- role = faculty --> M[Staff Navigator]
+
+    K --> K1[Dashboard & Analytics]
+    K --> K2[Manage Locations & Buildings]
+    K --> K3[Manage Events & Dining]
+    K --> K4[Manage Notifications]
+    K --> K5[Manage Users & Reports]
+
+    L --> L1[Home Dashboard]
+    L --> L2[Drawer Sidebar]
+    L2 --> L3[Campus Map]
+    L2 --> L4[Events & Dining]
+    L2 --> L5[Notifications]
+    L2 --> L6[Favourites]
+    L2 --> L7[Campus Rules]
+    L2 --> L8[Safety & Support]
+    L2 --> L9[Report Issue]
+    L2 --> L10[Scan QR]
+
+    L1 & L3 & L4 & L5 --> N[(Supabase\nDatabase)]
+    K1 & K2 & K3 & K4 & K5 --> N
+
+    M --> M1[Staff Dashboard]
+    M1 --> N
+```
+
+---
+
+### 2. Use Case Diagram
+
+Shows the actors and the system features each can access.
+
+```mermaid
+graph LR
+    subgraph Actors
+        STU([Student])
+        FAC([Faculty / Staff])
+        ADM([Admin])
+    end
+
+    subgraph Authentication
+        UC1[Register Account]
+        UC2[Login]
+        UC3[Reset Password]
+    end
+
+    subgraph Campus Navigation
+        UC4[View Campus Map]
+        UC5[Search Locations]
+        UC6[View Location Details]
+        UC7[Scan QR Code]
+        UC8[Get Directions]
+    end
+
+    subgraph Personal Features
+        UC9[Save Favourites]
+        UC10[View Notifications]
+        UC11[Browse Events]
+        UC12[View Dining Options]
+        UC13[View Campus Rules]
+        UC14[View Safety & Support]
+        UC15[Report Issue]
+    end
+
+    subgraph Admin Management
+        UC16[Manage Locations & Buildings]
+        UC17[Manage Events]
+        UC18[Manage Notifications]
+        UC19[Manage Dining & Amenities]
+        UC20[Manage Campus Rules]
+        UC21[Manage Users]
+        UC22[Review Reports]
+        UC23[View Analytics]
+        UC24[Bulk Import Locations]
+    end
+
+    STU --> UC1 & UC2 & UC3
+    STU --> UC4 & UC5 & UC6 & UC7 & UC8
+    STU --> UC9 & UC10 & UC11 & UC12 & UC13 & UC14 & UC15
+
+    FAC --> UC2 & UC3
+    FAC --> UC4 & UC5 & UC6 & UC7 & UC8
+    FAC --> UC9 & UC10 & UC11 & UC12 & UC13 & UC14 & UC15
+    FAC --> UC18
+
+    ADM --> UC2
+    ADM --> UC4 & UC5 & UC6
+    ADM --> UC16 & UC17 & UC18 & UC19 & UC20 & UC21 & UC22 & UC23 & UC24
+```
+
+---
+
+### 3. System Sequence Diagram
+
+Illustrates the interactions between the user, app, and Supabase backend for the key flows.
+
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant App as React Native App
+    participant Auth as Supabase Auth
+    participant DB as Supabase DB
+    participant Email as Email Service
+
+    Note over U, Email: Registration Flow
+    U->>App: Fill Register Form
+    App->>App: Zod Validation
+    App->>Auth: signUp(email, password, metadata)
+    Auth->>Email: Send Confirmation Link
+    Auth-->>App: Success (pending confirmation)
+    App-->>U: Show EmailSent Screen
+    U->>Email: Click Confirmation Link
+    Email->>Auth: Verify Email
+    Auth->>DB: Trigger: create users row
+    U->>App: Login with credentials
+    App->>Auth: signInWithPassword()
+    Auth-->>App: Session + JWT
+    App->>DB: Fetch user profile & role
+    DB-->>App: Role = student
+    App-->>U: Navigate to Student Home
+
+    Note over U, DB: Viewing Campus Map
+    U->>App: Tap Campus Map
+    App->>DB: Query locations & buildings
+    DB-->>App: Location data
+    App-->>U: Render interactive map
+
+    Note over U, DB: Saving a Favourite
+    U->>App: Tap heart on Location
+    App->>DB: RPC toggle_favourite(location_id)
+    DB-->>App: added = true
+    App-->>U: Heart filled (saved)
+
+    Note over U, DB: Reporting an Issue
+    U->>App: Open Report Screen
+    U->>App: Fill title, description, category
+    App->>DB: INSERT into reports
+    DB-->>App: Confirm inserted
+    App-->>U: Show success alert
+
+    Note over U, DB: Admin Creating Notification
+    U->>App: Admin → New Notification
+    App->>DB: INSERT into notifications (audience, title, message)
+    DB-->>App: Realtime broadcast
+    App-->>U: Students see notification badge update
+```
+
+---
+
+### 4. Entity Relationship Diagram
+
+Shows the database tables in Supabase and their relationships.
+
+```mermaid
+erDiagram
+    USERS {
+        uuid id PK
+        text email
+        text full_name
+        text role
+        text department
+        text programme
+        text student_id
+        text staff_id
+        text index_number
+        text avatar_url
+        timestamp last_login_at
+        timestamp created_at
+    }
+
+    BUILDINGS {
+        uuid id PK
+        text name
+        text description
+        text image_url
+        float latitude
+        float longitude
+        int floors
+        timestamp created_at
+    }
+
+    LOCATIONS {
+        uuid id PK
+        text name
+        text description
+        text building
+        text category
+        text type
+        float latitude
+        float longitude
+        text[] image_urls
+        int floor
+        text room_number
+        text[] features
+        jsonb opening_hours
+        timestamp created_at
+    }
+
+    NOTIFICATIONS {
+        uuid id PK
+        text title
+        text message
+        text category
+        text audience
+        uuid[] recipient_ids
+        uuid posted_by FK
+        bool is_pinned
+        timestamp created_at
+    }
+
+    NOTIFICATION_READS {
+        uuid id PK
+        uuid user_id FK
+        uuid notification_id FK
+        timestamp read_at
+    }
+
+    EVENTS {
+        uuid id PK
+        text title
+        text description
+        text location
+        text category
+        timestamp start_date
+        timestamp end_date
+        text image_url
+        text organizer
+        int attendee_count
+        bool is_featured
+        timestamp created_at
+    }
+
+    EVENT_INTERESTS {
+        uuid id PK
+        uuid user_id FK
+        uuid event_id FK
+        timestamp created_at
+    }
+
+    FAVOURITES {
+        uuid id PK
+        uuid user_id FK
+        uuid location_id FK
+        timestamp created_at
+    }
+
+    DINING {
+        uuid id PK
+        text name
+        text description
+        text category
+        jsonb menu_items
+        text operating_hours
+        text location
+        text image_url
+    }
+
+    CAMPUS_RULES {
+        uuid id PK
+        text title
+        text description
+        text category
+        text severity
+        timestamp created_at
+    }
+
+    REPORTS {
+        uuid id PK
+        text title
+        text description
+        text category
+        text status
+        text priority
+        uuid reporter_id FK
+        text reporter_name
+        text reporter_email
+        text[] photo_urls
+        text admin_response
+        timestamp admin_read_at
+        timestamp created_at
+    }
+
+    AMENITIES {
+        uuid id PK
+        text name
+        text category
+        text type
+        text icon_name
+        float latitude
+        float longitude
+        text operating_hours
+        text image_url
+    }
+
+    DEPARTMENTS {
+        uuid id PK
+        text name
+        text description
+        text availability_status
+        text operating_hours
+        text head_of_department
+        text contact_email
+        text contact_phone
+    }
+
+    USERS ||--o{ NOTIFICATION_READS : "reads"
+    USERS ||--o{ EVENT_INTERESTS : "interests"
+    USERS ||--o{ FAVOURITES : "saves"
+    USERS ||--o{ REPORTS : "submits"
+    USERS ||--o{ NOTIFICATIONS : "posts"
+    NOTIFICATIONS ||--o{ NOTIFICATION_READS : "tracked by"
+    EVENTS ||--o{ EVENT_INTERESTS : "tracked by"
+    LOCATIONS ||--o{ FAVOURITES : "saved in"
+    BUILDINGS ||--o{ LOCATIONS : "contains"
+```
+
+---
+
+### 5. Activity Diagram
+
+Shows the step-by-step activities a student performs from opening the app to completing a task.
+
+```mermaid
+flowchart TD
+    Start([Open App]) --> CheckAuth{Authenticated?}
+
+    CheckAuth -- No --> ShowLogin[Show Login Screen]
+    ShowLogin --> ChoiceAction{User Action}
+    ChoiceAction -- Sign In --> EnterCreds[Enter Email & Password]
+    ChoiceAction -- Sign Up --> GoRegister[Go to Register Screen]
+    ChoiceAction -- Forgot Password --> GoForgot[Go to Forgot Password]
+
+    GoRegister --> FillForm[Fill Registration Form]
+    FillForm --> ValidateForm{Zod\nValidation\nPasses?}
+    ValidateForm -- No --> ShowErrors[Show Field Errors]
+    ShowErrors --> FillForm
+    ValidateForm -- Yes --> SubmitReg[Submit to Supabase]
+    SubmitReg --> EmailSent[Show Email Sent Screen]
+    EmailSent --> ClickLink[User Clicks Email Link]
+    ClickLink --> AccountActive[Account Activated]
+    AccountActive --> EnterCreds
+
+    GoForgot --> EnterEmail[Enter Email]
+    EnterEmail --> SendLink[Send Reset Link]
+    SendLink --> ClickReset[User Clicks Reset Link]
+    ClickReset --> NewPassword[Enter New Password]
+    NewPassword --> EnterCreds
+
+    EnterCreds --> Authenticate[Supabase Auth]
+    Authenticate --> ResolveRole{Resolve\nUser Role}
+
+    CheckAuth -- Yes --> ResolveRole
+
+    ResolveRole -- Student --> StudentHome[Student Home Screen]
+    ResolveRole -- Admin --> AdminDash[Admin Dashboard]
+    ResolveRole -- Faculty --> StaffDash[Staff Dashboard]
+
+    StudentHome --> OpenDrawer{Open\nSidebar?}
+    OpenDrawer -- Yes --> ChooseFeature[Select Feature from Sidebar]
+    OpenDrawer -- No --> QuickAction[Tap Quick Action Card]
+
+    ChooseFeature & QuickAction --> Feature{Feature}
+
+    Feature -- Map --> ViewMap[View Campus Map]
+    ViewMap --> SearchLocation[Search for Location]
+    SearchLocation --> ViewDetails[View Location Details]
+    ViewDetails --> SaveFav{Save\nFavourite?}
+    SaveFav -- Yes --> FavSaved[Favourite Saved]
+    SaveFav -- No --> Done1([Done])
+    FavSaved --> Done1
+
+    Feature -- Events --> BrowseEvents[Browse Events List]
+    BrowseEvents --> Done2([Done])
+
+    Feature -- Report --> FillReport[Fill Report Form]
+    FillReport --> SubmitReport[Submit to Supabase]
+    SubmitReport --> Confirmation[Show Confirmation]
+    Confirmation --> Done3([Done])
+
+    Feature -- QR --> ScanQR[Open QR Scanner]
+    ScanQR --> DecodeQR[Decode QR Payload]
+    DecodeQR --> OpenLocation[Open Location Details]
+    OpenLocation --> Done4([Done])
+```
+
+---
+
+### 6. User Flow Diagram
+
+Shows the complete journey of each user type through the application screens.
+
+```mermaid
+flowchart LR
+    subgraph Entry["Entry Point"]
+        SPLASH[Splash / Loading]
+    end
+
+    subgraph AuthFlow["Auth Flow"]
+        LOGIN[Login Screen]
+        REGISTER[Register Screen]
+        FORGOT[Forgot Password]
+        EMAIL_SENT[Email Sent Screen]
+        RESET[Reset Password]
+    end
+
+    subgraph StudentFlow["Student Journey"]
+        S_HOME[Home Dashboard]
+        S_DRAWER[Sidebar Menu]
+        S_MAP[Campus Map]
+        S_SEARCH[Search Locations]
+        S_DETAILS[Location Details]
+        S_FAVS[Favourites]
+        S_NOTIFS[Notifications]
+        S_EVENTS[Events]
+        S_DINING[Dining]
+        S_RULES[Campus Rules]
+        S_SAFETY[Safety & Support]
+        S_REPORT[Report Issue]
+        S_QR[QR Scanner]
+    end
+
+    subgraph AdminFlow["Admin Journey"]
+        A_DASH[Admin Dashboard]
+        A_LOCS[Manage Locations]
+        A_BUILD[Manage Buildings]
+        A_EVENTS[Manage Events]
+        A_NOTIFS[Manage Notifications]
+        A_DINING[Manage Dining]
+        A_RULES[Manage Rules]
+        A_USERS[Manage Users]
+        A_REPORTS[Review Reports]
+        A_ANALYTICS[Analytics]
+    end
+
+    subgraph StaffFlow["Staff Journey"]
+        ST_HOME[Staff Dashboard]
+        ST_NOTIFS[Post Notifications]
+    end
+
+    SPLASH --> LOGIN
+
+    LOGIN --> REGISTER
+    LOGIN --> FORGOT
+    REGISTER --> EMAIL_SENT
+    FORGOT --> EMAIL_SENT
+    EMAIL_SENT --> RESET
+    RESET --> LOGIN
+
+    LOGIN -- Student --> S_HOME
+    LOGIN -- Admin --> A_DASH
+    LOGIN -- Faculty --> ST_HOME
+
+    S_HOME --> S_DRAWER
+    S_HOME --> S_MAP
+    S_HOME --> S_SEARCH
+    S_HOME --> S_EVENTS
+    S_HOME --> S_REPORT
+    S_HOME --> S_QR
+
+    S_DRAWER --> S_MAP
+    S_DRAWER --> S_NOTIFS
+    S_DRAWER --> S_FAVS
+    S_DRAWER --> S_EVENTS
+    S_DRAWER --> S_DINING
+    S_DRAWER --> S_RULES
+    S_DRAWER --> S_SAFETY
+    S_DRAWER --> S_REPORT
+    S_DRAWER --> S_QR
+
+    S_MAP --> S_DETAILS
+    S_SEARCH --> S_DETAILS
+    S_DETAILS --> S_FAVS
+
+    A_DASH --> A_LOCS
+    A_DASH --> A_BUILD
+    A_DASH --> A_EVENTS
+    A_DASH --> A_NOTIFS
+    A_DASH --> A_DINING
+    A_DASH --> A_RULES
+    A_DASH --> A_USERS
+    A_DASH --> A_REPORTS
+    A_DASH --> A_ANALYTICS
+
+    ST_HOME --> ST_NOTIFS
+```
+
+---
+
+## Features by Role
+
+### Student
+- Home dashboard with quick access cards and upcoming events
+- Interactive campus map with GPS and location search
+- Drawer sidebar navigation to all campus features
+- Save favourite locations
+- Browse events, dining options, campus rules
+- Safety & support contacts
+- Submit issue reports
+- Scan QR codes to open location details
+- Real-time notifications with unread badge
+
+### Faculty / Staff
+- All student features
+- Post campus-wide notifications
 
 ### Admin
-- Dashboard with live counts
-- CRUD: buildings, locations, dining, amenities, campus rules, reports
-- Notifications and events with audience targeting
-- **Location photos**: gallery/camera upload to Firebase Storage (or optional image URL)
-- Excel/CSV bulk import for locations
+- Dashboard with live statistics
+- Full CRUD: locations, buildings, dining, amenities, campus rules
+- Create and manage events and notifications (audience targeting)
+- Review and respond to student issue reports
 - User management (create student/faculty accounts)
+- Bulk import locations from Excel/CSV
 - Analytics export (PDF)
 
 ---
 
-## Recent work completed
-
-Use this section when reviewing the latest push.
-
-### Favorites (full implementation)
-- Firestore collection: `favourite` (`userId`, `locationId`, `createdAt`)
-- Service functions: `subscribeToUserFavorites`, `toggleFavorite`, `removeFavorite` in `src/services/databaseService.js`
-- **Favorites** tab wired for students and guests
-- Heart button on **Location Details** screen
-- Firestore rules for per-user read/create/delete
-
-### Campus rules (student ↔ admin sync)
-- Student **Campus Rules** screen reads from Firestore `rules` collection (admin-managed)
-- Falls back to default guideline sections if no rules exist yet
-
-### QR scanner
-- Screen: `src/screens/common/QRScannerScreen.js`
-- Registered in **Student** and **Guest** navigators
-- Quick action on student home and guest home
-- Payloads: `location:<firestoreId>` or `geo:<lat>,<lng>`
-
-### Safety & support
-- Emergency contacts moved to `CAMPUS_EMERGENCY_CONTACTS` in `src/utils/constants.js` (Ghana / RMU placeholders — **update with real numbers**)
-
-### Firebase Storage (location photos)
-- Admin **Add Locations** supports gallery/camera upload via `src/services/storageService.js`
-- Images stored at `locations/{locationId}/{timestamp}.jpg`
-- `imageurl` field on location documents
-- Location details shows photo in header when `imageurl` is set
-- `storage.rules` added (admin write, public read)
-
-### Map screen UI polish
-- Dark/light theme toggle on map (replaces non-functional mic button)
-- **Details** button when a marker is selected
-- Improved search suggestions (category + chevron)
-- Status chips: navigation state, GPS, campus place count
-
-### Firebase deploy tooling
-- `firebase.json` — Firestore + Storage rules
-- `firebase.rules` — includes `favourite` collection
-- `storage.rules` — location image paths
-- `.firebaserc.example` — template for project linking
-- npm script: `npm run deploy:rules`
-
-### UI / navigation refinements
-- Student tab bar styling
-- Favorites empty states and pull-to-refresh
-- Guest navigator: Favorites tab + QR stack screen
-
----
-
-## Tech stack
+## Tech Stack
 
 | Layer | Technology |
-|--------|------------|
-| UI | React 19, React Native 0.81, Expo 54 |
-| Navigation | React Navigation 6 (stack + tabs) |
-| Backend | Firebase Auth, Firestore, Storage |
-| Map | Google Maps JavaScript API in WebView (`src/components/Map.js`) |
-| Routing | OSRM public API (`router.project-osrm.org`) |
+|-------|-----------|
+| Framework | React Native 0.81, Expo 54 |
+| Language | JavaScript (React 19) |
+| Navigation | React Navigation 7 (Stack, Bottom Tabs, Drawer) |
+| Backend | Supabase (Auth, PostgreSQL, Realtime, Storage) |
+| Validation | Zod |
+| Icons | HugeIcons (`@hugeicons/react-native`) + Ionicons |
+| Fonts | Outfit via `@expo-google-fonts/outfit` |
+| Map | react-native-maps + OpenStreetMap |
 | Other | Expo Location, Camera, Image Picker, Document Picker, XLSX |
 
-> **Note:** `react-native-maps` is listed as a dependency but the active map implementation uses a **WebView + Google Maps JS** approach. Web shows a simplified location list instead of the live map.
-
 ---
 
-## Prerequisites
-
-- **Node.js** 18+ and npm
-- **Expo Go** on a physical device (recommended for map, camera, QR, GPS), or Android/iOS emulator
-- A **Firebase project** with Auth, Firestore, and Storage enabled
-- **Google Maps JavaScript API** key (for the in-app map WebView)
-- **Firebase CLI** (optional, for deploying rules): `npm install -g firebase-tools`
-
----
-
-## Project setup
+## Project Setup
 
 ### 1. Clone and install
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Jlekan3/CampusUpdate.git
 cd CampusUpdate
 npm install
 ```
 
-### 2. Firebase configuration (required)
+### 2. Environment variables
 
-Credentials are **not** committed. Choose **one** of these options:
-
-#### Option A — Local config file (recommended)
-
-```bash
-cp src/config/firebaseConfig.example.js src/config/firebaseConfig.local.js
-```
-
-Edit `src/config/firebaseConfig.local.js` with values from Firebase Console → Project settings → Your apps → Web app config.
-
-#### Option B — Environment variables
+Copy the example env and fill in your Supabase credentials:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Fill in all `EXPO_PUBLIC_FIREBASE_*` variables. Ensure `firebaseConfig.local.js` reads from `process.env` (see example file) or wire env into your local config.
-
 | Variable | Description |
 |----------|-------------|
-| `EXPO_PUBLIC_FIREBASE_API_KEY` | Web API key |
-| `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN` | `project-id.firebaseapp.com` |
-| `EXPO_PUBLIC_FIREBASE_PROJECT_ID` | Project ID |
-| `EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET` | `project-id.appspot.com` |
-| `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Sender ID |
-| `EXPO_PUBLIC_FIREBASE_APP_ID` | App ID |
+| `EXPO_PUBLIC_SUPABASE_URL` | Your Supabase project URL |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon/public key |
+| `GOOGLE_MAPS_API_KEY` | Google Maps JavaScript API key |
 
-### 3. Google Maps API key
+### 3. Supabase setup
 
-Edit `src/config/googleMaps.js` or set:
+1. Create a project at [supabase.com](https://supabase.com)
+2. Run `database/schema.sql` in the SQL editor to create all tables, RLS policies, triggers, and functions
+3. Enable **Email** authentication in Auth settings
+4. Enable **email confirmation** (users receive a confirmation link after registration)
 
-```bash
-GOOGLE_MAPS_API_KEY=your-key-here
+### 4. Admin user
+
+After running the schema, add your email to the `ADMIN_EMAILS` list in `src/context/AuthContext.js`:
+
+```js
+const ADMIN_EMAILS = ['youremail@rmu.edu.gh'];
 ```
-
-Enable **Maps JavaScript API** in Google Cloud Console and restrict the key appropriately.
-
-### 4. Admin user in Firestore
-
-After first login, ensure an admin user document exists:
-
-- Collection: `users`
-- Document ID: Firebase Auth `uid`
-- Field: `role` = `"admin"`
-
-Or add your admin email to `isKnownAdminEmail()` in `firebase.rules` (development only).
 
 ---
 
-## Firebase setup
-
-### Console checklist
-
-1. **Authentication** — enable Email/Password and **Anonymous** (for guest access).
-2. **Firestore** — create database (production or test mode for development).
-3. **Storage** — enable Firebase Storage (required for location photo uploads).
-4. Create collections as you use the app, or seed via admin UI.
-
-### Authentication methods
-
-| Method | Used for |
-|--------|----------|
-| Email/password | Students, faculty, admin |
-| Anonymous | Guest “Continue as guest” |
-
-### First-time admin
-
-1. Create user in Firebase Auth (or use admin “Manage People” after one admin exists).
-2. Add `users/{uid}` with `role: "admin"`.
-3. Log in on the app → Admin navigator loads.
-
-See also: `FIREBASE_SETUP_GUIDE.md` for extended Firebase Console steps.
-
----
-
-## Deploy security rules
-
-Rules files in the repo:
-
-| File | Purpose |
-|------|---------|
-| `firebase.rules` | Firestore (locations, favourites, reports, etc.) |
-| `storage.rules` | Location images under `locations/` |
-| `firebase.json` | CLI config for both |
-
-### Link your Firebase project
-
-```bash
-cp .firebaserc.example .firebaserc
-# Edit .firebaserc and set your project ID
-
-firebase login
-firebase use --add
-```
-
-Or deploy with an explicit project:
-
-```bash
-firebase deploy --only firestore:rules,storage --project YOUR_PROJECT_ID
-```
-
-Or use the npm script:
-
-```bash
-npm run deploy:rules
-```
-
-**Important:** Deploy rules before testing favorites, reports, or image uploads in production. Permission errors usually mean rules were not published or the user is not admin.
-
----
-
-## Running the app
-
-```bash
-npx expo start
-```
-
-Then:
-
-- Press `a` for Android emulator, `i` for iOS simulator, or scan the QR code with **Expo Go**.
-- Map, GPS, camera, and QR work best on a **physical device**.
-
-Other scripts:
-
-```bash
-npm run android   # expo start --android
-npm run ios       # expo start --ios
-npm run web       # expo start --web (limited map support)
-```
-
-### Login behavior
-
-`FORCE_REQUIRE_LOGIN` in `src/utils/constants.js` is `true` by default — the app signs out on launch so users must log in (or use guest). Set to `false` only for local debugging if needed.
-
----
-
-## Project structure
+## Project Structure
 
 ```
 CampusUpdate/
-├── App.js                      # Entry: providers + RootNavigator
-├── firebase.json               # Rules deploy config
-├── firebase.rules              # Firestore security rules
-├── storage.rules               # Storage security rules
-├── .env.example                # Env template (copy to .env.local)
-├── .firebaserc.example         # Firebase CLI project template
-├── FIREBASE_SETUP_GUIDE.md     # Extended Firebase guide
+├── App.js                          # Entry: font loading, providers, RootNavigator
+├── app.json                        # Expo config (softwareKeyboardLayoutMode: resize)
+├── database/
+│   └── schema.sql                  # Full Supabase schema, RLS policies, triggers
 └── src/
-    ├── components/             # Map, buttons, ScreenWrapper, etc.
-    ├── config/                 # firebase.js, googleMaps.js
-    ├── context/                # AuthContext, CampusUpdatesContext
-    ├── navigation/             # Role-based navigators
+    ├── components/
+    │   ├── FormInput.js             # Reusable text input with label + error
+    │   ├── OTPInputGroup.js         # 6-box OTP input
+    │   ├── StudentSidebar.js        # Drawer sidebar content
+    │   ├── CustomButton.js
+    │   ├── LocationCard.js
+    │   └── Map.js / Map.web.js
+    ├── config/
+    │   └── supabase.js              # Supabase client
+    ├── context/
+    │   ├── AuthContext.js           # Auth state, role resolution, register/login/logout
+    │   ├── CampusUpdatesContext.js  # Realtime notifications & events
+    │   └── ThemeContext.js
+    ├── navigation/
+    │   ├── RootNavigator.js         # Role-based root routing
+    │   ├── AuthNavigator.js         # Login, Register, ForgotPassword, ResetPassword, EmailSent
+    │   ├── StudentNavigator.js      # Drawer + Bottom Tabs + Stack
+    │   ├── StaffNavigator.js
+    │   └── AdminNavigator.js
     ├── screens/
-    │   ├── admin/              # Admin CRUD screens
-    │   ├── auth/               # Login
-    │   ├── student/            # Student home, favorites, rules, etc.
-    │   ├── guest/              # Guest home
-    │   └── common/             # Map, search, location details, QR
+    │   ├── auth/
+    │   │   ├── LoginScreen.js
+    │   │   ├── RegisterScreen.js    # With programme dropdown
+    │   │   ├── ForgotPasswordScreen.js
+    │   │   ├── ResetPasswordScreen.js
+    │   │   └── EmailSentScreen.js
+    │   ├── student/
+    │   │   ├── StudentHomeScreen.js # Dashboard with quick actions
+    │   │   ├── FavoritesScreen.js
+    │   │   ├── NotificationsScreen.js
+    │   │   ├── CampusEventsScreen.js
+    │   │   ├── DiningScreen.js
+    │   │   ├── CampusRulesScreen.js
+    │   │   ├── SafetySupportScreen.js
+    │   │   └── ReportIssueScreen.js
+    │   ├── admin/                   # Full admin CRUD screens
+    │   └── common/
+    │       ├── MapScreen.js
+    │       ├── SearchLocationsScreen.js
+    │       ├── LocationDetailsScreen.js
+    │       └── QRScannerScreen.js
     ├── services/
-    │   ├── databaseService.js  # Firestore CRUD + subscriptions
-    │   ├── mapService.js       # Coordinates, OSRM routing
-    │   └── storageService.js   # Location image upload/delete
-    └── utils/constants.js      # Colors, roles, emergency contacts
+    │   ├── databaseService.js       # Supabase CRUD + realtime subscriptions
+    │   ├── mapService.js
+    │   └── storageService.js
+    └── utils/
+        ├── theme.js                 # Colors, fonts (Outfit), radius, shadow constants
+        ├── validationSchemas.js     # Zod schemas for all forms
+        └── constants.js            # Roles, emergency contacts
 ```
 
 ---
 
-## Firestore collections
+## Database Schema
 
-| Collection | Description |
-|------------|-------------|
-| `users` | Profiles, roles, notification reads, event interests |
-| `buildings` | Campus buildings |
-| `locations` | Places with coordinates, category, `imageurl` |
-| `amenities` | Campus amenities |
-| `dining` | Dining options |
-| `notifications` | Campus announcements |
+### Tables
+
+| Table | Description |
+|-------|-------------|
+| `users` | User profiles, roles, index number, programme |
+| `buildings` | Campus buildings with coordinates |
+| `locations` | Rooms and places (linked to buildings) |
+| `notifications` | Announcements with audience targeting |
+| `notification_reads` | Per-user read receipts |
 | `events` | Campus events |
-| `rules` | Campus rules (admin writes, students read) |
-| `reports` | Student/staff issue reports |
-| `favourite` | User saved locations (`userId` + `locationId`) |
+| `event_interests` | User RSVPs |
+| `favourites` | User-saved locations |
+| `dining` | Cafés and restaurants |
+| `campus_rules` | Student handbook entries |
+| `amenities` | Campus facilities |
+| `departments` | Staff departments with availability |
+| `reports` | Student issue reports |
 
-### Location document (example)
+### RPC Functions
 
-```json
-{
-  "names": "Engineering Block",
-  "description": "Main engineering facility",
-  "category": "Building",
-  "coordinates": {
-    "latitude": 5.607,
-    "longitude": -0.172
-  },
-  "imageurl": "https://firebasestorage.googleapis.com/...",
-  "createdBy": "<admin-uid>",
-  "createdAt": "<timestamp>"
-}
+| Function | Description |
+|----------|-------------|
+| `toggle_favourite(location_id)` | Add/remove favourite, returns boolean |
+| `mark_notification_read(notification_id)` | Mark as read |
+| `toggle_event_interest(event_id)` | RSVP toggle |
+| `touch_user_login()` | Update last_login_at |
+
+---
+
+## QR Codes
+
+Generate QR codes with these payload formats:
+
+| Format | Example | Behaviour |
+|--------|---------|-----------|
+| Location ID | `location:uuid-here` | Opens location details |
+| Coordinates | `geo:5.607,-0.172` | Opens map centred on coords |
+
+QR scanning requires a **physical mobile device**.
+
+---
+
+## Running the App
+
+```bash
+npx expo start -c      # start with cleared cache (recommended)
+npx expo start         # normal start
 ```
 
----
-
-## QR codes
-
-Generate QR codes (any generator) with these payloads:
-
-| Format | Example | Behavior |
-|--------|---------|----------|
-| Location ID | `location:abc123FirestoreId` | Opens location details |
-| Coordinates | `geo:5.607,-0.172` | Opens map centered on coords |
-
-QR scanning requires a **mobile device** (not supported on web).
-
----
-
-## Testing checklist
-
-After setup, verify:
-
-- [ ] Login as **student** — map loads, search works, GPS permission granted
-- [ ] Open a location → tap **heart** → appears under **Favorites** tab
-- [ ] **Guest** login → favorites and QR work
-- [ ] **Admin** → Add Location with **Gallery/Camera** photo → image appears on location details
-- [ ] Admin → Campus Rules → student **Campus Rules** updates live
-- [ ] Deploy Firestore + Storage rules → no `permission-denied` on favorites/upload
-- [ ] QR scan with `location:<id>` opens correct place
+| Key | Action |
+|-----|--------|
+| `a` | Open on Android emulator |
+| `i` | Open on iOS simulator |
+| Scan QR | Open in Expo Go on device |
 
 ---
 
 ## Troubleshooting
 
-| Problem | Likely fix |
-|---------|------------|
-| `Firebase configuration incomplete` | Create `firebaseConfig.local.js` or `.env.local` |
-| `permission-denied` on favorites/reports | Run `npm run deploy:rules` |
-| Image upload fails | Enable Storage; confirm admin `users/{uid}.role` is `admin` |
-| Map blank / grey | Check Google Maps API key and billing |
-| Guest favorites empty | Guest must complete anonymous sign-in (use Guest on login) |
-| QR does nothing | Use Expo Go on phone; check payload format |
-| Rules deploy: “No active project” | Copy `.firebaserc.example` → `.firebaserc` and set project ID |
+| Problem | Fix |
+|---------|-----|
+| Fonts not loading | Run `npx expo start -c` to clear Metro cache |
+| `Invalid API key` on Supabase | Check `.env.local` has correct `EXPO_PUBLIC_SUPABASE_URL` and key |
+| Inputs not tappable | Ensure `softwareKeyboardLayoutMode: "resize"` in `app.json` |
+| Map blank | Check Google Maps API key in `src/config/googleMaps.js` |
+| Registration email not arriving | Check Supabase Auth → Email settings; check spam folder |
+| `permission-denied` | Verify Supabase RLS policies are applied (re-run `schema.sql`) |
+| QR does nothing | Check payload format; physical device required |
 
 ---
 
-## Security notes
+## Security Notes
 
-- Do **not** commit `firebaseConfig.local.js`, `.env.local`, or API keys.
-- Deploy `firebase.rules` and `storage.rules` before production.
-- Replace placeholder emergency numbers in `src/utils/constants.js`.
-- Restrict Google Maps and Firebase API keys in cloud consoles.
-- Review `isKnownAdminEmail()` in `firebase.rules` — remove hardcoded emails for production.
-
----
-
-## System flow (overview)
-
-```mermaid
-flowchart TD
-  A[Launch app] --> B{Signed in?}
-  B -- No --> C[Login / Guest]
-  C --> D[Firebase Auth]
-  D --> E{Role}
-  B -- Yes --> E{Role}
-  E -- Admin --> F[Admin Navigator]
-  E -- Student/Faculty --> G[Student Navigator]
-  E -- Guest --> H[Guest Navigator]
-
-  F --> F1[Locations + Storage photos]
-  F --> F2[Rules, events, reports]
-
-  G --> G1[Map + favorites + QR]
-  H --> H1[Map + favorites + QR]
-
-  G1 --> I[Firestore reads/writes]
-  H1 --> I
-  F1 --> I
-```
+- Do **not** commit `.env.local` or any API keys.
+- Replace placeholder emergency numbers in `src/utils/constants.js` with real RMU contacts.
+- Restrict Supabase anon key usage via RLS policies (all implemented in `schema.sql`).
+- Review `ADMIN_EMAILS` in `AuthContext.js` before production.
 
 ---
 
-## Admin workflows (summary)
+## License / Project Context
 
-- Buildings, locations (with photos or URL), amenities, dining
-- Campus rules, notifications, events (audience: everyone / staff / direct)
-- Issue reports review and response
-- Excel import: columns like name, latitude, longitude, description, category
-- User creation (email/password + role)
-
----
-
-## License / project context
-
-Final-year project — **RMU Campus Navigation**. For internal team use; configure Firebase and API keys per environment before any public release.
+Final-year project — **RMU Campus Navigation** for Regional Maritime University, Ghana. For internal team use; configure Supabase credentials per environment before any public release.
