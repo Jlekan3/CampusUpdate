@@ -204,7 +204,7 @@ const ManagePeopleScreen = ({ navigation }) => {
         'Success',
         isEditingPerson
           ? `${userType.charAt(0).toUpperCase() + userType.slice(1)} updated successfully`
-          : `${userType.charAt(0).toUpperCase() + userType.slice(1)} created with Auth and saved to Firestore!`
+          : `${userType.charAt(0).toUpperCase() + userType.slice(1)} account created successfully`
       );
     } catch (error) {
       console.error(`✗ ${actionLabel}: Exception caught`);
@@ -212,11 +212,12 @@ const ManagePeopleScreen = ({ navigation }) => {
       
       // Provide user-friendly error messages
       let errorMessage = isEditingPerson ? 'Unable to update user' : 'Unable to create user';
-      if (error.code === 'auth/email-already-in-use') {
+      const msg = (error.message || '').toLowerCase();
+      if (msg.includes('already registered') || msg.includes('already exists') || msg.includes('duplicate')) {
         errorMessage = 'This email is already registered';
-      } else if (error.code === 'auth/weak-password') {
-        errorMessage = 'Password should be at least 6 characters';
-      } else if (error.code === 'auth/invalid-email') {
+      } else if (msg.includes('password') && msg.includes('6')) {
+        errorMessage = 'Password must be at least 6 characters';
+      } else if (msg.includes('invalid') && msg.includes('email')) {
         errorMessage = 'Invalid email address';
       } else if (error.message) {
         errorMessage = error.message;

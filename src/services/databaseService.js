@@ -4,7 +4,20 @@
  * Public API is identical to the old Firebase version so every screen,
  * navigator and context can keep its existing imports unchanged.
  */
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../config/supabase';
+
+// In-memory-only storage adapter — sessions are never persisted to AsyncStorage.
+// Used by the throw-away client in createUserWithAuthAndFirestore so that
+// signing up a new user never replaces the admin's stored session.
+const memoryStorage = (() => {
+  const store = {};
+  return {
+    getItem:    (k) => store[k] ?? null,
+    setItem:    (k, v) => { store[k] = v; },
+    removeItem: (k) => { delete store[k]; },
+  };
+})();
 
 // ─── normalisation ──────────────────────────────────────────────────────────
 
@@ -106,26 +119,46 @@ export const upsertUserProfile = async (id, data) => {
 };
 
 /** Admin creates a new Supabase Auth user + profile row. */
+/** Admin creates a new auth + profile row without disturbing the admin's session.
+ *  Uses a throw-away Supabase client backed by in-memory storage so the signUp
+ *  never writes to AsyncStorage and never replaces the admin's stored session.
+ */
 export const createUserWithAuthAndFirestore = async (email, password, userData) => {
-  // NOTE: supabase.auth.admin.createUser() requires the service-role key and
-  // must run server-side (Edge Function). From the client we use signUp which
-  // sends a confirmation email.  Set "Confirm Email" to OFF in Supabase Auth
-  // settings if you want instant access.
-  const { data, error } = await supabase.auth.signUp({
+  const supabaseUrl  = process.env.EXPO_PUBLIC_SUPABASE_URL;
+  const supabaseAnon = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+
+  const tempClient = createClient(supabaseUrl, supabaseAnon, {
+    auth: {
+      storage:          memoryStorage,
+      persistSession:   false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+
+  const { data, error } = await tempClient.auth.signUp({
     email,
     password,
-    options: { data: { role: userData.role || 'student', full_name: userData.fullName || '' } },
+    options: {
+      data: {
+        full_name: userData.fullName || userData.name || '',
+        role:      userData.role     || 'student',
+      },
+    },
   });
+
   if (error) throw error;
 
   const userId = data.user?.id;
   if (userId) {
     await supabase.from('users').upsert({
-      id:        userId,
+      id:         userId,
       email,
-      full_name: userData.fullName || '',
-      role:      userData.role    || 'student',
-      department:userData.department || '',
+      full_name:  userData.fullName  || userData.name || '',
+      role:       userData.role      || 'student',
+      department: userData.department || null,
+      programme:  userData.programme  || null,
+      student_id: userData.studentID  || null,
     }, { onConflict: 'id' });
   }
   return data.user;
