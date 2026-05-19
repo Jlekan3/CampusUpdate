@@ -1,9 +1,12 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { USER_ROLES, COLORS } from '../utils/constants';
+import { USER_ROLES } from '../utils/constants';
+
+const NAVY = '#1A365D';
+const GOLD = '#C5A047';
 
 // Import navigators
 import AuthNavigator    from './AuthNavigator';
@@ -20,18 +23,17 @@ const RootNavigator = () => {
 
   if (authLoading) {
     return (
-      <View style={{ 
-        flex: 1, 
-        justifyContent: 'center', 
-        alignItems: 'center',
-        backgroundColor: COLORS.white 
-      }}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View style={splash.container}>
+        <View style={splash.card}>
+          <Text style={splash.title}>RMU Campus</Text>
+          <Text style={splash.sub}>Regional Maritime University</Text>
+          <ActivityIndicator size="large" color={GOLD} style={{ marginTop: 28 }} />
+        </View>
       </View>
     );
   }
 
-  const navKey = user ? `${user.uid}:${userRole}` : 'auth';
+  const navKey = user ? `${user.id}:${userRole}` : 'auth';
 
   return (
     <NavigationContainer key={navKey}>
@@ -106,3 +108,10 @@ const RootNavigator = () => {
 };
 
 export default RootNavigator;
+
+const splash = StyleSheet.create({
+  container: { flex: 1, backgroundColor: NAVY, justifyContent: 'center', alignItems: 'center' },
+  card:      { alignItems: 'center' },
+  title:     { fontSize: 32, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
+  sub:       { fontSize: 13, color: GOLD, fontWeight: '600', marginTop: 6, letterSpacing: 0.3 },
+});

@@ -194,10 +194,10 @@ const StudentHomeScreen = ({ navigation }) => {
   useEffect(() => {
     const allCardAnims = [...primAnims, ...utilAnims];
     const seq = Animated.sequence([
-      Animated.timing(heroAnim, { toValue: 1, duration: 480, useNativeDriver: true }),
-      Animated.timing(bodyAnim, { toValue: 1, duration: 360, useNativeDriver: true }),
+      Animated.timing(heroAnim, { toValue: 1, duration: 240, useNativeDriver: true }),
+      Animated.timing(bodyAnim, { toValue: 1, duration: 180, useNativeDriver: true }),
       Animated.stagger(60, allCardAnims.map((a) =>
-        Animated.timing(a, { toValue: 1, duration: 300, useNativeDriver: true })
+        Animated.timing(a, { toValue: 1, duration: 160, useNativeDriver: true })
       )),
     ]);
     seq.start();
@@ -209,7 +209,7 @@ const StudentHomeScreen = ({ navigation }) => {
     if (!user?.uid) { setProfile(null); setReadMap({}); return; }
     let cancelled = false;
 
-    supabase.from('users').select('*').eq('id', user.id).single()
+    supabase.from('users').select('full_name,department,programme,student_id,role,position').eq('id', user.id).single()
       .then(({ data }) => { if (!cancelled && data) setProfile(data); })
       .catch(() => {});
 

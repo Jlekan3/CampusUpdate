@@ -226,7 +226,7 @@ const StaffHomeScreen = ({ navigation }) => {
   useEffect(() => {
     if (!user?.uid) { setProfile(null); return; }
     let cancelled = false;
-    supabase.from('users').select('*').eq('id', user.id).single()
+    supabase.from('users').select('full_name,department,position,role').eq('id', user.id).single()
       .then(({ data }) => { if (!cancelled && data) setProfile(data); })
       .catch(() => {});
     return () => { cancelled = true; };

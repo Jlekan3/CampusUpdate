@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { supabase } from '../config/supabase';
-import { ENABLE_DEV_ADMIN_EMAIL_OVERRIDE, FORCE_REQUIRE_LOGIN } from '../utils/constants';
+import { ENABLE_DEV_ADMIN_EMAIL_OVERRIDE } from '../utils/constants';
 
 export const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
@@ -86,9 +86,10 @@ export const AuthProvider = ({ children }) => {
   const [actionLoading, setActionLoading] = useState(false);
 
   const isExplicitLoginInFlight = useRef(false);
-  const didStartupAuthReset     = useRef(false);
 
   // ── Core auth state listener ────────────────────────────────────────────────
+  // persistSession is false in supabase.js so there is never an auto-restored
+  // session on cold start — the FORCE_REQUIRE_LOGIN signout branch is gone.
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
@@ -103,23 +104,6 @@ export const AuthProvider = ({ children }) => {
         }
 
         const authUser = session.user;
-
-        // FORCE_REQUIRE_LOGIN: clear any auto-restored session on first cold start
-        if (
-          FORCE_REQUIRE_LOGIN &&
-          !didStartupAuthReset.current &&
-          !isExplicitLoginInFlight.current
-        ) {
-          didStartupAuthReset.current = true;
-          await supabase.auth.signOut();
-          setUser(null);
-          setRole('guest');
-          setActionLoading(false);
-          setAuthLoading(false);
-          return;
-        }
-
-        if (!didStartupAuthReset.current) didStartupAuthReset.current = true;
 
         // Resolve role then commit state atomically
         const resolvedRole = await resolveRole(authUser);

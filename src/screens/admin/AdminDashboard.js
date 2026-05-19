@@ -92,10 +92,11 @@ const AdminDashboard = ({ navigation }) => {
   const heroAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Stagger entrance
+    // Reduced durations — hero 220ms, cards 40ms stagger so the
+    // animation finishes before data arrives rather than competing with it
     Animated.sequence([
-      Animated.timing(heroAnim, { toValue: 1, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
-      Animated.stagger(70, cardAnims.map((a) => Animated.timing(a, { toValue: 1, duration: 380, easing: Easing.out(Easing.back(1.1)), useNativeDriver: false }))),
+      Animated.timing(heroAnim, { toValue: 1, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+      Animated.stagger(40, cardAnims.map((a) => Animated.timing(a, { toValue: 1, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: false }))),
     ]).start();
   }, []);
 
