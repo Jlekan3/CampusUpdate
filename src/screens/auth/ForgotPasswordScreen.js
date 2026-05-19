@@ -4,12 +4,10 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Keyboard,
   Alert,
   StatusBar,
 } from 'react-native';
@@ -56,13 +54,14 @@ export default function ForgotPasswordScreen({ navigation }) {
 
       <KeyboardAvoidingView
         style={s.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <ScrollView
             contentContainerStyle={s.scroll}
-            keyboardShouldPersistTaps="handled"
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
+            bounces={false}
           >
             <View style={s.card}>
               <View style={s.iconWrap}>
@@ -110,7 +109,6 @@ export default function ForgotPasswordScreen({ navigation }) {
               </View>
             </View>
           </ScrollView>
-        </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -130,9 +128,8 @@ const s = StyleSheet.create({
   backBtn: { padding: 4 },
   headerTitle: { fontSize: 20, fontFamily: FONTS.bold, color: '#FFFFFF' },
 
-  scroll: { flexGrow: 1 },
+  scroll: { flexGrow: 1, paddingBottom: 24 },
   card: {
-    flex: 1,
     backgroundColor: COLORS.white,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
