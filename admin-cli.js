@@ -46,10 +46,13 @@ if (!SERVICE_ROLE_KEY || SERVICE_ROLE_KEY.includes('your-service-role')) {
 }
 
 // ─── Supabase client (service-role — bypasses RLS) ───────────────────────────
+// Node.js < 22 has no native WebSocket; supply the 'ws' package as transport.
 const { createClient } = require('@supabase/supabase-js');
+const ws = require('ws');
 
 const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
+  auth:     { autoRefreshToken: false, persistSession: false },
+  realtime: { transport: ws },
 });
 
 // ─── Terminal colours (ANSI) ──────────────────────────────────────────────────
