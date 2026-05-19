@@ -4,12 +4,10 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Keyboard,
   Alert,
   StatusBar,
 } from 'react-native';
@@ -84,13 +82,14 @@ export default function ResetPasswordScreen({ navigation }) {
 
       <KeyboardAvoidingView
         style={s.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <ScrollView
             contentContainerStyle={s.scroll}
-            keyboardShouldPersistTaps="handled"
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
+            bounces={false}
           >
             <View style={s.card}>
               <Text style={s.subtitle}>Choose a strong password of at least 8 characters.</Text>
@@ -149,7 +148,6 @@ export default function ResetPasswordScreen({ navigation }) {
               </TouchableOpacity>
             </View>
           </ScrollView>
-        </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

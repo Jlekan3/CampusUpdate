@@ -37,14 +37,15 @@ const ScreenWrapper = ({
       <Container style={[styles.wrapper, { backgroundColor }]}>
         <StatusBar barStyle={statusBarStyle} backgroundColor={backgroundColor} />
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardAvoid}
         >
           <ScrollView
             style={styles.scrollView}
             showsVerticalScrollIndicator={showsVerticalScrollIndicator}
             scrollEnabled={true}
-            keyboardShouldPersistTaps="handled"
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="on-drag"
             contentContainerStyle={styles.scrollContent}
             scrollIndicatorInsets={{ right: 1 }}
             indicatorStyle="black"
@@ -60,7 +61,7 @@ const ScreenWrapper = ({
     <Container style={[styles.wrapper, { backgroundColor }]}>
       <StatusBar barStyle={statusBarStyle} backgroundColor={backgroundColor} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardAvoid}
       >
         {content}

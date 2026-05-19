@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   StyleSheet,
   Alert,
   StatusBar,
@@ -12,7 +11,6 @@ import {
   KeyboardAvoidingView,
   ScrollView,
   Platform,
-  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -46,13 +44,14 @@ export default function LoginScreen({ navigation }) {
 
       <KeyboardAvoidingView
         style={s.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <ScrollView
             contentContainerStyle={s.scroll}
-            keyboardShouldPersistTaps="handled"
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
+            bounces={false}
           >
             {/* Blue header */}
             <View style={s.header}>
@@ -139,7 +138,6 @@ export default function LoginScreen({ navigation }) {
               </View>
             </View>
           </ScrollView>
-        </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -150,6 +148,7 @@ const s = StyleSheet.create({
   flex: { flex: 1 },
   scroll: {
     flexGrow: 1,
+    paddingBottom: 24,
   },
   header: {
     alignItems: 'center',
@@ -162,7 +161,6 @@ const s = StyleSheet.create({
   tagline: { fontSize: 14, fontFamily: FONTS.regular, color: 'rgba(255,255,255,0.7)' },
 
   card: {
-    flex: 1,
     backgroundColor: COLORS.white,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,

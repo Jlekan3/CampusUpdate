@@ -4,12 +4,10 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Keyboard,
   Alert,
   StatusBar,
   Modal,
@@ -137,13 +135,14 @@ export default function RegisterScreen({ navigation }) {
 
         <KeyboardAvoidingView
           style={s.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <ScrollView
               contentContainerStyle={s.scroll}
-              keyboardShouldPersistTaps="handled"
+              keyboardShouldPersistTaps="always"
+              keyboardDismissMode="on-drag"
               showsVerticalScrollIndicator={false}
+              bounces={false}
             >
               <View style={s.card}>
                 <Text style={s.intro}>Fill in your details to get started.</Text>
@@ -268,7 +267,6 @@ export default function RegisterScreen({ navigation }) {
                 </View>
               </View>
             </ScrollView>
-          </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
       </SafeAreaView>
 
@@ -296,7 +294,7 @@ const s = StyleSheet.create({
   backBtn: { padding: 4 },
   headerTitle: { fontSize: 20, fontFamily: FONTS.bold, color: '#FFFFFF' },
 
-  scroll: { flexGrow: 1 },
+  scroll: { flexGrow: 1, paddingBottom: 32 },
   card: {
     backgroundColor: COLORS.white,
     borderTopLeftRadius: 28,
@@ -304,7 +302,6 @@ const s = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 28,
     paddingBottom: 48,
-    flex: 1,
   },
   intro: { fontSize: 14, fontFamily: FONTS.regular, color: COLORS.textSecondary, marginBottom: 24 },
 
