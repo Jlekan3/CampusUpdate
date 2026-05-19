@@ -16,7 +16,7 @@ const Stack = createStackNavigator();
 
 const RootNavigator = () => {
   const { user, userRole, authLoading } = useAuth();
-  console.log('RootNavigator', { authLoading, user: user?.uid, userRole });
+  console.log('RootNavigator', { authLoading, user: user?.id, userRole });
 
   if (authLoading) {
     return (
