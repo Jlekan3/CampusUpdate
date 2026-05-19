@@ -265,7 +265,7 @@ const AdminNavigator = () => {
       <Stack.Screen name="AddLocations" component={AddLocationsScreen} options={{ title: 'Add Locations', headerShown: true }} />
       <Stack.Screen name="ManageDining" component={ManageDiningScreen} options={{ title: 'Dining', headerShown: true }} />
       <Stack.Screen name="Notifications" component={ManageNotificationsScreen} options={{ title: 'Events & Notices', headerShown: true }} />
-      <Stack.Screen name="Reports" component={ManageReportsScreen} options={{ title: 'Reports', headerShown: true }} />
+      <Stack.Screen name="AdminReportsStack" component={ManageReportsScreen} options={{ title: 'Reports', headerShown: true }} />
       <Stack.Screen name="AdminAnalytics" component={AdminAnalyticsScreen} options={{ title: 'Analytics', headerShown: true }} />
       <Stack.Screen name="ManageCampusRules" component={ManageCampusRulesScreen} options={{ title: 'Campus Rules', headerShown: true }} />
       <Stack.Screen name="ManageAmenities" component={ManageAmenitiesScreen} options={{ title: 'Amenities', headerShown: true }} />

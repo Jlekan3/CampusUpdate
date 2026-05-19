@@ -199,7 +199,7 @@ const ManageBuildingsScreen = ({ navigation }) => {
               !loading && (
                 <View style={styles.emptyContainer}>
                   <View style={styles.emptyIconWrap}>
-                    <Ionicons name="building-outline" size={48} color={COLORS.primary} />
+                    <Ionicons name="business-outline" size={48} color={COLORS.primary} />
                   </View>
                   <Text style={styles.emptyText}>
                     {searchQuery ? 'No matching buildings' : 'No buildings yet'}

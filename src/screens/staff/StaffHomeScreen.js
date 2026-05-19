@@ -507,9 +507,10 @@ const StaffHomeScreen = ({ navigation }) => {
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.deptName, { color: t.text }]}>{myDept.name}</Text>
                     {myDept.operatingHours ? (
-                      <Text style={[styles.deptHours, { color: t.muted }]}>
-                        <Ionicons name="time-outline" size={12} /> {myDept.operatingHours}
-                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                        <Ionicons name="time-outline" size={12} color={t.muted} />
+                        <Text style={[styles.deptHours, { color: t.muted }]}>{myDept.operatingHours}</Text>
+                      </View>
                     ) : null}
                     <Text style={[styles.deptUpdated, { color: t.muted }]}>
                       Updated {fmtRelative(myDept.updatedAt || myDept.createdAt)}

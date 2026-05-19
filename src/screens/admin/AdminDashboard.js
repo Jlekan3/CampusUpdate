@@ -236,7 +236,7 @@ const AdminDashboard = ({ navigation }) => {
             <View style={styles.heroActions}>
               <TouchableOpacity
                 style={styles.heroIconBtn}
-                onPress={() => navigation.navigate('Reports')}
+                onPress={() => navigation.navigate('AdminTabs', { screen: 'Reports' })}
               >
                 <Ionicons name="notifications-outline" size={20} color="#fff" />
                 {unreadReportCount > 0 && (
