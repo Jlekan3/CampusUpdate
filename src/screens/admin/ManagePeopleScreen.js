@@ -96,21 +96,15 @@ const ManagePeopleScreen = ({ navigation }) => {
     setShowModal(true);
   };
 
-  // Subscribe to real-time user updates from Firebase
+  // Subscribe to real-time user updates from Supabase
   React.useEffect(() => {
-    console.log('ManagePeopleScreen: Setting up real-time subscription to users collection');
-    
     const unsubscribe = subscribeToUsers((users) => {
-      console.log('ManagePeopleScreen: Users updated from Firebase:', users.length, 'users');
       // Filter to only show student and staff (not admin)
-      const filteredUsers = users.filter(u => u.role === 'student' || u.role === 'staff');
+      const filteredUsers = users.filter(u => u.role === 'student' || u.role === 'staff' || u.role === 'faculty');
       setPeople(filteredUsers);
     });
 
-    return () => {
-      console.log('ManagePeopleScreen: Cleaning up subscription');
-      unsubscribe();
-    };
+    return () => { unsubscribe(); };
   }, []);
 
   const handleSavePerson = async () => {
@@ -182,23 +176,13 @@ const ManagePeopleScreen = ({ navigation }) => {
       }
 
       if (isEditingPerson) {
-        console.log(`→ ${actionLabel}: Updating Firestore document for user ID:`, editingPersonId);
         await updateItem('users', editingPersonId, userData);
-        console.log(`✓ ${actionLabel}: Successfully updated user`);
       } else {
-        console.log(`→ ${actionLabel}: Calling createUserWithAuthAndFirestore`);
-        console.log('Email:', formData.email);
-        console.log('User data:', JSON.stringify(userData, null, 2));
-
-        // Create user with Firebase Auth (email/password) + Firestore document
-        // Returns UID which is used as document ID
-        const uid = await createUserWithAuthAndFirestore(
+        await createUserWithAuthAndFirestore(
           formData.email,
           formData.password,
           userData
         );
-
-        console.log(`✓ ${actionLabel}: Successfully created user with UID:`, uid);
       }
 
       // Close modal and reset form

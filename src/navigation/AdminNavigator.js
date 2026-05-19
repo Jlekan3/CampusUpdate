@@ -55,9 +55,18 @@ const AdminDrawerContent = (props) => {
   const { logout, user } = useAuth();
   const { colors } = useTheme();
 
+  // Screens that live inside the AdminTabs tab navigator
+  const TAB_SCREENS = new Set(['Dashboard', 'Departments', 'Users', 'Reports']);
+
   const navigate = (route) => {
     props.navigation.closeDrawer();
-    props.navigation.navigate(route);
+    if (TAB_SCREENS.has(route)) {
+      // Navigate into the nested tab navigator
+      props.navigation.navigate('AdminTabs', { screen: route });
+    } else {
+      // Stack screens registered on the parent AdminNavigator
+      props.navigation.navigate(route);
+    }
   };
 
   return (
