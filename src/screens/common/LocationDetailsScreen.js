@@ -14,8 +14,7 @@ import ScreenWrapper from '../../components/ScreenWrapper';
 import CustomButton from '../../components/CustomButton';
 import { COLORS } from '../../utils/constants';
 import { useAuth } from '../../context/AuthContext';
-import { db } from '../../config/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { getLocation } from '../../services/databaseService';
 import {
   subscribeToUserFavorites,
   toggleFavorite,
@@ -83,9 +82,8 @@ const LocationDetailsScreen = ({ navigation, route }) => {
     const fetchLocationById = async (id) => {
       setLoading(true);
       try {
-        const ref = doc(db, 'locations', id);
-        const snap = await getDoc(ref);
-        if (!snap.exists()) {
+        const data = await getLocation(id);
+        if (!data) {
           if (!cancelled) {
             setLocation(null);
             Alert.alert('Not found', 'This location was not found in the database.');
@@ -93,9 +91,7 @@ const LocationDetailsScreen = ({ navigation, route }) => {
           return;
         }
 
-        const data = snap.data() || {};
         const normalized = {
-          id: snap.id,
           ...data,
           name: data.name || data.names || data.title || 'Location',
           names: data.names || data.name || data.title || 'Location',

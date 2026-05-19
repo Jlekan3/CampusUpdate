@@ -20,8 +20,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../config/firebase';
+import { supabase } from '../../config/supabase';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import CustomButton from '../../components/CustomButton';
 import { useAuth } from '../../context/AuthContext';
@@ -227,8 +226,8 @@ const StaffHomeScreen = ({ navigation }) => {
   useEffect(() => {
     if (!user?.uid) { setProfile(null); return; }
     let cancelled = false;
-    getDoc(doc(db, 'users', user.uid))
-      .then((snap) => { if (!cancelled && snap.exists()) setProfile({ id: snap.id, ...snap.data() }); })
+    supabase.from('users').select('*').eq('id', user.id).single()
+      .then(({ data }) => { if (!cancelled && data) setProfile(data); })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [user?.uid]);
@@ -236,7 +235,7 @@ const StaffHomeScreen = ({ navigation }) => {
   // ── Notification reads ───────────────────────────────────────────────────
   useEffect(() => {
     if (!user?.uid) return;
-    const unsub = subscribeToUserNotificationReads(user.uid, (e) => setReadMap(e || {}));
+    const unsub = subscribeToUserNotificationReads(user.id, (e) => setReadMap(e || {}));
     return () => { try { unsub?.(); } catch (_) {} };
   }, [user?.uid]);
 

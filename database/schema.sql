@@ -1,0 +1,576 @@
+-- =============================================================================
+-- RMU CAMPUS MAP  —  Supabase PostgreSQL Schema
+-- Paste this entire file into the Supabase SQL Editor and click "Run".
+-- =============================================================================
+
+-- ---------------------------------------------------------------------------
+-- 0. Extensions
+-- ---------------------------------------------------------------------------
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+
+-- ---------------------------------------------------------------------------
+-- 1. Helper functions
+-- ---------------------------------------------------------------------------
+
+-- Auto-update updated_at on every UPDATE
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+-- Returns true when the calling user has role = 'admin'
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.users
+    WHERE id = auth.uid() AND role = 'admin'
+  );
+$$;
+
+-- Returns true when the calling user has role in ('admin','faculty')
+CREATE OR REPLACE FUNCTION is_staff()
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.users
+    WHERE id = auth.uid() AND role IN ('admin', 'faculty')
+  );
+$$;
+
+-- Returns the role string for any user id (used in RLS helpers)
+CREATE OR REPLACE FUNCTION get_user_role(p_user_id uuid)
+RETURNS text LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT role FROM public.users WHERE id = p_user_id;
+$$;
+
+
+-- ---------------------------------------------------------------------------
+-- 2. Tables
+-- ---------------------------------------------------------------------------
+
+-- 2.1  Users  (extends auth.users — one row per Supabase Auth account)
+CREATE TABLE IF NOT EXISTS public.users (
+  id              uuid        PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email           text,
+  full_name       text,
+  display_name    text,
+  role            text        NOT NULL DEFAULT 'student'
+                              CHECK (role IN ('admin','faculty','student','guest')),
+  department      text,
+  programme       text,
+  student_id      text,
+  staff_id        text,
+  position        text,
+  phone           text,
+  avatar_url      text,
+  index_number    text,
+  is_anonymous    boolean     DEFAULT false,
+  last_login_at   timestamptz,
+  created_at      timestamptz DEFAULT now(),
+  updated_at      timestamptz DEFAULT now()
+);
+
+-- 2.2  Buildings
+CREATE TABLE IF NOT EXISTS public.buildings (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        text        NOT NULL,
+  description text,
+  image_url   text,
+  latitude    float8,
+  longitude   float8,
+  floors      integer,
+  created_at  timestamptz DEFAULT now(),
+  updated_at  timestamptz DEFAULT now()
+);
+
+-- 2.3  Locations
+CREATE TABLE IF NOT EXISTS public.locations (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        text        NOT NULL,
+  description text,
+  building    text,
+  category    text,
+  type        text,
+  latitude    float8,
+  longitude   float8,
+  image_urls  text[]      DEFAULT '{}',
+  floor       text,
+  room_number text,
+  features    text[]      DEFAULT '{}',
+  opening_hours jsonb     DEFAULT '{}',
+  created_at  timestamptz DEFAULT now(),
+  updated_at  timestamptz DEFAULT now()
+);
+
+-- 2.4  Notifications / Announcements
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  title           text        NOT NULL,
+  message         text,
+  body            text,
+  subject         text,
+  category        text        DEFAULT 'General',
+  type            text,
+  audience        text        DEFAULT 'everyone'
+                              CHECK (audience IN ('everyone','staff','direct')),
+  recipient_ids   uuid[]      DEFAULT '{}',
+  posted_by       uuid        REFERENCES auth.users(id) ON DELETE SET NULL,
+  posted_by_name  text,
+  is_pinned       boolean     DEFAULT false,
+  created_at      timestamptz DEFAULT now(),
+  updated_at      timestamptz DEFAULT now()
+);
+
+-- 2.5  Notification reads  (per-user read receipts)
+CREATE TABLE IF NOT EXISTS public.notification_reads (
+  id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  notification_id uuid        NOT NULL REFERENCES public.notifications(id) ON DELETE CASCADE,
+  read_at         timestamptz DEFAULT now(),
+  created_at      timestamptz DEFAULT now(),
+  UNIQUE(user_id, notification_id)
+);
+
+-- 2.6  Events
+CREATE TABLE IF NOT EXISTS public.events (
+  id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  title           text        NOT NULL,
+  name            text,
+  description     text,
+  location        text,
+  category        text,
+  start_date      timestamptz,
+  end_date        timestamptz,
+  date            timestamptz,
+  image_url       text,
+  organizer       text,
+  attendee_count  integer     DEFAULT 0,
+  is_featured     boolean     DEFAULT false,
+  created_by      uuid        REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at      timestamptz DEFAULT now(),
+  updated_at      timestamptz DEFAULT now()
+);
+
+-- 2.7  Event interests  (user bookmarks / RSVPs)
+CREATE TABLE IF NOT EXISTS public.event_interests (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  event_id    uuid        NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
+  created_at  timestamptz DEFAULT now(),
+  UNIQUE(user_id, event_id)
+);
+
+-- 2.8  Dining
+CREATE TABLE IF NOT EXISTS public.dining (
+  id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name            text        NOT NULL,
+  description     text,
+  category        text,
+  menu_items      jsonb       DEFAULT '[]',
+  operating_hours text,
+  location        text,
+  image_url       text,
+  is_available    boolean     DEFAULT true,
+  created_at      timestamptz DEFAULT now(),
+  updated_at      timestamptz DEFAULT now()
+);
+
+-- 2.9  Campus rules
+CREATE TABLE IF NOT EXISTS public.campus_rules (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  title       text        NOT NULL,
+  description text,
+  category    text,
+  severity    text        DEFAULT 'info'
+                          CHECK (severity IN ('info','warning','critical')),
+  is_active   boolean     DEFAULT true,
+  created_at  timestamptz DEFAULT now(),
+  updated_at  timestamptz DEFAULT now()
+);
+
+-- 2.10 Favourites
+CREATE TABLE IF NOT EXISTS public.favourites (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  location_id uuid        NOT NULL REFERENCES public.locations(id) ON DELETE CASCADE,
+  created_at  timestamptz DEFAULT now(),
+  UNIQUE(user_id, location_id)
+);
+
+-- 2.11 Issue reports
+CREATE TABLE IF NOT EXISTS public.reports (
+  id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  title           text        NOT NULL,
+  description     text,
+  category        text        DEFAULT 'General',
+  status          text        DEFAULT 'open'
+                              CHECK (status IN ('open','in_progress','resolved','dismissed')),
+  priority        text        DEFAULT 'medium'
+                              CHECK (priority IN ('low','medium','high','critical')),
+  reporter_id     uuid        REFERENCES auth.users(id) ON DELETE SET NULL,
+  reporter_name   text,
+  reporter_email  text,
+  reporter_role   text,
+  photo_urls      text[]      DEFAULT '{}',
+  photo_uris      text[]      DEFAULT '{}',
+  photo_count     integer     DEFAULT 0,
+  admin_response  text,
+  admin_read_at   timestamptz,
+  admin_read_by   uuid        REFERENCES auth.users(id) ON DELETE SET NULL,
+  maneuver_location jsonb,
+  created_at      timestamptz DEFAULT now(),
+  updated_at      timestamptz DEFAULT now()
+);
+
+-- 2.12 Amenities
+CREATE TABLE IF NOT EXISTS public.amenities (
+  id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name            text        NOT NULL,
+  description     text,
+  category        text,
+  type            text,
+  latitude        float8,
+  longitude       float8,
+  operating_hours text,
+  image_url       text,
+  is_available    boolean     DEFAULT true,
+  created_at      timestamptz DEFAULT now(),
+  updated_at      timestamptz DEFAULT now()
+);
+
+-- 2.13 Departments
+CREATE TABLE IF NOT EXISTS public.departments (
+  id                  uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  name                text        NOT NULL,
+  description         text,
+  category            text        DEFAULT 'Academic',
+  availability_status text        DEFAULT 'Open'
+                                  CHECK (availability_status IN ('Open','Closed','Busy','Available','In Meeting')),
+  operating_hours     text,
+  image_url           text,
+  head_of_department  text,
+  contact_email       text,
+  contact_phone       text,
+  location            text,
+  created_at          timestamptz DEFAULT now(),
+  updated_at          timestamptz DEFAULT now()
+);
+
+
+-- ---------------------------------------------------------------------------
+-- 3. updated_at triggers
+-- ---------------------------------------------------------------------------
+CREATE TRIGGER users_updated_at          BEFORE UPDATE ON public.users          FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER buildings_updated_at      BEFORE UPDATE ON public.buildings      FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER locations_updated_at      BEFORE UPDATE ON public.locations      FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER notifications_updated_at  BEFORE UPDATE ON public.notifications  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER events_updated_at         BEFORE UPDATE ON public.events         FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER dining_updated_at         BEFORE UPDATE ON public.dining         FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER campus_rules_updated_at   BEFORE UPDATE ON public.campus_rules   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER reports_updated_at        BEFORE UPDATE ON public.reports        FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER amenities_updated_at      BEFORE UPDATE ON public.amenities      FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER departments_updated_at    BEFORE UPDATE ON public.departments    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+
+-- ---------------------------------------------------------------------------
+-- 4. Indexes
+-- ---------------------------------------------------------------------------
+CREATE INDEX IF NOT EXISTS idx_users_role                ON public.users(role);
+CREATE INDEX IF NOT EXISTS idx_users_email               ON public.users(email);
+CREATE INDEX IF NOT EXISTS idx_locations_category        ON public.locations(category);
+CREATE INDEX IF NOT EXISTS idx_locations_building        ON public.locations(building);
+CREATE INDEX IF NOT EXISTS idx_notifications_audience    ON public.notifications(audience);
+CREATE INDEX IF NOT EXISTS idx_notifications_created     ON public.notifications(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_events_start_date         ON public.events(start_date);
+CREATE INDEX IF NOT EXISTS idx_reports_status            ON public.reports(status);
+CREATE INDEX IF NOT EXISTS idx_reports_reporter          ON public.reports(reporter_id);
+CREATE INDEX IF NOT EXISTS idx_favourites_user           ON public.favourites(user_id);
+CREATE INDEX IF NOT EXISTS idx_notif_reads_user          ON public.notification_reads(user_id);
+CREATE INDEX IF NOT EXISTS idx_event_interests_user      ON public.event_interests(user_id);
+CREATE INDEX IF NOT EXISTS idx_departments_status        ON public.departments(availability_status);
+
+
+-- ---------------------------------------------------------------------------
+-- 5. Row Level Security (RLS)
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.users             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.buildings         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.locations         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notification_reads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.events            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.event_interests   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.dining            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.campus_rules      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.favourites        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reports           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.amenities         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.departments       ENABLE ROW LEVEL SECURITY;
+
+-- users
+CREATE POLICY "users_select_own"      ON public.users FOR SELECT  USING (auth.uid() = id OR is_admin());
+CREATE POLICY "users_insert_own"      ON public.users FOR INSERT  WITH CHECK (auth.uid() = id);
+CREATE POLICY "users_update_own"      ON public.users FOR UPDATE  USING (auth.uid() = id OR is_admin());
+CREATE POLICY "users_delete_admin"    ON public.users FOR DELETE  USING (is_admin());
+
+-- buildings
+CREATE POLICY "buildings_select_all"  ON public.buildings FOR SELECT  USING (auth.role() = 'authenticated');
+CREATE POLICY "buildings_insert_admin"ON public.buildings FOR INSERT  WITH CHECK (is_admin());
+CREATE POLICY "buildings_update_admin"ON public.buildings FOR UPDATE  USING (is_admin());
+CREATE POLICY "buildings_delete_admin"ON public.buildings FOR DELETE  USING (is_admin());
+
+-- locations
+CREATE POLICY "locs_select_all"       ON public.locations FOR SELECT  USING (auth.role() = 'authenticated');
+CREATE POLICY "locs_insert_admin"     ON public.locations FOR INSERT  WITH CHECK (is_admin());
+CREATE POLICY "locs_update_admin"     ON public.locations FOR UPDATE  USING (is_admin());
+CREATE POLICY "locs_delete_admin"     ON public.locations FOR DELETE  USING (is_admin());
+
+-- notifications
+CREATE POLICY "notif_select_all"      ON public.notifications FOR SELECT  USING (auth.role() = 'authenticated');
+CREATE POLICY "notif_insert_staff"    ON public.notifications FOR INSERT  WITH CHECK (is_staff());
+CREATE POLICY "notif_update_staff"    ON public.notifications FOR UPDATE  USING (is_staff());
+CREATE POLICY "notif_delete_admin"    ON public.notifications FOR DELETE  USING (is_admin());
+
+-- notification_reads
+CREATE POLICY "nr_select_own"         ON public.notification_reads FOR SELECT  USING (auth.uid() = user_id);
+CREATE POLICY "nr_insert_own"         ON public.notification_reads FOR INSERT  WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "nr_update_own"         ON public.notification_reads FOR UPDATE  USING (auth.uid() = user_id);
+CREATE POLICY "nr_delete_own"         ON public.notification_reads FOR DELETE  USING (auth.uid() = user_id);
+
+-- events
+CREATE POLICY "events_select_all"     ON public.events FOR SELECT  USING (auth.role() = 'authenticated');
+CREATE POLICY "events_insert_staff"   ON public.events FOR INSERT  WITH CHECK (is_staff());
+CREATE POLICY "events_update_staff"   ON public.events FOR UPDATE  USING (is_staff());
+CREATE POLICY "events_delete_admin"   ON public.events FOR DELETE  USING (is_admin());
+
+-- event_interests
+CREATE POLICY "ei_select_own"         ON public.event_interests FOR SELECT  USING (auth.uid() = user_id);
+CREATE POLICY "ei_insert_own"         ON public.event_interests FOR INSERT  WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "ei_delete_own"         ON public.event_interests FOR DELETE  USING (auth.uid() = user_id);
+
+-- dining
+CREATE POLICY "dining_select_all"     ON public.dining FOR SELECT  USING (auth.role() = 'authenticated');
+CREATE POLICY "dining_insert_admin"   ON public.dining FOR INSERT  WITH CHECK (is_admin());
+CREATE POLICY "dining_update_admin"   ON public.dining FOR UPDATE  USING (is_admin());
+CREATE POLICY "dining_delete_admin"   ON public.dining FOR DELETE  USING (is_admin());
+
+-- campus_rules
+CREATE POLICY "rules_select_all"      ON public.campus_rules FOR SELECT  USING (auth.role() = 'authenticated');
+CREATE POLICY "rules_insert_admin"    ON public.campus_rules FOR INSERT  WITH CHECK (is_admin());
+CREATE POLICY "rules_update_admin"    ON public.campus_rules FOR UPDATE  USING (is_admin());
+CREATE POLICY "rules_delete_admin"    ON public.campus_rules FOR DELETE  USING (is_admin());
+
+-- favourites
+CREATE POLICY "fav_select_own"        ON public.favourites FOR SELECT  USING (auth.uid() = user_id);
+CREATE POLICY "fav_insert_own"        ON public.favourites FOR INSERT  WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "fav_delete_own"        ON public.favourites FOR DELETE  USING (auth.uid() = user_id);
+
+-- reports
+CREATE POLICY "rep_select_own"        ON public.reports FOR SELECT  USING (auth.uid() = reporter_id);
+CREATE POLICY "rep_select_staff"      ON public.reports FOR SELECT  USING (is_staff());
+CREATE POLICY "rep_insert_auth"       ON public.reports FOR INSERT  WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY "rep_update_staff"      ON public.reports FOR UPDATE  USING (is_staff());
+CREATE POLICY "rep_delete_admin"      ON public.reports FOR DELETE  USING (is_admin());
+
+-- amenities
+CREATE POLICY "amen_select_all"       ON public.amenities FOR SELECT  USING (auth.role() = 'authenticated');
+CREATE POLICY "amen_insert_admin"     ON public.amenities FOR INSERT  WITH CHECK (is_admin());
+CREATE POLICY "amen_update_admin"     ON public.amenities FOR UPDATE  USING (is_admin());
+CREATE POLICY "amen_delete_admin"     ON public.amenities FOR DELETE  USING (is_admin());
+
+-- departments
+CREATE POLICY "dept_select_all"       ON public.departments FOR SELECT  USING (auth.role() = 'authenticated');
+CREATE POLICY "dept_insert_staff"     ON public.departments FOR INSERT  WITH CHECK (is_staff());
+CREATE POLICY "dept_update_staff"     ON public.departments FOR UPDATE  USING (is_staff());
+CREATE POLICY "dept_delete_admin"     ON public.departments FOR DELETE  USING (is_admin());
+
+
+-- ---------------------------------------------------------------------------
+-- 6. Realtime  (enable for tables that need live updates)
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.notifications      REPLICA IDENTITY FULL;
+ALTER TABLE public.events             REPLICA IDENTITY FULL;
+ALTER TABLE public.departments        REPLICA IDENTITY FULL;
+ALTER TABLE public.reports            REPLICA IDENTITY FULL;
+ALTER TABLE public.notification_reads REPLICA IDENTITY FULL;
+ALTER TABLE public.locations          REPLICA IDENTITY FULL;
+ALTER TABLE public.buildings          REPLICA IDENTITY FULL;
+ALTER TABLE public.users              REPLICA IDENTITY FULL;
+ALTER TABLE public.dining             REPLICA IDENTITY FULL;
+ALTER TABLE public.amenities          REPLICA IDENTITY FULL;
+
+-- Recreate the realtime publication to include all live tables
+DROP PUBLICATION IF EXISTS supabase_realtime;
+CREATE PUBLICATION supabase_realtime FOR TABLE
+  public.notifications,
+  public.notification_reads,
+  public.events,
+  public.event_interests,
+  public.departments,
+  public.reports,
+  public.locations,
+  public.buildings,
+  public.users,
+  public.dining,
+  public.amenities,
+  public.favourites;
+
+
+-- ---------------------------------------------------------------------------
+-- 7. Storage buckets
+-- ---------------------------------------------------------------------------
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES
+  ('locations',   'locations',   true,  10485760, ARRAY['image/jpeg','image/png','image/webp']),
+  ('departments', 'departments', true,  10485760, ARRAY['image/jpeg','image/png','image/webp']),
+  ('reports',     'reports',     false, 10485760, ARRAY['image/jpeg','image/png','image/webp']),
+  ('profiles',    'profiles',    true,  5242880,  ARRAY['image/jpeg','image/png','image/webp'])
+ON CONFLICT (id) DO NOTHING;
+
+-- Storage RLS policies
+CREATE POLICY "locations_public_read"  ON storage.objects FOR SELECT USING (bucket_id = 'locations');
+CREATE POLICY "locations_admin_insert" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'locations' AND is_admin());
+CREATE POLICY "locations_admin_delete" ON storage.objects FOR DELETE USING (bucket_id = 'locations' AND is_admin());
+
+CREATE POLICY "depts_public_read"      ON storage.objects FOR SELECT USING (bucket_id = 'departments');
+CREATE POLICY "depts_staff_insert"     ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'departments' AND is_staff());
+CREATE POLICY "depts_staff_delete"     ON storage.objects FOR DELETE USING (bucket_id = 'departments' AND is_staff());
+
+CREATE POLICY "profiles_public_read"   ON storage.objects FOR SELECT USING (bucket_id = 'profiles');
+CREATE POLICY "profiles_own_insert"    ON storage.objects FOR INSERT WITH CHECK (
+  bucket_id = 'profiles' AND auth.uid()::text = (storage.foldername(name))[1]
+);
+CREATE POLICY "profiles_own_delete"    ON storage.objects FOR DELETE USING (
+  bucket_id = 'profiles' AND auth.uid()::text = (storage.foldername(name))[1]
+);
+
+CREATE POLICY "reports_own_read"       ON storage.objects FOR SELECT USING (
+  bucket_id = 'reports' AND (
+    auth.uid()::text = (storage.foldername(name))[1] OR is_staff()
+  )
+);
+CREATE POLICY "reports_auth_insert"    ON storage.objects FOR INSERT WITH CHECK (
+  bucket_id = 'reports' AND auth.role() = 'authenticated'
+);
+
+
+-- ---------------------------------------------------------------------------
+-- 8. Auth trigger  (auto-create user profile row on sign-up)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  INSERT INTO public.users (id, email, full_name, role, is_anonymous, created_at, updated_at)
+  VALUES (
+    NEW.id,
+    COALESCE(NEW.email, ''),
+    COALESCE(
+      NEW.raw_user_meta_data->>'full_name',
+      NEW.raw_user_meta_data->>'name',
+      NEW.raw_user_meta_data->>'display_name',
+      ''
+    ),
+    COALESCE(
+      NEW.raw_user_meta_data->>'role',
+      'student'
+    ),
+    COALESCE((NEW.raw_user_meta_data->>'is_anonymous')::boolean, false),
+    now(),
+    now()
+  )
+  ON CONFLICT (id) DO UPDATE
+    SET email      = EXCLUDED.email,
+        updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+
+-- ---------------------------------------------------------------------------
+-- 9. Utility functions (callable from the client via supabase.rpc())
+-- ---------------------------------------------------------------------------
+
+-- Toggle favourite — returns true if added, false if removed
+CREATE OR REPLACE FUNCTION public.toggle_favourite(p_location_id uuid)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE v_exists boolean;
+BEGIN
+  SELECT EXISTS(
+    SELECT 1 FROM public.favourites
+    WHERE user_id = auth.uid() AND location_id = p_location_id
+  ) INTO v_exists;
+
+  IF v_exists THEN
+    DELETE FROM public.favourites
+    WHERE user_id = auth.uid() AND location_id = p_location_id;
+    RETURN false;
+  ELSE
+    INSERT INTO public.favourites (user_id, location_id)
+    VALUES (auth.uid(), p_location_id);
+    RETURN true;
+  END IF;
+END;
+$$;
+
+-- Mark a notification as read for the calling user
+CREATE OR REPLACE FUNCTION public.mark_notification_read(p_notification_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  INSERT INTO public.notification_reads (user_id, notification_id, read_at)
+  VALUES (auth.uid(), p_notification_id, now())
+  ON CONFLICT (user_id, notification_id)
+  DO UPDATE SET read_at = now();
+END;
+$$;
+
+-- Toggle event interest — returns true if added, false if removed
+CREATE OR REPLACE FUNCTION public.toggle_event_interest(p_event_id uuid)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE v_exists boolean;
+BEGIN
+  SELECT EXISTS(
+    SELECT 1 FROM public.event_interests
+    WHERE user_id = auth.uid() AND event_id = p_event_id
+  ) INTO v_exists;
+
+  IF v_exists THEN
+    DELETE FROM public.event_interests
+    WHERE user_id = auth.uid() AND event_id = p_event_id;
+    RETURN false;
+  ELSE
+    INSERT INTO public.event_interests (user_id, event_id)
+    VALUES (auth.uid(), p_event_id);
+    RETURN true;
+  END IF;
+END;
+$$;
+
+-- Update last_login_at for the calling user (called on every sign-in)
+CREATE OR REPLACE FUNCTION public.touch_user_login()
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  UPDATE public.users
+  SET last_login_at = now(), updated_at = now()
+  WHERE id = auth.uid();
+END;
+$$;
+
+
+-- ---------------------------------------------------------------------------
+-- END OF SCHEMA
+-- ---------------------------------------------------------------------------
+-- Next steps after running this SQL:
+--   1. Go to Authentication > Providers and enable "Anonymous" sign-in.
+--   2. Go to Authentication > URL Configuration and set your redirect URLs.
+--   3. Copy your Project URL and anon key into .env (see .env file).
+--   4. Run:  npm install
+-- ---------------------------------------------------------------------------

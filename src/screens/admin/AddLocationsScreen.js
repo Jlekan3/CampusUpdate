@@ -196,8 +196,8 @@ const AddLocationsScreen = ({ navigation }) => {
         imageurl: formData.imageurl.trim() || previousImageUrl || '',
       };
 
-      if (user?.uid) {
-        newLocation.createdBy = user.uid;
+      if (user?.id) {
+        newLocation.createdBy = user.id;
       }
 
       let savedId = editingId;

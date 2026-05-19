@@ -20,8 +20,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../config/firebase';
+import { supabase } from '../../config/supabase';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import CustomButton from '../../components/CustomButton';
 import { useAuth } from '../../context/AuthContext';
@@ -210,11 +209,11 @@ const StudentHomeScreen = ({ navigation }) => {
     if (!user?.uid) { setProfile(null); setReadMap({}); return; }
     let cancelled = false;
 
-    getDoc(doc(db, 'users', user.uid))
-      .then((snap) => { if (!cancelled && snap.exists()) setProfile({ id: snap.id, ...snap.data() }); })
+    supabase.from('users').select('*').eq('id', user.id).single()
+      .then(({ data }) => { if (!cancelled && data) setProfile(data); })
       .catch(() => {});
 
-    const unsub = subscribeToUserNotificationReads(user.uid, (e) => setReadMap(e || {}));
+    const unsub = subscribeToUserNotificationReads(user.id, (e) => setReadMap(e || {}));
     return () => { cancelled = true; try { unsub?.(); } catch (_) {} };
   }, [user?.uid]);
 

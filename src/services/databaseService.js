@@ -1,742 +1,403 @@
-import {
-  collection,
-  addDoc,
-  doc,
-  updateDoc,
-  deleteDoc,
-  onSnapshot,
-  getDocs,
-  query,
-  orderBy,
-  serverTimestamp,
-  where,
-  setDoc,
-  writeBatch,
-  deleteField,
-  GeoPoint,
-} from 'firebase/firestore';
-import { createUserWithEmailAndPassword, getAuth, signOut } from 'firebase/auth';
-import { getApps, initializeApp } from 'firebase/app';
-import { db } from '../config/firebase';
-import { auth } from '../config/firebase';
+/**
+ * databaseService.js  —  Supabase backend
+ *
+ * Public API is identical to the old Firebase version so every screen,
+ * navigator and context can keep its existing imports unchanged.
+ */
+import { supabase } from '../config/supabase';
 
-const makeCollectionRef = (name) => collection(db, name);
+// ─── normalisation ──────────────────────────────────────────────────────────
 
-const normalizeTimestamps = (data) => {
-  const out = { ...(data || {}) };
-  for (const key of ['createdAt', 'updatedAt']) {
-    const value = out[key];
-    if (value && typeof value.toDate === 'function') {
-      out[key] = value.toDate();
-    }
-  }
+const normalizeTimestamps = (row) => {
+  if (!row) return row;
+  const out = { ...row };
+  ['created_at', 'updated_at', 'last_login_at', 'admin_read_at', 'read_at'].forEach((k) => {
+    if (out[k] && typeof out[k] === 'string') out[k] = new Date(out[k]);
+  });
+  // camelCase shims so existing code keeps working
+  if (out.created_at) out.createdAt = out.created_at;
+  if (out.updated_at) out.updatedAt = out.updated_at;
   return out;
 };
 
-const normalizeReadEntries = (readEntries) => {
-  if (!readEntries || typeof readEntries !== 'object') return {};
+const normRows = (rows) => (rows || []).map(normalizeTimestamps);
 
-  return Object.entries(readEntries).reduce((accumulator, [notificationId, entry]) => {
-    if (!notificationId) return accumulator;
+// ─── realtime subscription helper ───────────────────────────────────────────
 
-    const readAt = entry?.readAt && typeof entry.readAt.toDate === 'function'
-      ? entry.readAt.toDate()
-      : entry?.readAt || null;
+/**
+ * Subscribe to a Supabase table with an optional row-level filter.
+ *
+ * @param {string}   table      - public schema table name
+ * @param {Function} queryFn   - () => supabase.from(...).select(...)  (no .then)
+ * @param {Function} callback  - called with the normalised row array
+ * @param {string}   [filter]  - postgres_changes filter string, e.g. 'user_id=eq.xyz'
+ * @returns {Function}         - unsubscribe()
+ */
+const createSubscription = (table, queryFn, callback, filter) => {
+  let active = true;
 
-    accumulator[notificationId] = { readAt };
-    return accumulator;
-  }, {});
-};
-
-const getSecondaryAuth = () => {
-  // Creating users with the primary auth instance will replace the current session.
-  // Use a secondary app/auth instance so the admin stays logged in.
-  const secondaryAppName = 'secondary-auth';
-
-  const existing = getApps().find((app) => app.name === secondaryAppName);
-  const secondaryApp = existing || initializeApp(auth.app.options, secondaryAppName);
-  return getAuth(secondaryApp);
-};
-
-export const subscribeToCollection = (name, callback) => {
-  const q = query(makeCollectionRef(name), orderBy('createdAt', 'desc'));
-  return onSnapshot(
-    q,
-    (snap) => {
-      const items = snap.docs.map((d) => ({ id: d.id, ...normalizeTimestamps(d.data()) }));
-      callback(items);
-    },
-    (error) => {
-      console.error(`subscribeToCollection(${name}) error:`, error?.code, error?.message || error);
+  const doFetch = async () => {
+    const { data, error } = await queryFn();
+    if (!active) return;
+    if (error) {
+      console.error(`databaseService(${table}):`, error.message);
       callback([]);
+      return;
     }
-  );
+    callback(normRows(data));
+  };
+
+  doFetch();
+
+  const changeOpts = { event: '*', schema: 'public', table };
+  if (filter) changeOpts.filter = filter;
+
+  const channel = supabase
+    .channel(`${table}-${Date.now()}`)
+    .on('postgres_changes', changeOpts, doFetch)
+    .subscribe();
+
+  return () => {
+    active = false;
+    supabase.removeChannel(channel);
+  };
 };
 
-// Special handler for users collection - doesn't require createdAt
-export const subscribeToUsers = (callback) => {
-  return onSnapshot(makeCollectionRef('users'), (snap) => {
-    const items = snap.docs.map((d) => ({ id: d.id, ...normalizeTimestamps(d.data()) }));
-    console.log('subscribeToUsers - Firestore snapshot received, item count:', items.length);
-    callback(items);
-  }, (error) => {
-    console.error('subscribeToUsers - Error fetching users from Firestore:', error.code, error.message);
-    // Check if it's a permission issue
-    if (error.code === 'permission-denied') {
-      console.error('Permission denied - make sure your Firestore rules allow admin to read users collection');
-    }
-    callback([]);
+// ─── generic CRUD ────────────────────────────────────────────────────────────
+
+export const addItem = async (table, data) => {
+  const { data: row, error } = await supabase
+    .from(table)
+    .insert(data)
+    .select()
+    .single();
+  if (error) throw error;
+  return row.id;
+};
+
+export const updateItem = async (table, id, data) => {
+  const { error } = await supabase.from(table).update(data).eq('id', id);
+  if (error) throw error;
+};
+
+export const deleteItem = async (table, id) => {
+  const { error } = await supabase.from(table).delete().eq('id', id);
+  if (error) throw error;
+};
+
+// For legacy callers that pass (collectionName, id) with string name → table alias
+export const subscribeToCollection = (table, callback) =>
+  createSubscription(table, () => supabase.from(table).select('*').order('created_at', { ascending: false }), callback);
+
+// ─── Users ───────────────────────────────────────────────────────────────────
+
+export const subscribeToUsers = (callback) =>
+  createSubscription('users', () => supabase.from('users').select('*'), callback);
+
+export const getUser = async (id) => {
+  const { data, error } = await supabase.from('users').select('*').eq('id', id).single();
+  if (error) return null;
+  return normalizeTimestamps(data);
+};
+
+export const upsertUserProfile = async (id, data) => {
+  const { error } = await supabase.from('users').upsert({ id, ...data }, { onConflict: 'id' });
+  if (error) console.warn('upsertUserProfile:', error.message);
+};
+
+/** Admin creates a new Supabase Auth user + profile row. */
+export const createUserWithAuthAndFirestore = async (email, password, userData) => {
+  // NOTE: supabase.auth.admin.createUser() requires the service-role key and
+  // must run server-side (Edge Function). From the client we use signUp which
+  // sends a confirmation email.  Set "Confirm Email" to OFF in Supabase Auth
+  // settings if you want instant access.
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { role: userData.role || 'student', full_name: userData.fullName || '' } },
   });
+  if (error) throw error;
+
+  const userId = data.user?.id;
+  if (userId) {
+    await supabase.from('users').upsert({
+      id:        userId,
+      email,
+      full_name: userData.fullName || '',
+      role:      userData.role    || 'student',
+      department:userData.department || '',
+    }, { onConflict: 'id' });
+  }
+  return data.user;
 };
 
-export const addItem = async (name, data) => {
-  const ref = await addDoc(makeCollectionRef(name), {
-    ...data,
-    createdAt: serverTimestamp(),
-  });
-  return ref.id;
-};
+// ─── Buildings ───────────────────────────────────────────────────────────────
 
-export const updateItem = async (name, id, data) => {
-  const ref = doc(db, name, id);
-  await updateDoc(ref, data);
-};
+export const subscribeToBuildings = (cb) =>
+  createSubscription('buildings', () => supabase.from('buildings').select('*').order('created_at', { ascending: false }), cb);
 
-export const deleteItem = async (name, id) => {
-  const ref = doc(db, name, id);
-  await deleteDoc(ref);
-};
-
-// Convenience wrappers
-export const subscribeToBuildings = (cb) => subscribeToCollection('buildings', cb);
-export const addBuilding = (data) => addItem('buildings', data);
+export const addBuilding    = (data) => addItem('buildings', data);
 export const updateBuilding = (id, data) => updateItem('buildings', id, data);
 export const deleteBuilding = (id) => deleteItem('buildings', id);
 
-const normalizeReport = (item) => ({
-  ...item,
-  title: item.title || 'Untitled Report',
-  description: item.description || '',
-  category: item.category || 'General',
-  status: item.status || 'open',
-  reporterName: item.reporterName || 'Anonymous',
-  reporterEmail: item.reporterEmail || '',
-  reporterRole: item.reporterRole || 'student',
-  adminResponse: item.adminResponse || '',
-  adminReadAt: item.adminReadAt && typeof item.adminReadAt.toDate === 'function'
-    ? item.adminReadAt.toDate()
-    : item.adminReadAt || null,
-  adminReadBy: item.adminReadBy || '',
-  photoUris: Array.isArray(item.photoUris) ? item.photoUris : [],
-  photoCount: typeof item.photoCount === 'number' ? item.photoCount : Array.isArray(item.photoUris) ? item.photoUris.length : 0,
-});
-
-const normalizeDining = (item) => ({
-  ...item,
-  name: item.name || 'Unnamed Dining Option',
-  category: item.category || item.type || 'Dining',
-  type: item.type || item.category || 'Dining',
-  location: item.location || '',
-  hours: item.hours || '',
-  contact: item.contact || item.phone || '',
-  phone: item.phone || item.contact || '',
-  foodtype: item.foodtype || item.cuisine || '',
-  cuisine: item.cuisine || item.foodtype || '',
-  icon: item.icon || 'restaurant-outline',
-  rating: typeof item.rating === 'number' ? item.rating : Number(item.rating) || 0,
-});
-
-const normalizeLocation = (item) => {
-  const rawCoordinates = item.coordinates || {
-    latitude: item.latitude,
-    longitude: item.longitude,
-  };
-
-  const latitude = typeof rawCoordinates?.latitude === 'number'
-    ? rawCoordinates.latitude
-    : Number.isFinite(Number(rawCoordinates?.latitude))
-      ? Number(rawCoordinates.latitude)
-      : Number.isFinite(Number(item.latitude))
-        ? Number(item.latitude)
-        : undefined;
-
-  const longitude = typeof rawCoordinates?.longitude === 'number'
-    ? rawCoordinates.longitude
-    : Number.isFinite(Number(rawCoordinates?.longitude))
-      ? Number(rawCoordinates.longitude)
-      : Number.isFinite(Number(item.longitude))
-        ? Number(item.longitude)
-        : undefined;
-
-  const coordinates =
-    typeof latitude === 'number' && typeof longitude === 'number'
-      ? { latitude, longitude }
-      : null;
-
-  return {
-    ...item,
-    name: item.name || item.names || item.title || 'Unnamed Location',
-    names: item.names || item.name || item.title || 'Unnamed Location',
-    type: item.type || item.category || 'Location',
-    category: item.category || item.type || 'Location',
-    building: item.building || item.buildingId || '',
-    coordinates,
-    latitude: coordinates?.latitude,
-    longitude: coordinates?.longitude,
-    icon: item.icon || 'location-outline',
-  };
-};
-
-const normalizeAmenity = (item) => {
-  const locationValue = item.location;
-  const coordinates = item.coordinates || (
-    locationValue && typeof locationValue === 'object'
-      ? {
-          latitude: typeof locationValue.latitude === 'number' ? locationValue.latitude : undefined,
-          longitude: typeof locationValue.longitude === 'number' ? locationValue.longitude : undefined,
-        }
-      : null
-  );
-
-  return {
-    ...item,
-    name: item.name || 'Unnamed Amenity',
-    description: item.description || '',
-    icon_name: item.icon_name || item.iconName || 'fitness-outline',
-    coordinates,
-  };
-};
+// ─── Locations ───────────────────────────────────────────────────────────────
 
 export const subscribeToLocations = (cb) =>
-  subscribeToCollection('locations', (items) => cb(items.map(normalizeLocation)));
+  createSubscription('locations', () => supabase.from('locations').select('*').order('created_at', { ascending: false }), cb);
+
 export const addLocation = (data) => addItem('locations', data);
 
-export const addLocationsBatch = async (items) => {
-  if (!Array.isArray(items) || items.length === 0) {
-    return [];
-  }
-
-  const refs = [];
-
-  for (let index = 0; index < items.length; index += 450) {
-    const chunk = items.slice(index, index + 450);
-    const batch = writeBatch(db);
-
-    chunk.forEach((item) => {
-      const ref = doc(collection(db, 'locations'));
-      refs.push(ref.id);
-      batch.set(ref, {
-        ...item,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    });
-
-    await batch.commit();
-  }
-
-  return refs;
+export const addLocationsBatch = async (locations) => {
+  const { error } = await supabase.from('locations').insert(locations);
+  if (error) throw error;
 };
 
 export const updateLocation = (id, data) => updateItem('locations', id, data);
 export const deleteLocation = (id) => deleteItem('locations', id);
 
-export const subscribeToNotifications = (cb) => subscribeToCollection('notifications', cb);
-export const addNotification = (data) => addItem('notifications', data);
+export const getLocation = async (id) => {
+  const { data, error } = await supabase.from('locations').select('*').eq('id', id).single();
+  if (error) return null;
+  return normalizeTimestamps(data);
+};
+
+// ─── Notifications ───────────────────────────────────────────────────────────
+
+export const subscribeToNotifications = (cb) =>
+  createSubscription(
+    'notifications',
+    () => supabase.from('notifications').select('*').order('created_at', { ascending: false }),
+    cb,
+  );
+
+export const addNotification    = (data) => addItem('notifications', data);
 export const updateNotification = (id, data) => updateItem('notifications', id, data);
 export const deleteNotification = (id) => deleteItem('notifications', id);
 
-export const subscribeToUserNotificationReads = (userId, cb) => {
-  if (!userId) {
-    cb({});
-    return () => {};
-  }
+/** Returns an unsubscribe fn; callback receives { notifId: { readAt } } map */
+export const subscribeToUserNotificationReads = (userId, callback) => {
+  if (!userId) { callback({}); return () => {}; }
 
-  return onSnapshot(
-    doc(db, 'users', userId),
-    (snap) => {
-      if (!snap.exists()) {
-        cb({});
-        return;
-      }
-
-      const data = snap.data() || {};
-      cb(normalizeReadEntries(data.notificationReads));
+  return createSubscription(
+    'notification_reads',
+    () => supabase.from('notification_reads').select('notification_id, read_at').eq('user_id', userId),
+    (rows) => {
+      const map = rows.reduce((acc, r) => {
+        acc[r.notification_id] = { readAt: r.read_at ? new Date(r.read_at) : null };
+        return acc;
+      }, {});
+      callback(map);
     },
-    () => cb({})
+    `user_id=eq.${userId}`,
   );
 };
 
 export const markNotificationAsRead = async (userId, notificationId) => {
-  if (!userId || !notificationId) {
-    throw new Error('User ID and notification ID are required');
-  }
-
-  await setDoc(
-    doc(db, 'users', userId),
-    {
-      notificationReads: {
-        [notificationId]: {
-          readAt: serverTimestamp(),
-        },
-      },
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+  await supabase.rpc('mark_notification_read', { p_notification_id: notificationId });
 };
 
-export const subscribeToEvents = (cb) => subscribeToCollection('events', cb);
-export const addEvent = (data) => addItem('events', data);
+// ─── Events ──────────────────────────────────────────────────────────────────
+
+export const subscribeToEvents = (cb) =>
+  createSubscription(
+    'events',
+    () => supabase.from('events').select('*').order('created_at', { ascending: false }),
+    cb,
+  );
+
+export const addEvent    = (data) => addItem('events', data);
 export const updateEvent = (id, data) => updateItem('events', id, data);
 export const deleteEvent = (id) => deleteItem('events', id);
 
-// Dining (stored in the 'dining' collection)
-export const subscribeToDining = (cb) => {
-  return onSnapshot(
-    makeCollectionRef('dining'),
-    (snap) => {
-      const items = snap.docs
-        .map((d) => ({ id: d.id, ...normalizeTimestamps(d.data()) }))
-        .sort((a, b) => {
-          const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+/** Returns { eventId: { createdAt } } map for the user */
+export const subscribeToUserEventInterests = (userId, callback) => {
+  if (!userId) { callback({}); return () => {}; }
 
-          if (bTime !== aTime) return bTime - aTime;
-          return (a.name || '').localeCompare(b.name || '');
-        })
-        .map(normalizeDining);
-
-      cb(items);
+  return createSubscription(
+    'event_interests',
+    () => supabase.from('event_interests').select('event_id, created_at').eq('user_id', userId),
+    (rows) => {
+      const map = rows.reduce((acc, r) => {
+        acc[r.event_id] = { createdAt: r.created_at ? new Date(r.created_at) : null };
+        return acc;
+      }, {});
+      callback(map);
     },
-    (error) => {
-      console.error('subscribeToDining - Error fetching dining records:', error.code, error.message);
-      cb([]);
-    }
+    `user_id=eq.${userId}`,
   );
 };
+
+export const saveUserEventInterest = async (userId, eventId) => {
+  const { error } = await supabase.from('event_interests').upsert({ user_id: userId, event_id: eventId }, { onConflict: 'user_id,event_id' });
+  if (error) throw error;
+};
+
+export const removeUserEventInterest = async (userId, eventId) => {
+  const { error } = await supabase.from('event_interests').delete().eq('user_id', userId).eq('event_id', eventId);
+  if (error) throw error;
+};
+
+// ─── Dining ──────────────────────────────────────────────────────────────────
+
+export const subscribeToDining = (cb) =>
+  createSubscription('dining', () => supabase.from('dining').select('*').order('created_at', { ascending: false }), cb);
 
 export const getDining = async () => {
-  const snap = await getDocs(makeCollectionRef('dining'));
-  const items = snap.docs
-    .map((d) => ({ id: d.id, ...normalizeTimestamps(d.data()) }))
-    .sort((a, b) => {
-      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-
-      if (bTime !== aTime) return bTime - aTime;
-      return (a.name || '').localeCompare(b.name || '');
-    })
-    .map(normalizeDining);
-
-  return items;
+  const { data } = await supabase.from('dining').select('*').order('created_at', { ascending: false });
+  return normRows(data);
 };
 
-export const addDining = async (data) => {
-  const ref = await addDoc(makeCollectionRef('dining'), {
-    ...data,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  return ref.id;
-};
-
-export const updateDining = async (id, data) => {
-  const ref = doc(db, 'dining', id);
-  await updateDoc(ref, {
-    ...data,
-    updatedAt: serverTimestamp(),
-  });
-};
-
+export const addDining    = (data) => addItem('dining', data);
+export const updateDining = (id, data) => updateItem('dining', id, data);
 export const deleteDining = (id) => deleteItem('dining', id);
 
-// Campus rules (stored in the 'rules' collection)
-export const subscribeToCampusRules = (cb) => {
-  return onSnapshot(makeCollectionRef('rules'), (snap) => {
-    const items = snap.docs
-      .map((d) => ({ id: d.id, ...normalizeTimestamps(d.data()) }))
-      .sort((a, b) => {
-        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return bTime - aTime;
-      });
+// ─── Campus Rules ─────────────────────────────────────────────────────────────
 
-    cb(items);
-  }, (error) => {
-    console.error('subscribeToCampusRules - Error fetching rules:', error.code, error.message);
-    cb([]);
-  });
-};
+export const subscribeToCampusRules = (cb) =>
+  createSubscription('campus_rules', () => supabase.from('campus_rules').select('*').order('created_at', { ascending: false }), cb);
 
-export const addCampusRule = async (data) => {
-  const ref = await addDoc(makeCollectionRef('rules'), {
-    ...data,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  return ref.id;
-};
+export const addCampusRule    = (data) => addItem('campus_rules', data);
+export const updateCampusRule = (id, data) => updateItem('campus_rules', id, data);
+export const deleteCampusRule = (id) => deleteItem('campus_rules', id);
 
-export const updateCampusRule = async (id, data) => {
-  const ref = doc(db, 'rules', id);
-  await updateDoc(ref, {
-    ...data,
-    updatedAt: serverTimestamp(),
-  });
-};
+// ─── Favourites ──────────────────────────────────────────────────────────────
 
-export const deleteCampusRule = (id) => deleteItem('rules', id);
-
-// Favourites (stored in the 'favourite' collection)
 export const subscribeToUserFavorites = (userId, callback) => {
-  if (!userId) {
-    callback([]);
-    return () => {};
-  }
+  if (!userId) { callback([]); return () => {}; }
 
-  const q = query(makeCollectionRef('favourite'), where('userId', '==', userId));
-
-  return onSnapshot(
-    q,
-    (snap) => {
-      const items = snap.docs
-        .map((d) => ({ id: d.id, ...normalizeTimestamps(d.data()) }))
-        .sort((a, b) => {
-          const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-          return bTime - aTime;
-        });
-      callback(items);
+  return createSubscription(
+    'favourites',
+    () => supabase.from('favourites').select('*, location:location_id(*)').eq('user_id', userId).order('created_at', { ascending: false }),
+    (rows) => {
+      // Mirror the old shape: { id, userId, locationId, createdAt }
+      callback(rows.map((r) => ({ id: r.id, userId: r.user_id, locationId: r.location_id, createdAt: r.created_at })));
     },
-    (error) => {
-      console.error('subscribeToUserFavorites error:', error?.code, error?.message || error);
-      callback([]);
-    }
+    `user_id=eq.${userId}`,
   );
 };
 
+/** Returns true if added, false if removed */
 export const toggleFavorite = async (userId, locationId) => {
-  if (!userId || !locationId) {
-    throw new Error('Sign in to save favorites.');
-  }
-
-  const q = query(
-    makeCollectionRef('favourite'),
-    where('userId', '==', userId),
-    where('locationId', '==', locationId)
-  );
-  const snap = await getDocs(q);
-
-  if (!snap.empty) {
-    await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
-    return false;
-  }
-
-  await addDoc(makeCollectionRef('favourite'), {
-    userId,
-    locationId,
-    createdAt: serverTimestamp(),
-  });
-  return true;
+  const { data, error } = await supabase.rpc('toggle_favourite', { p_location_id: locationId });
+  if (error) throw error;
+  return data;
 };
 
-export const removeFavorite = (favouriteId) => deleteItem('favourite', favouriteId);
+export const removeFavorite = async (favouriteId) => deleteItem('favourites', favouriteId);
 
-// Issue reports (stored in the 'reports' collection)
-export const addIssueReport = async (data) => {
-  const ref = await addDoc(makeCollectionRef('reports'), {
-    ...data,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  return ref.id;
-};
+// ─── Issue Reports ────────────────────────────────────────────────────────────
 
-export const subscribeToIssueReports = (cb) => {
-  return onSnapshot(
-    query(makeCollectionRef('reports'), orderBy('createdAt', 'desc')),
-    (snap) => {
-      const items = snap.docs.map((d) => ({ id: d.id, ...normalizeTimestamps(d.data()) })).map(normalizeReport);
-      cb(items);
+export const subscribeToIssueReports = (cb) =>
+  createSubscription(
+    'reports',
+    () => supabase.from('reports').select('*').order('created_at', { ascending: false }),
+    (rows) => {
+      // Shim snake_case → camelCase for existing consumer code
+      cb(rows.map((r) => ({
+        ...r,
+        reporterId:    r.reporter_id,
+        reporterName:  r.reporter_name,
+        reporterEmail: r.reporter_email,
+        reporterRole:  r.reporter_role,
+        photoUris:     r.photo_uris || r.photo_urls || [],
+        photoCount:    r.photo_count,
+        adminResponse: r.admin_response,
+        adminReadAt:   r.admin_read_at ? new Date(r.admin_read_at) : null,
+        adminReadBy:   r.admin_read_by,
+      })));
     },
-    (error) => {
-      console.error('subscribeToIssueReports - Error fetching reports:', error.code, error.message);
-      cb([]);
-    }
   );
+
+export const addIssueReport = async (data) => {
+  const payload = {
+    title:          data.title,
+    description:    data.description,
+    category:       data.category,
+    status:         data.status || 'open',
+    priority:       data.priority || 'medium',
+    reporter_id:    data.reporterId,
+    reporter_name:  data.reporterName,
+    reporter_email: data.reporterEmail,
+    reporter_role:  data.reporterRole,
+    photo_uris:     data.photoUris || [],
+    photo_urls:     data.photoUris || [],
+    photo_count:    data.photoCount || 0,
+  };
+  return addItem('reports', payload);
 };
 
 export const updateIssueReport = async (id, data) => {
-  const ref = doc(db, 'reports', id);
-  await updateDoc(ref, {
-    ...data,
-    updatedAt: serverTimestamp(),
-  });
+  const payload = { ...data };
+  // camelCase → snake_case shims
+  if (data.adminResponse  !== undefined) payload.admin_response = data.adminResponse;
+  if (data.adminReadAt    !== undefined) payload.admin_read_at  = data.adminReadAt;
+  if (data.adminReadBy    !== undefined) payload.admin_read_by  = data.adminReadBy;
+  return updateItem('reports', id, payload);
 };
 
 export const deleteIssueReport = (id) => deleteItem('reports', id);
 
-// Amenities (stored in the 'amenities' collection)
-export const subscribeToAmenities = (cb) => {
-  return onSnapshot(
-    makeCollectionRef('amenities'),
-    (snap) => {
-      const items = snap.docs
-        .map((d) => ({ id: d.id, ...normalizeTimestamps(d.data()) }))
-        .map(normalizeAmenity)
-        .sort((a, b) => {
-          const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+// ─── Amenities ───────────────────────────────────────────────────────────────
 
-          if (bTime !== aTime) return bTime - aTime;
-          return (a.name || '').localeCompare(b.name || '');
-        });
+export const subscribeToAmenities = (cb) =>
+  createSubscription('amenities', () => supabase.from('amenities').select('*').order('created_at', { ascending: false }), cb);
 
-      cb(items);
-    },
-    (error) => {
-      console.error('subscribeToAmenities - Error fetching amenities:', error.code, error.message);
-      cb([]);
-    }
+export const subscribeToAmenitiesCount = (cb) =>
+  createSubscription(
+    'amenities',
+    () => supabase.from('amenities').select('id'),
+    (rows) => cb(rows.length),
   );
-};
-
-export const subscribeToAmenitiesCount = (cb) => {
-  return onSnapshot(
-    makeCollectionRef('amenities'),
-    (snap) => {
-      cb(snap.size || 0);
-    },
-    (error) => {
-      console.error('subscribeToAmenitiesCount - Error fetching amenities count:', error.code, error.message);
-      cb(0);
-    }
-  );
-};
 
 export const getAmenities = async () => {
-  const snap = await getDocs(makeCollectionRef('amenities'));
-  return snap.docs
-    .map((d) => ({ id: d.id, ...normalizeTimestamps(d.data()) }))
-    .map(normalizeAmenity)
-    .sort((a, b) => {
-      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-
-      if (bTime !== aTime) return bTime - aTime;
-      return (a.name || '').localeCompare(b.name || '');
-    });
+  const { data } = await supabase.from('amenities').select('*').order('created_at', { ascending: false });
+  return normRows(data);
 };
 
 export const getAmenitiesCount = async () => {
-  const snap = await getDocs(makeCollectionRef('amenities'));
-  return snap.size || 0;
+  const { count } = await supabase.from('amenities').select('id', { count: 'exact', head: true });
+  return count || 0;
 };
 
-export const addAmenity = async (data) => {
-  const ref = doc(makeCollectionRef('amenities'));
-  await setDoc(ref, {
-    ...data,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  return ref.id;
-};
-
-export const updateAmenity = async (id, data) => {
-  const ref = doc(db, 'amenities', id);
-  await updateDoc(ref, {
-    ...data,
-    updatedAt: serverTimestamp(),
-  });
-};
-
+export const addAmenity    = (data) => addItem('amenities', data);
+export const updateAmenity = (id, data) => updateItem('amenities', id, data);
 export const deleteAmenity = (id) => deleteItem('amenities', id);
 
-const normalizeEventInterests = (eventInterests) => {
-  if (!eventInterests || typeof eventInterests !== 'object') return [];
+// ─── Departments ─────────────────────────────────────────────────────────────
 
-  return Object.entries(eventInterests).map(([eventId, interest]) => {
-    const item = interest || {};
-    const savedAt = item.savedAt && typeof item.savedAt.toDate === 'function'
-      ? item.savedAt.toDate()
-      : item.savedAt || null;
-
-    return {
-      eventId,
-      reminderTime: item.reminderTime ?? 0,
-      reminderLabel: item.reminderLabel || 'At Event Time',
-      savedAt,
-    };
-  });
-};
-
-export const subscribeToUserEventInterests = (userId, callback) => {
-  if (!userId) {
-    callback([]);
-    return () => {};
-  }
-
-  const userRef = doc(db, 'users', userId);
-  return onSnapshot(
-    userRef,
-    (snap) => {
-      if (!snap.exists()) {
-        callback([]);
-        return;
-      }
-
-      const data = snap.data() || {};
-      callback(normalizeEventInterests(data.eventInterests));
+export const subscribeToDepartments = (cb) =>
+  createSubscription(
+    'departments',
+    () => supabase.from('departments').select('*').order('created_at', { ascending: false }),
+    (rows) => {
+      // Mirror the old Firestore field names
+      cb(rows.map((r) => ({
+        ...r,
+        availabilityStatus: r.availability_status,
+        operatingHours:     r.operating_hours,
+        imageUrl:           r.image_url,
+      })));
     },
-    () => callback([])
   );
-};
-
-export const saveUserEventInterest = async (userId, eventId, reminder) => {
-  if (!userId || !eventId) {
-    throw new Error('User ID and event ID are required');
-  }
-
-  await setDoc(
-    doc(db, 'users', userId),
-    {
-      eventInterests: {
-        [eventId]: {
-          reminderTime: reminder?.minutes ?? 0,
-          reminderLabel: reminder?.label || 'At Event Time',
-          savedAt: serverTimestamp(),
-        },
-      },
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-};
-
-export const removeUserEventInterest = async (userId, eventId) => {
-  if (!userId || !eventId) {
-    throw new Error('User ID and event ID are required');
-  }
-
-  await updateDoc(doc(db, 'users', userId), {
-    [`eventInterests.${eventId}`]: deleteField(),
-    updatedAt: serverTimestamp(),
-  });
-};
-
-// Departments (stored in the 'departments' collection)
-
-const normalizeDepartment = (item) => ({
-  ...item,
-  name: item.name || 'Unnamed Department',
-  description: item.description || '',
-  category: item.category || 'General',
-  imageUrl: item.imageUrl || '',
-  operatingHours: item.operatingHours || '',
-  availabilityStatus: item.availabilityStatus || 'Open',
-  createdAt: item.createdAt || null,
-  updatedAt: item.updatedAt || null,
-});
-
-export const subscribeToDepartments = (cb) => {
-  return onSnapshot(
-    query(makeCollectionRef('departments'), orderBy('createdAt', 'desc')),
-    (snap) => {
-      const items = snap.docs
-        .map((d) => ({ id: d.id, ...normalizeTimestamps(d.data()) }))
-        .map(normalizeDepartment);
-      cb(items);
-    },
-    (error) => {
-      console.error('subscribeToDepartments - Error:', error.code, error.message);
-      cb([]);
-    }
-  );
-};
 
 export const addDepartment = async (data) => {
-  const ref = await addDoc(makeCollectionRef('departments'), {
-    ...data,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  return ref.id;
+  const payload = {
+    name:                data.name,
+    description:         data.description,
+    category:            data.category,
+    availability_status: data.availabilityStatus || data.availability_status || 'Open',
+    operating_hours:     data.operatingHours     || data.operating_hours,
+    image_url:           data.imageUrl           || data.image_url,
+  };
+  return addItem('departments', payload);
 };
 
 export const updateDepartment = async (id, data) => {
-  const ref = doc(db, 'departments', id);
-  await updateDoc(ref, {
-    ...data,
-    updatedAt: serverTimestamp(),
-  });
+  const payload = { ...data };
+  if (data.availabilityStatus !== undefined) payload.availability_status = data.availabilityStatus;
+  if (data.operatingHours     !== undefined) payload.operating_hours     = data.operatingHours;
+  if (data.imageUrl           !== undefined) payload.image_url           = data.imageUrl;
+  return updateItem('departments', id, payload);
 };
 
 export const deleteDepartment = (id) => deleteItem('departments', id);
-
-// Create user with Firebase Auth + Firestore
-// This function creates a user in Firebase Auth with email/password
-// Then creates a user document in Firestore with the UID as the document ID
-// Password is NOT stored in Firestore (managed by Firebase Auth)
-export const createUserWithAuthAndFirestore = async (email, password, userData) => {
-  try {
-    console.log('createUserWithAuthAndFirestore: Starting...');
-    console.log('createUserWithAuthAndFirestore: Email:', email);
-    console.log('createUserWithAuthAndFirestore: Password length:', password?.length);
-    console.log('createUserWithAuthAndFirestore: User data:', JSON.stringify(userData, null, 2));
-    
-    // Validate inputs
-    if (!email || !password) {
-      throw new Error('Email and password are required');
-    }
-
-    if (password.length < 6) {
-      throw new Error('Password must be at least 6 characters');
-    }
-    
-    console.log('✓ createUserWithAuthAndFirestore: Validation passed');
-    
-    // Step 1: Create user in Firebase Authentication
-    console.log('→ createUserWithAuthAndFirestore: Creating Firebase Auth user...');
-    const secondaryAuth = getSecondaryAuth();
-    const authResult = await createUserWithEmailAndPassword(secondaryAuth, email, password);
-    const uid = authResult.user.uid;
-    console.log('✓ createUserWithAuthAndFirestore: Auth user created with UID:', uid);
-
-    try {
-      await signOut(secondaryAuth);
-    } catch (e) {
-      console.log('createUserWithAuthAndFirestore: secondary auth signOut skipped', e);
-    }
-
-    // Step 2: Create user document in Firestore with UID as document ID
-    console.log('→ createUserWithAuthAndFirestore: Creating Firestore document...');
-    const firestoreData = {
-      ...userData,
-      email: email,
-      createdAt: serverTimestamp(),
-    };
-    
-    console.log('createUserWithAuthAndFirestore: Firestore data:', JSON.stringify(firestoreData, null, 2));
-
-    const userRef = doc(db, 'users', uid);
-    await setDoc(userRef, firestoreData);
-    console.log('✓ createUserWithAuthAndFirestore: Firestore document created successfully');
-
-    return uid;
-  } catch (error) {
-    console.error('✗ createUserWithAuthAndFirestore: Error caught');
-    console.error('Error code:', error.code);
-    console.error('Error message:', error.message);
-    console.error('Full error:', JSON.stringify(error, null, 2));
-    
-    // Better error messages
-    let userMessage = error.message;
-    if (error.code === 'permission-denied') {
-      userMessage = 'Permission denied: Make sure Firestore rules allow admin to create users. Check your firebase.rules file.';
-    }
-    
-    throw new Error(userMessage);
-  }
-}

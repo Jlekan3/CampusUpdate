@@ -23,7 +23,7 @@ import {
   updateAmenity,
   deleteAmenity,
 } from '../../services/databaseService';
-import { GeoPoint } from 'firebase/firestore';
+// GeoPoint not used with Supabase — lat/lng stored as separate columns
 
 const defaultAmenityForm = {
   name: '',
@@ -184,7 +184,8 @@ const ManageAmenitiesScreen = () => {
       };
 
       if (lat !== null && lng !== null) {
-        payload.location = new GeoPoint(lat, lng);
+        payload.latitude  = lat;
+        payload.longitude = lng;
       }
 
       if (editingId) {

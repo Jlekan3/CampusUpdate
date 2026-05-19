@@ -16,8 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../../config/firebase';
+import { uploadDepartmentImage } from '../../services/storageService';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import { useTheme } from '../../context/ThemeContext';
 import {
@@ -118,12 +117,8 @@ const ManageDepartmentsScreen = ({ navigation }) => {
   };
 
   const uploadImage = async (uri) => {
-    const filename = `departments/${Date.now()}_${uri.split('/').pop()}`;
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    const ref = storageRef(storage, filename);
-    await uploadBytes(ref, blob);
-    return getDownloadURL(ref);
+    const filename = uri.split('/').pop() || 'image.jpg';
+    return uploadDepartmentImage(filename, uri);
   };
 
   const handleSave = async () => {

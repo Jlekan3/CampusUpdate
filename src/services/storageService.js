@@ -1,112 +1,91 @@
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { storage } from '../config/firebase';
+import { supabase } from '../config/supabase';
 
-/**
- * Upload location images to Firebase Storage
- * @param {string} locationId - Unique location identifier
- * @param {Array} imageAssets - Array of image objects from ImagePicker
- * @returns {Promise<Array>} - Array of download URLs for uploaded images
- */
-export const uploadLocationImages = async (locationId, imageAssets) => {
-  try {
-    if (!imageAssets || imageAssets.length === 0) {
-      return [];
-    }
+const LOCATIONS_BUCKET   = 'locations';
+const DEPARTMENTS_BUCKET = 'departments';
+const REPORTS_BUCKET     = 'reports';
 
-    const downloadUrls = [];
+// ─── helpers ─────────────────────────────────────────────────────────────────
 
-    for (let i = 0; i < imageAssets.length; i++) {
-      const imageAsset = imageAssets[i];
-      
-      // Convert image to blob
-      const response = await fetch(imageAsset.uri);
-      const blob = await response.blob();
+const getPublicUrl = (bucket, path) =>
+  supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
 
-      // Create storage reference
-      const storageRef = ref(
-        storage,
-        `locations/${locationId}/${Date.now()}_${i}.jpg`
-      );
-
-      // Upload image
-      console.log(`Uploading image ${i + 1}/${imageAssets.length} for location ${locationId}`);
-      await uploadBytes(storageRef, blob);
-
-      // Get download URL
-      const downloadUrl = await getDownloadURL(storageRef);
-      downloadUrls.push(downloadUrl);
-      
-      console.log(`✓ Image ${i + 1} uploaded successfully`);
-    }
-
-    return downloadUrls;
-  } catch (error) {
-    console.error('Error uploading location images:', error);
-    throw new Error(`Failed to upload images: ${error.message}`);
-  }
+const blobFromUri = async (uri) => {
+  const res = await fetch(uri);
+  return res.blob();
 };
 
-/**
- * Delete a location image from Firebase Storage
- * @param {string} imageUrl - Download URL of the image
- * @returns {Promise<void>}
- */
+// ─── Location images ─────────────────────────────────────────────────────────
+
+export const uploadLocationImages = async (locationId, imageAssets) => {
+  const urls = [];
+  for (let i = 0; i < imageAssets.length; i++) {
+    const asset = imageAssets[i];
+    const uri   = asset.uri || asset;
+    const ext   = (uri.split('.').pop() || 'jpg').toLowerCase();
+    const path  = `${locationId}/${Date.now()}_${i}.${ext}`;
+    const blob  = await blobFromUri(uri);
+
+    const { error } = await supabase.storage.from(LOCATIONS_BUCKET).upload(path, blob, {
+      contentType: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+    });
+    if (error) { console.warn('uploadLocationImage:', error.message); continue; }
+    urls.push(getPublicUrl(LOCATIONS_BUCKET, path));
+  }
+  return urls;
+};
+
 export const deleteLocationImage = async (imageUrl) => {
   try {
-    // Extract path from URL
-    const path = decodeURIComponent(
-      imageUrl.split('/o/')[1].split('?')[0]
-    );
-
-    const storageRef = ref(storage, path);
-    await deleteObject(storageRef);
-    console.log('✓ Image deleted successfully');
-  } catch (error) {
-    console.error('Error deleting image:', error);
-    throw new Error(`Failed to delete image: ${error.message}`);
-  }
+    const url  = new URL(imageUrl);
+    const path = url.pathname.split(`/${LOCATIONS_BUCKET}/`)[1];
+    if (path) await supabase.storage.from(LOCATIONS_BUCKET).remove([path]);
+  } catch (_) {}
 };
 
-/**
- * Delete all images for a location
- * @param {string} locationId - Location identifier
- * @returns {Promise<void>}
- */
 export const deleteLocationImages = async (locationId) => {
-  try {
-    // Note: Firebase doesn't support bulk delete easily
-    // This would require listing all files first
-    console.log(`Deleting all images for location ${locationId}`);
-    // Images will be cleaned up when location document is deleted
-  } catch (error) {
-    console.error('Error deleting location images:', error);
-    throw error;
-  }
+  const { data: files } = await supabase.storage.from(LOCATIONS_BUCKET).list(locationId);
+  if (!files?.length) return;
+  await supabase.storage.from(LOCATIONS_BUCKET).remove(files.map((f) => `${locationId}/${f.name}`));
 };
 
-/**
- * Update location images
- * @param {string} locationId - Location identifier
- * @param {Array} newImageAssets - New images to upload
- * @param {Array} imagesToDelete - URLs of images to delete
- * @returns {Promise<Array>} - Updated array of image URLs
- */
-export const updateLocationImages = async (
-  locationId,
-  newImageAssets = [],
-  imagesToDelete = []
-) => {
-  try {
-    // Delete old images
-    for (const imageUrl of imagesToDelete) {
-      await deleteLocationImage(imageUrl);
-    }
+export const updateLocationImages = async (locationId, newImageAssets, imagesToDelete) => {
+  for (const url of (imagesToDelete || [])) await deleteLocationImage(url);
+  return uploadLocationImages(locationId, newImageAssets || []);
+};
 
-    // Upload new images
-    const newUrls = await uploadLocationImages(locationId, newImageAssets);
-    return newUrls;
-  } catch (error) {
-    console.error('Error updating location images:', error);
-    throw error;
-  }
+// ─── Department images ────────────────────────────────────────────────────────
+
+export const uploadDepartmentImage = async (filename, uri) => {
+  const ext  = (uri.split('.').pop() || 'jpg').toLowerCase();
+  const path = `${Date.now()}_${filename}`;
+  const blob = await blobFromUri(uri);
+
+  const { data, error } = await supabase.storage.from(DEPARTMENTS_BUCKET).upload(path, blob, {
+    contentType: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+    upsert: true,
+  });
+  if (error) throw error;
+  return getPublicUrl(DEPARTMENTS_BUCKET, path);
+};
+
+export const deleteDepartmentImage = async (imageUrl) => {
+  try {
+    const url  = new URL(imageUrl);
+    const path = url.pathname.split(`/${DEPARTMENTS_BUCKET}/`)[1];
+    if (path) await supabase.storage.from(DEPARTMENTS_BUCKET).remove([path]);
+  } catch (_) {}
+};
+
+// ─── Report photos ────────────────────────────────────────────────────────────
+
+export const uploadReportPhoto = async (userId, uri) => {
+  const ext  = (uri.split('.').pop() || 'jpg').toLowerCase();
+  const path = `${userId}/${Date.now()}.${ext}`;
+  const blob = await blobFromUri(uri);
+
+  const { error } = await supabase.storage.from(REPORTS_BUCKET).upload(path, blob, {
+    contentType: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+  });
+  if (error) throw error;
+  return getPublicUrl(REPORTS_BUCKET, path);
 };

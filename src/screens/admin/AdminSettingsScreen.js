@@ -12,14 +12,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  updatePassword,
-  updateProfile,
-  EmailAuthProvider,
-  reauthenticateWithCredential,
-} from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { auth } from '../../config/firebase';
+import { supabase } from '../../config/supabase';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -30,7 +24,7 @@ const AdminSettingsScreen = ({ navigation }) => {
   const { colors, isDarkMode, toggleDarkMode } = useTheme();
   const { user, logout } = useAuth();
 
-  const [displayName, setDisplayName] = useState(user?.displayName || '');
+  const [displayName, setDisplayName] = useState(user?.user_metadata?.full_name || user?.email?.split('@')[0] || '');
   const [savingProfile, setSavingProfile] = useState(false);
 
   const [currentPwd, setCurrentPwd] = useState('');
@@ -61,7 +55,11 @@ const AdminSettingsScreen = ({ navigation }) => {
     if (!displayName.trim()) { Alert.alert('Validation', 'Display name cannot be empty.'); return; }
     setSavingProfile(true);
     try {
-      await updateProfile(auth.currentUser, { displayName: displayName.trim() });
+      const { error } = await supabase.auth.updateUser({
+        data: { full_name: displayName.trim(), display_name: displayName.trim() },
+      });
+      if (error) throw error;
+      await supabase.from('users').update({ full_name: displayName.trim(), display_name: displayName.trim() }).eq('id', user.id);
       Alert.alert('Success', 'Profile updated.');
     } catch (e) {
       Alert.alert('Error', e.message || 'Failed to update profile.');
@@ -76,19 +74,18 @@ const AdminSettingsScreen = ({ navigation }) => {
     if (newPwd !== confirmPwd) { Alert.alert('Validation', 'New passwords do not match.'); return; }
     setSavingPwd(true);
     try {
-      const credential = EmailAuthProvider.credential(user.email, currentPwd);
-      await reauthenticateWithCredential(auth.currentUser, credential);
-      await updatePassword(auth.currentUser, newPwd);
-      setCurrentPwd('');
-      setNewPwd('');
-      setConfirmPwd('');
+      // Re-authenticate by signing in again (Supabase equivalent of reauthenticate)
+      const { error: reAuthError } = await supabase.auth.signInWithPassword({
+        email: user.email, password: currentPwd,
+      });
+      if (reAuthError) { Alert.alert('Error', 'Current password is incorrect.'); return; }
+
+      const { error } = await supabase.auth.updateUser({ password: newPwd });
+      if (error) throw error;
+      setCurrentPwd(''); setNewPwd(''); setConfirmPwd('');
       Alert.alert('Success', 'Password changed successfully.');
     } catch (e) {
-      if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
-        Alert.alert('Error', 'Current password is incorrect.');
-      } else {
-        Alert.alert('Error', e.message || 'Failed to change password.');
-      }
+      Alert.alert('Error', e.message || 'Failed to change password.');
     } finally {
       setSavingPwd(false);
     }
@@ -128,7 +125,7 @@ const AdminSettingsScreen = ({ navigation }) => {
             <Text style={styles.heroSub}>{user?.email || ''}</Text>
           </View>
           <View style={[styles.avatarCircle, { backgroundColor: '#C5A047' }]}>
-            <Text style={styles.avatarText}>{(user?.displayName || user?.email || 'A')[0].toUpperCase()}</Text>
+            <Text style={styles.avatarText}>{(user?.user_metadata?.full_name || user?.email || 'A')[0].toUpperCase()}</Text>
           </View>
         </View>
       </View>
