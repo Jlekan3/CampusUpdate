@@ -29,14 +29,14 @@ const FavoritesScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    if (!user?.uid || user?.isAnonymous) {
+    if (!user?.id || user?.isAnonymous) {
       setFavorites([]);
       setLoading(false);
       return undefined;
     }
 
     setLoading(true);
-    const unsubFav = subscribeToUserFavorites(user.uid, (items) => {
+    const unsubFav = subscribeToUserFavorites(user.id, (items) => {
       setFavorites(items || []);
       setLoading(false);
       setRefreshing(false);
@@ -52,7 +52,7 @@ const FavoritesScreen = ({ navigation }) => {
         // ignore
       }
     };
-  }, [user?.uid]);
+  }, [user?.id]);
 
   const locationMap = useMemo(() => {
     return (locations || []).reduce((acc, loc) => {
@@ -105,7 +105,7 @@ const FavoritesScreen = ({ navigation }) => {
     setTimeout(() => setRefreshing(false), 600);
   };
 
-  if (!user?.uid || user?.isAnonymous) {
+  if (!user?.id || user?.isAnonymous) {
     return (
       <ScreenWrapper backgroundColor="#F3F8FF" statusBarStyle="dark-content">
         <View style={styles.container}>

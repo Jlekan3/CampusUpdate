@@ -32,7 +32,7 @@ const StaffTabs = () => {
 
   React.useEffect(() => {
     if (!user?.uid) { setReadMap({}); return; }
-    const unsub = subscribeToUserNotificationReads(user.uid, (e) => setReadMap(e || {}));
+    const unsub = subscribeToUserNotificationReads(user.id, (e) => setReadMap(e || {}));
     return () => { try { unsub?.(); } catch (_) {} };
   }, [user?.uid]);
 

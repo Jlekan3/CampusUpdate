@@ -57,12 +57,12 @@ const LocationDetailsScreen = ({ navigation, route }) => {
   const resolvedLocationId = routeId || routeLocation?.id || location?.id;
 
   useEffect(() => {
-    if (!user?.uid) {
+    if (!user?.id) {
       setIsFavorite(false);
       return undefined;
     }
 
-    const unsubscribe = subscribeToUserFavorites(user.uid, (items) => {
+    const unsubscribe = subscribeToUserFavorites(user.id, (items) => {
       const saved = (items || []).some((item) => item.locationId === resolvedLocationId);
       setIsFavorite(saved);
     });
@@ -74,7 +74,7 @@ const LocationDetailsScreen = ({ navigation, route }) => {
         // ignore
       }
     };
-  }, [user?.uid, resolvedLocationId]);
+  }, [user?.id, resolvedLocationId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -189,7 +189,7 @@ const LocationDetailsScreen = ({ navigation, route }) => {
   };
 
   const handleToggleFavorite = async () => {
-    if (!user?.uid) {
+    if (!user?.id) {
       Alert.alert('Sign in required', 'Log in to save locations to your favorites.');
       return;
     }
@@ -201,7 +201,7 @@ const LocationDetailsScreen = ({ navigation, route }) => {
 
     setFavoriteBusy(true);
     try {
-      const saved = await toggleFavorite(user.uid, resolvedLocationId);
+      const saved = await toggleFavorite(user.id, resolvedLocationId);
       setIsFavorite(saved);
     } catch (error) {
       Alert.alert('Error', error?.message || 'Could not update favorite.');

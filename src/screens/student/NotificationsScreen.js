@@ -20,12 +20,12 @@ const NotificationsScreen = ({ navigation }) => {
   const [filterMode, setFilterMode] = useState('all');
 
   useEffect(() => {
-    if (!user?.uid) {
+    if (!user?.id) {
       setReadMap({});
       return undefined;
     }
 
-    const unsubscribe = subscribeToUserNotificationReads(user.uid, (entries) => {
+    const unsubscribe = subscribeToUserNotificationReads(user.id, (entries) => {
       setReadMap(entries || {});
     });
 
@@ -36,10 +36,10 @@ const NotificationsScreen = ({ navigation }) => {
         // ignore
       }
     };
-  }, [user?.uid]);
+  }, [user?.id]);
 
   const visibleNotifications = useMemo(() => {
-    const userId = user?.uid;
+    const userId = user?.id;
     const staffRoles = [USER_ROLES.ADMIN, USER_ROLES.FACULTY];
 
     return notifications.filter((item) => {
@@ -62,7 +62,7 @@ const NotificationsScreen = ({ navigation }) => {
 
       return true;
     });
-  }, [notifications, user?.uid, userRole]);
+  }, [notifications, user?.id, userRole]);
 
   const unreadNotificationCount = useMemo(
     () => visibleNotifications.filter((item) => !readMap[item.id]?.readAt).length,
@@ -95,14 +95,14 @@ const NotificationsScreen = ({ navigation }) => {
   }, [filterMode, readMap, searchQuery, visibleNotifications]);
 
   const handleMarkAsRead = async (notificationId) => {
-    if (!user?.uid || !notificationId) return;
+    if (!user?.id || !notificationId) return;
 
     try {
       setReadMap((current) => ({
         ...current,
         [notificationId]: { readAt: new Date() },
       }));
-      await markNotificationAsRead(user.uid, notificationId);
+      await markNotificationAsRead(user.id, notificationId);
     } catch (error) {
       setReadMap((current) => {
         const next = { ...current };
@@ -245,7 +245,7 @@ const NotificationsScreen = ({ navigation }) => {
                   ) : null}
 
                   <View style={styles.itemFooter}>
-                    {!isRead && user?.uid ? (
+                    {!isRead && user?.id ? (
                       <TouchableOpacity
                         style={styles.markReadButton}
                         onPress={() => handleMarkAsRead(item.id)}

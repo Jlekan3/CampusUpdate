@@ -35,7 +35,7 @@ const StudentTabs = () => {
       return undefined;
     }
 
-    const unsubscribe = subscribeToUserNotificationReads(user.uid, (entries) => {
+    const unsubscribe = subscribeToUserNotificationReads(user.id, (entries) => {
       setReadMap(entries || {});
     });
 

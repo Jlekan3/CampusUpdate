@@ -80,14 +80,14 @@ const CampusEventsScreen = () => {
   };
 
   useEffect(() => {
-    if (!user?.uid) {
+    if (!user?.id) {
       setInterestedEvents([]);
       setInterestsLoading(false);
       return;
     }
 
     setInterestsLoading(true);
-    const unsubscribe = subscribeToUserEventInterests(user.uid, (items) => {
+    const unsubscribe = subscribeToUserEventInterests(user.id, (items) => {
       setInterestedEvents(items);
       setInterestsLoading(false);
     });
@@ -99,7 +99,7 @@ const CampusEventsScreen = () => {
         // ignore unsubscribe errors
       }
     };
-  }, [user?.uid]);
+  }, [user?.id]);
 
   const handleInterestedClick = (event) => {
     if (isEventInterested(event.id)) {
@@ -129,8 +129,8 @@ const CampusEventsScreen = () => {
       };
 
       try {
-        if (user?.uid) {
-          await saveUserEventInterest(user.uid, selectedEvent.id, selectedReminder);
+        if (user?.id) {
+          await saveUserEventInterest(user.id, selectedEvent.id, selectedReminder);
         } else {
           setInterestedEvents((prevInterestedEvents) => [
             ...prevInterestedEvents.filter((e) => e.eventId !== selectedEvent.id),
@@ -152,8 +152,8 @@ const CampusEventsScreen = () => {
   const handleRemoveInterest = async () => {
     if (selectedEvent) {
       try {
-        if (user?.uid) {
-          await removeUserEventInterest(user.uid, selectedEvent.id);
+        if (user?.id) {
+          await removeUserEventInterest(user.id, selectedEvent.id);
         } else {
           setInterestedEvents((prevInterestedEvents) =>
             prevInterestedEvents.filter((e) => e.eventId !== selectedEvent.id)

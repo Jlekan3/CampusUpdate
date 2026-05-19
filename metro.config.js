@@ -1,12 +1,12 @@
 const { getDefaultConfig } = require('expo/metro-config');
 
-/**
- * Use Expo's default Metro configuration for all platforms.
- *
- * Expo already handles web vs native resolution (including react-native-web),
- * and using custom resolver aliases here can break the native bundle when
- * running in Expo Go (e.g., requireNativeModule errors).
- */
 const config = getDefaultConfig(__dirname);
+
+// @supabase/supabase-js uses a CJS/ESM hybrid package.  Metro's
+// package-exports resolver (enabled by default in RN ≥ 0.73) picks the
+// ESM-only entry point which Hermes cannot parse, producing:
+//   ReferenceError: Property 'auth' doesn't exist
+// Disabling it lets Metro fall back to the classic main/index resolution.
+config.resolver.unstable_enablePackageExports = false;
 
 module.exports = config;
