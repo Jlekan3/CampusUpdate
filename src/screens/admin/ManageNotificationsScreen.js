@@ -253,7 +253,7 @@ const ManageNotificationsScreen = ({ navigation }) => {
         <View style={styles.headerRow}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => navigation.navigate('Dashboard')}
+            onPress={() => navigation.goBack()}
             activeOpacity={0.8}
           >
             <Ionicons name="arrow-back" size={22} color={COLORS.text} />

@@ -101,7 +101,7 @@ const ManageBuildingsScreen = ({ navigation }) => {
           <View style={styles.heroTopRow}>
             <TouchableOpacity
               style={styles.backButton}
-              onPress={() => navigation.navigate('Dashboard')}
+              onPress={() => navigation.goBack()}
               activeOpacity={0.8}
             >
               <Ionicons name="arrow-back" size={20} color={COLORS.white} />

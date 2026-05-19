@@ -285,7 +285,7 @@ const ManageReportsScreen = ({ navigation }) => {
         <View style={styles.unauthorizedContainer}>
           <Text style={styles.unauthorizedTitle}>Not authorized</Text>
           <Text style={styles.unauthorizedText}>You do not have permission to access the report inbox.</Text>
-          <CustomButton title="Back to Dashboard" onPress={() => navigation.navigate('Dashboard')} variant="outline" />
+          <CustomButton title="Back to Dashboard" onPress={() => navigation.goBack()} variant="outline" />
         </View>
       </ScreenWrapper>
     );
