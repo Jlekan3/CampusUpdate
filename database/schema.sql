@@ -436,9 +436,7 @@ VALUES
   ('profiles',    'profiles',    true,  5242880,  ARRAY['image/jpeg','image/png','image/webp'])
 ON CONFLICT (id) DO NOTHING;
 
--- Storage RLS (must enable RLS on storage.objects first)
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
-
+-- Storage RLS  (storage.objects already has RLS enabled by Supabase)
 CREATE POLICY "locations_public_read"  ON storage.objects FOR SELECT USING (bucket_id = 'locations');
 CREATE POLICY "locations_admin_insert" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'locations' AND is_admin());
 CREATE POLICY "locations_admin_delete" ON storage.objects FOR DELETE USING (bucket_id = 'locations' AND is_admin());
