@@ -1,18 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
-  Animated,
-  Easing,
-  FlatList,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+  Alert, Animated, Easing, FlatList, LayoutAnimation, Modal,
+  Platform, ScrollView, StyleSheet, Switch, Text, TextInput,
+  TouchableOpacity, View,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as XLSX from 'xlsx';
@@ -25,161 +15,108 @@ import {
   deleteCampusRule,
 } from '../../services/databaseService';
 
-// ── Import helpers ────────────────────────────────────────────────────────────
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const CHARCOAL = '#1F2937';
+const DARK     = '#111827';
+const SLATE    = '#374151';
+const MUTED    = '#6B7280';
+const LIGHT    = '#9CA3AF';
+const BORDER   = '#E5E7EB';
+const BG       = '#F9FAFB';
+const SURFACE  = '#FFFFFF';
+const GOLD     = '#C5A047';
 
-// Strip spaces / underscores / hyphens / dots for loose matching
-const normalise = (s) => String(s ?? '').toLowerCase().replace(/[\s_\-.]/g, '');
+// ── Filter chip colors per category ──────────────────────────────────────────
+const CHIP = {
+  All:                { bg: CHARCOAL,  text: '#FFFFFF', border: CHARCOAL  },
+  Academic:           { bg: '#EFF6FF', text: '#2563EB', border: '#BFDBFE' },
+  Residential:        { bg: '#F5F3FF', text: '#7C3AED', border: '#DDD6FE' },
+  'Traffic & Parking':{ bg: '#FFFBEB', text: '#D97706', border: '#FDE68A' },
+  'Code of Conduct':  { bg: '#ECFDF5', text: '#059669', border: '#A7F3D0' },
+};
 
-// Extract candidate names from a header cell.
-// Handles "Display Name (snake_case)" templates by pulling out the
-// canonical name from inside the parentheses first.
+// ── Severity config ───────────────────────────────────────────────────────────
+const SEV = {
+  info:     { label: 'Info',     color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE', icon: 'information-circle-outline' },
+  warning:  { label: 'Warning', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A', icon: 'warning-outline'            },
+  critical: { label: 'Critical',color: '#DC2626', bg: '#FEF2F2', border: '#FECACA', icon: 'alert-circle-outline'       },
+};
+
+const CATEGORIES = ['Academic', 'Residential', 'Traffic & Parking', 'Code of Conduct'];
+const EMPTY = { title: '', description: '', category: 'Academic', severity: 'info', is_active: true };
+
+// ── Import helpers ─────────────────────────────────────────────────────────────
+const normalise         = (s) => String(s ?? '').toLowerCase().replace(/[\s_\-.]/g, '');
 const extractHeaderKeys = (cell) => {
   const raw = String(cell ?? '');
   const keys = [];
-  const parenMatches = [...raw.matchAll(/\(([^)]+)\)/g)];
-  parenMatches.forEach((m) => keys.push(m[1].trim()));   // e.g. "title", "phone_number"
-  keys.push(raw);                                         // full string fallback
-  const beforeParen = raw.split('(')[0].trim();
-  if (beforeParen && beforeParen !== raw) keys.push(beforeParen); // "Title"
+  [...raw.matchAll(/\(([^)]+)\)/g)].forEach((m) => keys.push(m[1].trim()));
+  keys.push(raw);
+  const bp = raw.split('(')[0].trim();
+  if (bp && bp !== raw) keys.push(bp);
   return keys;
 };
-
-// Find the header key in a set of raw header strings (handles paren format)
 const findCol = (headers, keys) => {
-  for (const header of headers) {
-    const candidates = extractHeaderKeys(header);
-    for (const cand of candidates) {
-      for (const k of keys) {
-        if (normalise(cand) === normalise(k)) return header;
-      }
-    }
-  }
+  for (const h of headers) for (const c of extractHeaderKeys(h)) for (const k of keys)
+    if (normalise(c) === normalise(k)) return h;
   return null;
 };
-
-// Smart sheet parser: skips title / instruction rows, finds the real header row,
-// then returns objects keyed by those headers.
 const smartParseSheet = (data, knownColMap) => {
-  const workbook  = XLSX.read(data, { type: 'array' });
-  const sheet     = workbook.Sheets[workbook.SheetNames[0]];
-  const raw       = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-  if (!raw.length) return [];
-
-  // Collect all normalised aliases from the col map
+  const wb  = XLSX.read(data, { type: 'array' });
+  const raw = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+  if (!raw.length) return { rows: [], headerIdx: 0 };
   const allKnown = Object.values(knownColMap).flat().map(normalise);
-
-  // The header row is the first row where ≥2 cells match a known alias
-  // (after extracting parenthesised names). Scans up to row 10.
   let headerIdx = 0;
   for (let i = 0; i < Math.min(raw.length, 10); i++) {
-    const rowCandidates = (raw[i] || []).flatMap((c) => extractHeaderKeys(String(c))).map(normalise);
-    const hits = allKnown.filter((k) => rowCandidates.includes(k)).length;
-    if (hits >= 2) { headerIdx = i; break; }
+    const cands = (raw[i] || []).flatMap((c) => extractHeaderKeys(String(c))).map(normalise);
+    if (allKnown.filter((k) => cands.includes(k)).length >= 2) { headerIdx = i; break; }
   }
-
   const headerRow = (raw[headerIdx] || []).map(String);
-  const dataRows  = raw.slice(headerIdx + 1).filter((r) => r.some((c) => String(c).trim() !== ''));
-  const rows      = dataRows.map((row) => {
-    const obj = {};
-    headerRow.forEach((key, i) => { obj[key] = row[i] ?? ''; });
-    return obj;
-  });
+  const rows = raw.slice(headerIdx + 1)
+    .filter((r) => r.some((c) => String(c).trim() !== ''))
+    .map((row) => { const o = {}; headerRow.forEach((k, i) => { o[k] = row[i] ?? ''; }); return o; });
   return { rows, headerIdx };
 };
-
 const RULES_COL_MAP = {
-  title:       ['title', 'name', 'rule'],
-  description: ['description', 'desc', 'detail', 'content'],
-  category:    ['category', 'cat', 'type', 'section'],
-  severity:    ['severity', 'level', 'priority', 'importance'],
-  is_active:   ['isactive', 'active', 'live', 'enabled', 'published', 'isactive'],
+  title: ['title','name','rule'], description: ['description','desc','detail','content'],
+  category: ['category','cat','type'], severity: ['severity','level','priority'],
+  is_active: ['isactive','active','live','enabled','published'],
 };
-
-const VALID_CATEGORIES = ['Academic', 'Residential', 'Traffic & Parking', 'Code of Conduct'];
-const VALID_SEVERITIES = ['info', 'warning', 'critical'];
-
-const parseBool = (v) => {
-  if (typeof v === 'boolean') return v;
-  return !['false', '0', 'no', 'off', 'inactive', 'hidden'].includes(String(v).toLowerCase().trim());
-};
-
+const VALID_SEVS = ['info', 'warning', 'critical'];
+const parseBool = (v) => typeof v === 'boolean' ? v : !['false','0','no','off','inactive'].includes(String(v).toLowerCase().trim());
 const parseRulesSheet = (rows, headerIdx = 0) => {
-  const valid = []; const errors = [];
+  const valid = [], errors = [];
   rows.forEach((row, idx) => {
-    const headers = Object.keys(row);
-    const get = (keys) => {
-      const col = findCol(headers, keys);
-      return col ? String(row[col] ?? '').trim() : '';
-    };
-    const title       = get(RULES_COL_MAP.title);
-    const description = get(RULES_COL_MAP.description);
-    const category    = get(RULES_COL_MAP.category);
-    const severity    = get(RULES_COL_MAP.severity).toLowerCase();
-    const is_active   = parseBool(get(RULES_COL_MAP.is_active) || 'true');
-
-    const rowErrors = [];
-    if (!title)                                              rowErrors.push('title required');
-    if (!description)                                        rowErrors.push('description required');
-    if (category && !VALID_CATEGORIES.includes(category))   rowErrors.push(`invalid category "${category}"`);
-    if (severity && !VALID_SEVERITIES.includes(severity))   rowErrors.push(`invalid severity "${severity}"`);
-
-    if (rowErrors.length) {
-      errors.push({ row: idx + headerIdx + 2, reason: rowErrors.join(', ') });
-    } else {
-      valid.push({
-        title,
-        description,
-        category:  VALID_CATEGORIES.includes(category) ? category : 'Academic',
-        severity:  VALID_SEVERITIES.includes(severity) ? severity : 'info',
-        is_active,
-      });
-    }
+    const hs = Object.keys(row), get = (k) => { const c = findCol(hs, k); return c ? String(row[c] ?? '').trim() : ''; };
+    const title = get(RULES_COL_MAP.title), desc = get(RULES_COL_MAP.description);
+    const cat = get(RULES_COL_MAP.category), sev = get(RULES_COL_MAP.severity).toLowerCase();
+    const rowErr = [];
+    if (!title) rowErr.push('title required');
+    if (!desc)  rowErr.push('description required');
+    if (sev && !VALID_SEVS.includes(sev)) rowErr.push(`invalid severity "${sev}"`);
+    if (rowErr.length) { errors.push({ row: headerIdx + idx + 2, reason: rowErr.join(', ') }); return; }
+    valid.push({ title, description: desc, category: CATEGORIES.includes(cat) ? cat : 'Academic',
+      severity: VALID_SEVS.includes(sev) ? sev : 'info', is_active: parseBool(get(RULES_COL_MAP.is_active) || 'true') });
   });
   return { valid, errors };
 };
 
-// ── Brand tokens ─────────────────────────────────────────────────────────────
-const NAVY = '#1A365D';
-const GOLD = '#C5A047';
-const BG   = '#F8F9FA';
-
-// ── Severity config ───────────────────────────────────────────────────────────
-const SEV = {
-  info:     { label: 'Info',     color: '#2563EB', bg: '#DBEAFE', ring: '#93C5FD', icon: 'information-circle-outline' },
-  warning:  { label: 'Warning', color: '#D97706', bg: '#FEF3C7', ring: '#FCD34D', icon: 'warning-outline'            },
-  critical: { label: 'Critical',color: '#DC2626', bg: '#FEE2E2', ring: '#FCA5A5', icon: 'alert-circle-outline'       },
-};
-
-// ── Category options ──────────────────────────────────────────────────────────
-const CATEGORIES = ['Academic', 'Residential', 'Traffic & Parking', 'Code of Conduct'];
-
-// ── Blank form ────────────────────────────────────────────────────────────────
-const EMPTY = {
-  title:       '',
-  description: '',
-  category:    'Academic',
-  severity:    'info',
-  is_active:   true,
-};
-
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ManageCampusRulesScreen({ navigation }) {
-  const [rules,     setRules]     = useState([]);
-  const [showModal, setShowModal] = useState(false);
-  const [form,      setForm]      = useState(EMPTY);
-  const [editingId, setEditingId] = useState(null);
-  const [saving,    setSaving]    = useState(false);
-  const [filterCat, setFilterCat] = useState('All');
-  const [search,    setSearch]    = useState('');
-  const [errors,    setErrors]    = useState({});
-
-  // Import state
+  const [rules,          setRules]          = useState([]);
+  const [showModal,      setShowModal]      = useState(false);
+  const [showActionSheet,setShowActionSheet]= useState(false);
+  const [form,           setForm]           = useState(EMPTY);
+  const [editingId,      setEditingId]      = useState(null);
+  const [saving,         setSaving]         = useState(false);
+  const [filterCat,      setFilterCat]      = useState('All');
+  const [search,         setSearch]         = useState('');
+  const [errors,         setErrors]         = useState({});
   const [showImport,     setShowImport]     = useState(false);
   const [importPreview,  setImportPreview]  = useState({ valid: [], errors: [] });
   const [importing,      setImporting]      = useState(false);
   const [importFileName, setImportFileName] = useState('');
 
-  // Shake animation refs for invalid fields
   const shakeTitle = useRef(new Animated.Value(0)).current;
   const shakeDesc  = useRef(new Animated.Value(0)).current;
 
@@ -188,192 +125,121 @@ export default function ManageCampusRulesScreen({ navigation }) {
     return () => { try { unsub?.(); } catch (_) {} };
   }, []);
 
-  // ── Filtered list ───────────────────────────────────────────────────────────
   const displayed = useMemo(() => {
     let items = filterCat === 'All' ? rules : rules.filter((r) => r.category === filterCat);
-    const q   = search.trim().toLowerCase();
+    const q = search.trim().toLowerCase();
     if (q) items = items.filter((r) => (r.title + r.description).toLowerCase().includes(q));
     return items;
   }, [rules, filterCat, search]);
 
-  // ── Shake helper ────────────────────────────────────────────────────────────
-  const shake = (anim) => {
-    Animated.sequence([
-      Animated.timing(anim, { toValue: 8,  duration: 60, useNativeDriver: true, easing: Easing.linear }),
-      Animated.timing(anim, { toValue: -8, duration: 60, useNativeDriver: true, easing: Easing.linear }),
-      Animated.timing(anim, { toValue: 6,  duration: 50, useNativeDriver: true, easing: Easing.linear }),
-      Animated.timing(anim, { toValue: -6, duration: 50, useNativeDriver: true, easing: Easing.linear }),
-      Animated.timing(anim, { toValue: 0,  duration: 40, useNativeDriver: true, easing: Easing.linear }),
-    ]).start();
-  };
+  const shake = (anim) => Animated.sequence([
+    Animated.timing(anim, { toValue: 8,  duration: 55, useNativeDriver: true, easing: Easing.linear }),
+    Animated.timing(anim, { toValue: -8, duration: 55, useNativeDriver: true, easing: Easing.linear }),
+    Animated.timing(anim, { toValue: 4,  duration: 45, useNativeDriver: true, easing: Easing.linear }),
+    Animated.timing(anim, { toValue: 0,  duration: 35, useNativeDriver: true, easing: Easing.linear }),
+  ]).start();
 
-  // ── Form helpers ────────────────────────────────────────────────────────────
-  const set = (key, value) => {
-    setForm((p) => ({ ...p, [key]: value }));
-    if (errors[key]) setErrors((p) => ({ ...p, [key]: null }));
-  };
-
-  const openAdd = () => {
-    setForm(EMPTY); setEditingId(null); setErrors({}); setShowModal(true);
-  };
-
+  const set = (k, v) => { setForm((p) => ({ ...p, [k]: v })); if (errors[k]) setErrors((p) => ({ ...p, [k]: null })); };
+  const openAdd  = () => { setForm(EMPTY); setEditingId(null); setErrors({}); setShowModal(true); };
   const openEdit = (rule) => {
-    setForm({
-      title:       rule.title       || '',
-      description: rule.description || '',
-      category:    rule.category    || 'Academic',
-      severity:    rule.severity    || 'info',
-      is_active:   rule.is_active !== false,
-    });
-    setEditingId(rule.id);
-    setErrors({});
-    setShowModal(true);
+    setForm({ title: rule.title||'', description: rule.description||'', category: rule.category||'Academic',
+      severity: rule.severity||'info', is_active: rule.is_active !== false });
+    setEditingId(rule.id); setErrors({}); setShowModal(true);
   };
 
-  // ── Validation ──────────────────────────────────────────────────────────────
   const validate = () => {
-    const errs = {};
-    if (!form.title.trim())       { errs.title       = 'Title is required';       shake(shakeTitle); }
-    if (!form.description.trim()) { errs.description = 'Description is required'; shake(shakeDesc);  }
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
+    const e = {};
+    if (!form.title.trim())       { e.title       = 'Title is required';       shake(shakeTitle); }
+    if (!form.description.trim()) { e.description = 'Description is required'; shake(shakeDesc);  }
+    setErrors(e); return Object.keys(e).length === 0;
   };
 
-  // ── Submit ──────────────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!validate()) return;
     setSaving(true);
-
-    const payload = {
-      title:       form.title.trim(),
-      description: form.description.trim(),
-      category:    form.category,
-      severity:    form.severity,
-      is_active:   form.is_active,
-    };
-
-    // Required by spec: log submission payload
+    const payload = { title: form.title.trim(), description: form.description.trim(),
+      category: form.category, severity: form.severity, is_active: form.is_active };
     console.log('[ManageCampusRulesScreen] Submission payload:', JSON.stringify(payload, null, 2));
-
     try {
-      if (editingId) {
-        await updateCampusRule(editingId, payload);
-        console.log('[ManageCampusRulesScreen] ✓ Rule updated:', editingId);
-      } else {
-        const newId = await addCampusRule(payload);
-        console.log('[ManageCampusRulesScreen] ✓ Rule created:', newId);
-      }
+      editingId ? await updateCampusRule(editingId, payload) : await addCampusRule(payload);
       setShowModal(false);
-    } catch (err) {
-      console.error('[ManageCampusRulesScreen] ✗ Save failed:', err?.message);
-      Alert.alert('Error', err?.message || 'Could not save rule.');
-    } finally {
-      setSaving(false);
-    }
+    } catch (err) { Alert.alert('Error', err?.message || 'Could not save.'); }
+    finally { setSaving(false); }
   };
 
-  // ── Delete ──────────────────────────────────────────────────────────────────
   const handleDelete = (rule) => {
-    Alert.alert(
-      'Delete Rule',
-      `Remove "${rule.title}"? This cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete', style: 'destructive',
-          onPress: async () => {
-            try { await deleteCampusRule(rule.id); }
-            catch (err) { Alert.alert('Error', err?.message || 'Could not delete.'); }
-          },
-        },
-      ]
-    );
+    Alert.alert('Delete Rule', `Remove "${rule.title}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        try { await deleteCampusRule(rule.id); } catch (err) { Alert.alert('Error', err?.message); }
+      }},
+    ]);
   };
 
-  // ── Pick & parse file ──────────────────────────────────────────────────────
   const handlePickFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/vnd.ms-excel',
-               'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-               'text/csv', 'text/comma-separated-values', '*/*'],
+        type: ['application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','text/csv','*/*'],
         copyToCacheDirectory: true,
       });
       if (result.canceled) return;
       const file = result.assets[0];
       setImportFileName(file.name || 'file');
-
-      const response    = await fetch(file.uri);
-      const arrayBuffer = await response.arrayBuffer();
-      const data        = new Uint8Array(arrayBuffer);
+      const data = new Uint8Array(await (await fetch(file.uri)).arrayBuffer());
       const { rows, headerIdx } = smartParseSheet(data, RULES_COL_MAP);
-
-      if (!rows.length) { Alert.alert('Empty file', 'No data rows found in the spreadsheet.'); return; }
+      if (!rows.length) { Alert.alert('Empty file', 'No data rows found.'); return; }
       setImportPreview(parseRulesSheet(rows, headerIdx));
       setShowImport(true);
-    } catch (err) {
-      console.error('[Import] parse error:', err);
-      Alert.alert('Import error', err?.message || 'Could not read file.');
-    }
+    } catch (err) { Alert.alert('Import error', err?.message || 'Could not read file.'); }
   };
 
-  // ── Bulk insert confirmed rows ──────────────────────────────────────────────
   const handleConfirmImport = async () => {
     if (!importPreview.valid.length) return;
     setImporting(true);
-    let ok = 0; let fail = 0;
-    for (const row of importPreview.valid) {
-      try { await addCampusRule(row); ok++; }
-      catch { fail++; }
-    }
-    setImporting(false);
-    setShowImport(false);
+    let ok = 0, fail = 0;
+    for (const row of importPreview.valid) { try { await addCampusRule(row); ok++; } catch { fail++; } }
+    setImporting(false); setShowImport(false);
     Alert.alert('Import complete', `${ok} rule${ok !== 1 ? 's' : ''} imported${fail ? `, ${fail} failed` : ''}.`);
   };
 
   const canGoBack = navigation?.canGoBack?.();
 
-  // ── Rule card ───────────────────────────────────────────────────────────────
+  // ── Rule card ──────────────────────────────────────────────────────────────
   const renderRule = ({ item }) => {
     const sev = SEV[item.severity] || SEV.info;
+    const cc  = CHIP[item.category] || CHIP.Academic;
     return (
-      <View style={styles.card}>
-        <View style={[styles.cardLeftBar, { backgroundColor: sev.color }]} />
-        <View style={styles.cardBody}>
-          {/* Top row */}
-          <View style={styles.cardTopRow}>
-            <View style={[styles.sevBadge, { backgroundColor: sev.bg }]}>
-              <Ionicons name={sev.icon} size={12} color={sev.color} />
-              <Text style={[styles.sevBadgeText, { color: sev.color }]}>{sev.label}</Text>
+      <View style={s.card}>
+        <View style={[s.cardBar, { backgroundColor: sev.color }]} />
+        <View style={s.cardContent}>
+          <View style={s.cardRow}>
+            {/* Severity badge */}
+            <View style={[s.sevBadge, { backgroundColor: sev.bg, borderColor: sev.border }]}>
+              <Ionicons name={sev.icon} size={11} color={sev.color} />
+              <Text style={[s.sevBadgeTxt, { color: sev.color }]}>{sev.label}</Text>
             </View>
-            {item.category ? (
-              <View style={styles.catBadge}>
-                <Text style={styles.catBadgeText}>{item.category}</Text>
-              </View>
-            ) : null}
-            <View style={[styles.activeBadge, item.is_active !== false ? styles.activeBadgeOn : styles.activeBadgeOff]}>
-              <View style={[styles.activeDot, { backgroundColor: item.is_active !== false ? '#059669' : '#9CA3AF' }]} />
-              <Text style={[styles.activeBadgeText, { color: item.is_active !== false ? '#059669' : '#9CA3AF' }]}>
+            {/* Category badge */}
+            <View style={[s.catBadge, { backgroundColor: cc.bg, borderColor: cc.border }]}>
+              <Text style={[s.catBadgeTxt, { color: cc.text }]}>{item.category}</Text>
+            </View>
+            {/* Active badge */}
+            <View style={[s.activeBadge, item.is_active !== false ? s.activeBadgeOn : s.activeBadgeOff]}>
+              <View style={[s.activeDot, { backgroundColor: item.is_active !== false ? '#10B981' : '#9CA3AF' }]} />
+              <Text style={[s.activeTxt, { color: item.is_active !== false ? '#059669' : '#6B7280' }]}>
                 {item.is_active !== false ? 'Live' : 'Hidden'}
               </Text>
             </View>
           </View>
-
-          {/* Title */}
-          <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
-
-          {/* Description preview */}
-          <Text style={styles.cardDesc} numberOfLines={2}>{item.description}</Text>
-
-          {/* Actions */}
-          <View style={styles.cardActions}>
-            <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(item)} activeOpacity={0.85}>
-              <Ionicons name="pencil-outline" size={14} color={NAVY} />
-              <Text style={styles.editBtnText}>Edit</Text>
+          <Text style={s.cardTitle}>{item.title}</Text>
+          <Text style={s.cardDesc} numberOfLines={2}>{item.description}</Text>
+          <View style={s.cardActions}>
+            <TouchableOpacity style={s.editBtn} onPress={() => openEdit(item)} activeOpacity={0.85}>
+              <Ionicons name="pencil-outline" size={13} color={SLATE} />
+              <Text style={s.editTxt}>Edit</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(item)} activeOpacity={0.85}>
-              <Ionicons name="trash-outline" size={14} color="#DC2626" />
-              <Text style={styles.deleteBtnText}>Delete</Text>
+            <TouchableOpacity style={s.deleteBtn} onPress={() => handleDelete(item)} activeOpacity={0.85}>
+              <Ionicons name="trash-outline" size={13} color="#DC2626" />
+              <Text style={s.deleteTxt}>Delete</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -381,371 +247,313 @@ export default function ManageCampusRulesScreen({ navigation }) {
     );
   };
 
-  // ─────────────────────────────────────────────────────────────────────────────
   return (
     <ScreenWrapper backgroundColor={BG} statusBarStyle="light-content">
-      {/* ── Header ── */}
-      <View style={styles.header}>
-        <View style={styles.headerGoldBar} />
-        <View style={styles.headerRow}>
+
+      {/* ── HEADER ── */}
+      <View style={s.header}>
+        <View style={s.headerTop}>
           {canGoBack && (
-            <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.8}>
-              <Ionicons name="arrow-back" size={20} color="#fff" />
+            <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.8}>
+              <Ionicons name="arrow-back" size={18} color="#FFFFFF" />
             </TouchableOpacity>
           )}
           <View style={{ flex: 1 }}>
-            <Text style={styles.headerEyebrow}>ADMIN</Text>
-            <Text style={styles.headerTitle}>Campus Rules</Text>
+            <Text style={s.headerEye}>ADMIN</Text>
+            <Text style={s.headerTitle}>Campus Rules</Text>
           </View>
-          <TouchableOpacity style={styles.importBtn} onPress={handlePickFile} activeOpacity={0.85}>
-            <Ionicons name="cloud-upload-outline" size={16} color="rgba(255,255,255,0.85)" />
-            <Text style={styles.importBtnText}>Import</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.addBtn} onPress={openAdd} activeOpacity={0.85}>
-            <Ionicons name="add" size={20} color={NAVY} />
-            <Text style={styles.addBtnText}>Add Rule</Text>
-          </TouchableOpacity>
+          <View style={s.headerRight}>
+            <TouchableOpacity style={s.iconBtn} onPress={() => setShowActionSheet(true)} activeOpacity={0.85}>
+              <Ionicons name="add" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+            <TouchableOpacity style={s.iconBtn} onPress={handlePickFile} activeOpacity={0.85}>
+              <Ionicons name="cloud-upload-outline" size={18} color="rgba(255,255,255,0.85)" />
+            </TouchableOpacity>
+          </View>
         </View>
-        <Text style={styles.headerSub}>Create and manage campus rules and policies.</Text>
-      </View>
-
-      {/* ── Search ── */}
-      <View style={styles.searchWrap}>
-        <View style={styles.searchBar}>
-          <Ionicons name="search-outline" size={17} color={GOLD} />
+        {/* Glassmorphism search */}
+        <View style={s.searchGlass}>
+          <Ionicons name="search-outline" size={16} color="rgba(255,255,255,0.7)" />
           <TextInput
-            style={styles.searchInput}
+            style={s.searchInput}
             placeholder="Search rules…"
-            placeholderTextColor="#A0AEC0"
+            placeholderTextColor="rgba(255,255,255,0.5)"
             value={search}
             onChangeText={setSearch}
           />
           {search ? (
             <TouchableOpacity onPress={() => setSearch('')}>
-              <Ionicons name="close-circle" size={17} color="#A0AEC0" />
+              <Ionicons name="close-circle" size={16} color="rgba(255,255,255,0.55)" />
             </TouchableOpacity>
           ) : null}
         </View>
       </View>
 
-      {/* ── Category filter chips ── */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-        {['All', ...CATEGORIES].map((cat) => (
-          <TouchableOpacity
-            key={cat}
-            style={[styles.chip, filterCat === cat && styles.chipActive]}
-            onPress={() => setFilterCat(cat)}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.chipText, filterCat === cat && styles.chipTextActive]}>{cat}</Text>
-          </TouchableOpacity>
-        ))}
+      {/* ── FILTER CHIPS ── */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
+        {['All', ...CATEGORIES].map((cat) => {
+          const active = filterCat === cat;
+          const cc = CHIP[cat] || CHIP.All;
+          return (
+            <TouchableOpacity
+              key={cat}
+              style={[s.chip, { backgroundColor: active ? cc.bg : SURFACE, borderColor: active ? cc.border : BORDER }]}
+              onPress={() => setFilterCat(cat)} activeOpacity={0.8}
+            >
+              <Text style={[s.chipTxt, { color: active ? cc.text : MUTED, fontWeight: active ? '700' : '500' }]}>
+                {cat}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
 
-      {/* ── Rules list ── */}
+      {/* ── LIST ── */}
       <FlatList
         data={displayed}
         keyExtractor={(item, i) => item.id || String(i)}
         renderItem={renderRule}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={s.list}
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Ionicons name="shield-outline" size={48} color={GOLD} />
-            <Text style={styles.emptyTitle}>No rules yet</Text>
-            <Text style={styles.emptySub}>Tap "Add Rule" to create the first campus rule.</Text>
+          <View style={s.empty}>
+            <View style={s.emptyIconWrap}>
+              <View style={s.emptyGlow} />
+              <Ionicons name="shield-outline" size={44} color="#D1D5DB" />
+            </View>
+            <Text style={s.emptyTitle}>No rules yet</Text>
+            <Text style={s.emptySub}>
+              Get started by adding your first rule manually, or import them all in bulk using a CSV or Excel template.
+            </Text>
+            <TouchableOpacity style={s.emptyBtn} onPress={() => setShowActionSheet(true)} activeOpacity={0.85}>
+              <Ionicons name="add" size={16} color="#FFFFFF" />
+              <Text style={s.emptyBtnTxt}>Add Rule</Text>
+            </TouchableOpacity>
           </View>
         }
       />
 
-      {/* ════════════════════════════════════════════════════════════════════════
-          IMPORT PREVIEW MODAL
-      ════════════════════════════════════════════════════════════════════════ */}
-      <Modal visible={showImport} transparent animationType="slide" onRequestClose={() => setShowImport(false)}>
-        <View style={styles.importBackdrop}>
-          <View style={styles.importSheet}>
-            <View style={[styles.importGoldBar, { backgroundColor: GOLD }]} />
-            <View style={styles.importHandle} />
+      {/* ════════════ ADD ACTION SHEET ════════════ */}
+      <Modal visible={showActionSheet} transparent animationType="slide" onRequestClose={() => setShowActionSheet(false)}>
+        <View style={s.sheetOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={() => setShowActionSheet(false)} />
+          <View style={s.sheet}>
+            <View style={s.sheetHandle} />
+            <Text style={s.sheetTitle}>Add Rule</Text>
+            <Text style={s.sheetSub}>How would you like to add?</Text>
 
-            {/* Header */}
-            <View style={styles.importSheetHeader}>
-              <View>
-                <Text style={styles.importSheetTitle}>Import Preview</Text>
-                <Text style={styles.importSheetFile} numberOfLines={1}>{importFileName}</Text>
+            <TouchableOpacity style={s.sheetOption} onPress={() => { setShowActionSheet(false); openAdd(); }} activeOpacity={0.85}>
+              <View style={s.sheetOptionIcon}>
+                <Ionicons name="create-outline" size={22} color={SLATE} />
               </View>
-              <TouchableOpacity onPress={() => setShowImport(false)} style={styles.importCloseBtn}>
-                <Ionicons name="close" size={20} color="#718096" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Stats row */}
-            <View style={styles.importStats}>
-              <View style={[styles.importStatChip, { backgroundColor: '#D1FAE5' }]}>
-                <Ionicons name="checkmark-circle-outline" size={15} color="#059669" />
-                <Text style={[styles.importStatText, { color: '#059669' }]}>{importPreview.valid.length} valid</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={s.sheetOptionTitle}>Add Manually</Text>
+                <Text style={s.sheetOptionSub}>Fill in the form with details</Text>
               </View>
-              {importPreview.errors.length > 0 && (
-                <View style={[styles.importStatChip, { backgroundColor: '#FEE2E2' }]}>
-                  <Ionicons name="alert-circle-outline" size={15} color="#DC2626" />
-                  <Text style={[styles.importStatText, { color: '#DC2626' }]}>{importPreview.errors.length} skipped</Text>
-                </View>
-              )}
-            </View>
+              <Ionicons name="chevron-forward" size={18} color={LIGHT} />
+            </TouchableOpacity>
 
-            {/* Template hint */}
-            <View style={styles.importHint}>
-              <Ionicons name="information-circle-outline" size={14} color={GOLD} />
-              <Text style={styles.importHintText}>
-                Expected columns: <Text style={{ fontWeight: '700' }}>title*,  description*,  category,  severity,  is_active</Text>
-              </Text>
-            </View>
-
-            {/* Preview rows */}
-            <ScrollView style={styles.importPreviewScroll} showsVerticalScrollIndicator={false}>
-              {/* Column headers */}
-              <View style={[styles.importRow, styles.importRowHeader]}>
-                {['Title', 'Category', 'Severity', 'Active'].map((h) => (
-                  <Text key={h} style={[styles.importCell, styles.importCellHeader]}>{h}</Text>
-                ))}
+            <TouchableOpacity style={s.sheetOption} onPress={() => { setShowActionSheet(false); handlePickFile(); }} activeOpacity={0.85}>
+              <View style={s.sheetOptionIcon}>
+                <Ionicons name="document-outline" size={22} color={SLATE} />
               </View>
-              {importPreview.valid.slice(0, 10).map((row, i) => (
-                <View key={i} style={[styles.importRow, i % 2 === 0 && styles.importRowAlt]}>
-                  <Text style={styles.importCell} numberOfLines={1}>{row.title}</Text>
-                  <Text style={styles.importCell} numberOfLines={1}>{row.category || '—'}</Text>
-                  <View style={[styles.importSevBadge, { backgroundColor: SEV[row.severity]?.bg || '#DBEAFE' }]}>
-                    <Text style={[styles.importSevText, { color: SEV[row.severity]?.color || '#2563EB' }]}>{row.severity}</Text>
-                  </View>
-                  <Text style={[styles.importCell, { color: row.is_active ? '#059669' : '#9CA3AF' }]}>
-                    {row.is_active ? 'Yes' : 'No'}
-                  </Text>
-                </View>
-              ))}
-              {importPreview.valid.length > 10 && (
-                <Text style={styles.importMore}>+{importPreview.valid.length - 10} more rows…</Text>
-              )}
+              <View style={{ flex: 1 }}>
+                <Text style={s.sheetOptionTitle}>Upload Template</Text>
+                <Text style={s.sheetOptionSub}>Import from Excel or CSV</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={LIGHT} />
+            </TouchableOpacity>
 
-              {/* Skipped rows */}
-              {importPreview.errors.length > 0 && (
-                <View style={styles.importErrorsWrap}>
-                  <Text style={styles.importErrorsTitle}>Skipped rows:</Text>
-                  {importPreview.errors.map((e, i) => (
-                    <Text key={i} style={styles.importErrorRow}>Row {e.row}: {e.reason}</Text>
-                  ))}
-                </View>
-              )}
-            </ScrollView>
-
-            {/* Confirm button */}
-            <TouchableOpacity
-              style={[styles.importConfirmBtn, (!importPreview.valid.length || importing) && { opacity: 0.5 }]}
-              onPress={handleConfirmImport}
-              disabled={!importPreview.valid.length || importing}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="cloud-upload-outline" size={18} color={NAVY} />
-              <Text style={styles.importConfirmText}>
-                {importing ? 'Importing…' : `Import ${importPreview.valid.length} Rule${importPreview.valid.length !== 1 ? 's' : ''}`}
-              </Text>
+            <TouchableOpacity style={s.sheetCancel} onPress={() => setShowActionSheet(false)}>
+              <Text style={s.sheetCancelTxt}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* ════════════════════════════════════════════════════════════════════════
-          FORM MODAL
-      ════════════════════════════════════════════════════════════════════════ */}
-      <Modal
-        visible={showModal}
-        animationType="slide"
-        transparent={false}
-        onRequestClose={() => setShowModal(false)}
-      >
-        <ScreenWrapper backgroundColor={BG} statusBarStyle="dark-content">
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.modalScroll}
-          >
-            {/* Modal header */}
-            <View style={styles.modalHeader}>
-              <View style={styles.modalGoldBar} />
-              <View style={styles.modalHeaderRow}>
-                <TouchableOpacity style={styles.closeBtn} onPress={() => setShowModal(false)}>
-                  <Ionicons name="close" size={22} color="#fff" />
-                </TouchableOpacity>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.modalEyebrow}>CAMPUS RULES</Text>
-                  <Text style={styles.modalTitle}>{editingId ? 'Edit Rule' : 'New Rule'}</Text>
+      {/* ════════════ IMPORT PREVIEW ════════════ */}
+      <Modal visible={showImport} transparent animationType="slide" onRequestClose={() => setShowImport(false)}>
+        <View style={s.sheetOverlay}>
+          <View style={[s.sheet, { maxHeight: '88%' }]}>
+            <View style={s.sheetHandle} />
+            <View style={s.importHeader}>
+              <View>
+                <Text style={s.sheetTitle}>Import Preview</Text>
+                <Text style={s.importFile} numberOfLines={1}>{importFileName}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowImport(false)} style={s.closeBtn}>
+                <Ionicons name="close" size={18} color={MUTED} />
+              </TouchableOpacity>
+            </View>
+            <View style={s.importStats}>
+              <View style={[s.statChip, { backgroundColor: '#ECFDF5' }]}>
+                <Ionicons name="checkmark-circle-outline" size={14} color="#059669" />
+                <Text style={[s.statTxt, { color: '#059669' }]}>{importPreview.valid.length} valid</Text>
+              </View>
+              {importPreview.errors.length > 0 && (
+                <View style={[s.statChip, { backgroundColor: '#FEF2F2' }]}>
+                  <Ionicons name="alert-circle-outline" size={14} color="#DC2626" />
+                  <Text style={[s.statTxt, { color: '#DC2626' }]}>{importPreview.errors.length} skipped</Text>
                 </View>
+              )}
+            </View>
+            <ScrollView style={{ maxHeight: 260 }} showsVerticalScrollIndicator={false}>
+              <View style={[s.importRow, s.importRowHead]}>
+                {['Title','Category','Severity','Active'].map((h) => <Text key={h} style={[s.importCell, s.importCellHead]}>{h}</Text>)}
+              </View>
+              {importPreview.valid.slice(0, 10).map((r, i) => (
+                <View key={i} style={[s.importRow, i % 2 === 1 && { backgroundColor: '#FAFAFA' }]}>
+                  <Text style={s.importCell} numberOfLines={1}>{r.title}</Text>
+                  <Text style={s.importCell} numberOfLines={1}>{r.category}</Text>
+                  <View style={[s.importSev, { backgroundColor: (SEV[r.severity]||SEV.info).bg }]}>
+                    <Text style={[s.importSevTxt, { color: (SEV[r.severity]||SEV.info).color }]}>{r.severity}</Text>
+                  </View>
+                  <Text style={[s.importCell, { color: r.is_active ? '#059669' : MUTED }]}>{r.is_active ? 'Yes' : 'No'}</Text>
+                </View>
+              ))}
+              {importPreview.errors.length > 0 && (
+                <View style={s.errWrap}>
+                  <Text style={s.errTitle}>Skipped rows:</Text>
+                  {importPreview.errors.map((e, i) => <Text key={i} style={s.errRow}>Row {e.row}: {e.reason}</Text>)}
+                </View>
+              )}
+            </ScrollView>
+            <TouchableOpacity
+              style={[s.importBtn, (!importPreview.valid.length || importing) && { opacity: 0.45 }]}
+              onPress={handleConfirmImport} disabled={!importPreview.valid.length || importing} activeOpacity={0.85}
+            >
+              <Ionicons name="cloud-upload-outline" size={16} color={CHARCOAL} />
+              <Text style={s.importBtnTxt}>{importing ? 'Importing…' : `Import ${importPreview.valid.length} Rule${importPreview.valid.length !== 1 ? 's' : ''}`}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ════════════ ADD / EDIT FORM MODAL ════════════ */}
+      <Modal visible={showModal} animationType="slide" transparent={false} onRequestClose={() => setShowModal(false)}>
+        <ScreenWrapper backgroundColor={BG} statusBarStyle="dark-content">
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 48 }}>
+
+            <View style={s.formHeader}>
+              <TouchableOpacity style={s.formClose} onPress={() => setShowModal(false)}>
+                <Ionicons name="close" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Text style={s.formHeaderSub}>CAMPUS RULES</Text>
+                <Text style={s.formHeaderTitle}>{editingId ? 'Edit Rule' : 'New Rule'}</Text>
               </View>
             </View>
 
-            {/* ── Form card ── */}
-            <View style={styles.formCard}>
-
+            <View style={s.formBody}>
               {/* Title */}
-              <Text style={styles.label}>
-                Title <Text style={styles.req}>*</Text>
-              </Text>
+              <Text style={s.fieldLabel}>Title <Text style={s.req}>*</Text></Text>
               <Animated.View style={{ transform: [{ translateX: shakeTitle }] }}>
                 <TextInput
-                  style={[styles.input, errors.title && styles.inputError]}
+                  style={[s.input, errors.title && s.inputErr]}
                   placeholder="e.g. No Smoking on Campus Grounds"
-                  placeholderTextColor="#A0AEC0"
-                  value={form.title}
-                  onChangeText={(v) => set('title', v)}
-                  returnKeyType="next"
+                  placeholderTextColor={LIGHT}
+                  value={form.title} onChangeText={(v) => set('title', v)}
                 />
                 {errors.title ? (
-                  <View style={styles.errorRow}>
-                    <Ionicons name="alert-circle-outline" size={13} color="#DC2626" />
-                    <Text style={styles.errorMsg}>{errors.title}</Text>
+                  <View style={s.errMsgRow}>
+                    <Ionicons name="alert-circle-outline" size={12} color="#DC2626" />
+                    <Text style={s.errMsg}>{errors.title}</Text>
                   </View>
                 ) : null}
               </Animated.View>
 
               {/* Description */}
-              <Text style={[styles.label, { marginTop: 18 }]}>
-                Description <Text style={styles.req}>*</Text>
-              </Text>
+              <Text style={[s.fieldLabel, { marginTop: 16 }]}>Description <Text style={s.req}>*</Text></Text>
               <Animated.View style={{ transform: [{ translateX: shakeDesc }] }}>
                 <TextInput
-                  style={[styles.input, styles.textarea, errors.description && styles.inputError]}
-                  placeholder="Provide a clear and detailed description of this rule and the consequences of breaching it."
-                  placeholderTextColor="#A0AEC0"
-                  value={form.description}
-                  onChangeText={(v) => set('description', v)}
-                  multiline
-                  numberOfLines={4}
-                  textAlignVertical="top"
+                  style={[s.input, s.textarea, errors.description && s.inputErr]}
+                  placeholder="Provide a clear description of this rule and the consequences of breaching it."
+                  placeholderTextColor={LIGHT}
+                  value={form.description} onChangeText={(v) => set('description', v)}
+                  multiline numberOfLines={4} textAlignVertical="top"
                 />
                 {errors.description ? (
-                  <View style={styles.errorRow}>
-                    <Ionicons name="alert-circle-outline" size={13} color="#DC2626" />
-                    <Text style={styles.errorMsg}>{errors.description}</Text>
+                  <View style={s.errMsgRow}>
+                    <Ionicons name="alert-circle-outline" size={12} color="#DC2626" />
+                    <Text style={s.errMsg}>{errors.description}</Text>
                   </View>
                 ) : null}
               </Animated.View>
 
               {/* Category */}
-              <Text style={[styles.label, { marginTop: 18 }]}>Category</Text>
-              <View style={styles.catGrid}>
-                {CATEGORIES.map((cat) => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[styles.catOption, form.category === cat && styles.catOptionActive]}
-                    onPress={() => set('category', cat)}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={[styles.catOptionText, form.category === cat && styles.catOptionTextActive]}>
-                      {cat}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+              <Text style={[s.fieldLabel, { marginTop: 16 }]}>Category</Text>
+              <View style={s.catGrid}>
+                {CATEGORIES.map((cat) => {
+                  const active = form.category === cat;
+                  const cc = CHIP[cat];
+                  return (
+                    <TouchableOpacity
+                      key={cat}
+                      style={[s.catOpt, { backgroundColor: active ? cc.bg : SURFACE, borderColor: active ? cc.border : BORDER }]}
+                      onPress={() => set('category', cat)} activeOpacity={0.85}
+                    >
+                      <Text style={[s.catOptTxt, { color: active ? cc.text : MUTED, fontWeight: active ? '700' : '500' }]}>
+                        {cat}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
-              {/* ── Severity — Radio group ── */}
-              <Text style={[styles.label, { marginTop: 18 }]}>Severity</Text>
-              <View style={styles.sevRow}>
+              {/* Severity */}
+              <Text style={[s.fieldLabel, { marginTop: 16 }]}>Severity</Text>
+              <View style={s.sevRow}>
                 {Object.entries(SEV).map(([key, cfg]) => {
                   const active = form.severity === key;
                   return (
                     <TouchableOpacity
                       key={key}
-                      style={[
-                        styles.sevOption,
-                        {
-                          borderColor:      active ? cfg.color : cfg.ring,
-                          backgroundColor:  active ? cfg.color : cfg.bg,
-                          shadowColor:      active ? cfg.color : 'transparent',
-                        },
-                      ]}
-                      onPress={() => set('severity', key)}
-                      activeOpacity={0.85}
+                      style={[s.sevOpt, {
+                        backgroundColor: active ? cfg.color : SURFACE,
+                        borderColor: active ? cfg.color : BORDER,
+                        shadowColor: active ? cfg.color : 'transparent',
+                      }]}
+                      onPress={() => set('severity', key)} activeOpacity={0.85}
                     >
-                      {/* Outer ring indicator */}
-                      <View style={[styles.sevRadio, { borderColor: active ? '#fff' : cfg.color }]}>
-                        {active && <View style={[styles.sevRadioFill, { backgroundColor: '#fff' }]} />}
+                      <View style={[s.sevRadio, { borderColor: active ? '#FFFFFF' : cfg.color }]}>
+                        {active && <View style={[s.sevFill, { backgroundColor: '#FFFFFF' }]} />}
                       </View>
-                      <View style={styles.sevTextWrap}>
-                        <Ionicons name={cfg.icon} size={16} color={active ? '#fff' : cfg.color} />
-                        <Text style={[styles.sevLabel, { color: active ? '#fff' : cfg.color }]}>
-                          {cfg.label}
-                        </Text>
-                      </View>
+                      <Ionicons name={cfg.icon} size={15} color={active ? '#FFFFFF' : cfg.color} />
+                      <Text style={[s.sevLabel, { color: active ? '#FFFFFF' : cfg.color }]}>{cfg.label}</Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
-              <Text style={styles.sevHint}>
+              <Text style={s.sevHint}>
                 {form.severity === 'info'     && 'Informational — general guidance, no penalty.'}
-                {form.severity === 'warning'  && 'Warning — violation may result in disciplinary action.'}
+                {form.severity === 'warning'  && 'Warning — violation may lead to disciplinary action.'}
                 {form.severity === 'critical' && 'Critical — serious breach with severe consequences.'}
               </Text>
 
-              {/* ── is_active toggle ── */}
-              <View style={styles.toggleCard}>
-                <View style={styles.toggleLeft}>
-                  <View style={[styles.toggleIconWrap, { backgroundColor: form.is_active ? '#D1FAE5' : '#F1F5F9' }]}>
-                    <Ionicons
-                      name={form.is_active ? 'eye-outline' : 'eye-off-outline'}
-                      size={18}
-                      color={form.is_active ? '#059669' : '#9CA3AF'}
-                    />
+              {/* is_active toggle */}
+              <View style={s.toggleRow}>
+                <View style={s.toggleLeft}>
+                  <View style={[s.toggleIconWrap, { backgroundColor: form.is_active ? '#ECFDF5' : '#F1F5F9' }]}>
+                    <Ionicons name={form.is_active ? 'eye-outline' : 'eye-off-outline'} size={16}
+                      color={form.is_active ? '#059669' : '#9CA3AF'} />
                   </View>
                   <View>
-                    <Text style={styles.toggleLabel}>Rule is Live</Text>
-                    <Text style={styles.toggleSub}>
-                      {form.is_active ? 'Visible to all students and staff' : 'Hidden — not shown to users'}
-                    </Text>
+                    <Text style={s.toggleLabel}>Rule is Live</Text>
+                    <Text style={s.toggleSub}>{form.is_active ? 'Visible to all users' : 'Hidden — not shown to users'}</Text>
                   </View>
                 </View>
-                <Switch
-                  value={form.is_active}
-                  onValueChange={(v) => set('is_active', v)}
-                  trackColor={{ false: '#CBD5E0', true: NAVY }}
-                  thumbColor={form.is_active ? GOLD : '#fff'}
-                />
+                <Switch value={form.is_active} onValueChange={(v) => set('is_active', v)}
+                  trackColor={{ false: BORDER, true: CHARCOAL }} thumbColor={form.is_active ? GOLD : '#FFFFFF'} />
               </View>
 
-              {/* ── Payload preview (dev) ── */}
-              <View style={styles.payloadBox}>
-                <View style={styles.payloadHeader}>
-                  <Ionicons name="code-slash-outline" size={14} color={GOLD} />
-                  <Text style={styles.payloadTitle}>Submission Payload</Text>
-                </View>
-                <Text style={styles.payloadCode}>
-                  {JSON.stringify(
-                    {
-                      title:       form.title.trim()       || '(required)',
-                      description: form.description.trim() || '(required)',
-                      category:    form.category,
-                      severity:    form.severity,
-                      is_active:   form.is_active,
-                    },
-                    null,
-                    2,
-                  )}
-                </Text>
-              </View>
-
-              {/* ── Submit ── */}
+              {/* Save */}
               <TouchableOpacity
-                style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
-                onPress={handleSave}
-                disabled={saving}
-                activeOpacity={0.85}
+                style={[s.saveBtn, saving && { opacity: 0.5 }]}
+                onPress={handleSave} disabled={saving} activeOpacity={0.85}
               >
-                <Ionicons
-                  name={editingId ? 'checkmark-circle-outline' : 'add-circle-outline'}
-                  size={20}
-                  color={NAVY}
-                />
-                <Text style={styles.saveBtnText}>
-                  {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Create Rule'}
-                </Text>
+                <Ionicons name={editingId ? 'checkmark-circle-outline' : 'add-circle-outline'} size={18} color={CHARCOAL} />
+                <Text style={s.saveBtnTxt}>{saving ? 'Saving…' : editingId ? 'Save Changes' : 'Create Rule'}</Text>
               </TouchableOpacity>
-
             </View>
           </ScrollView>
         </ScreenWrapper>
@@ -754,159 +562,119 @@ export default function ManageCampusRulesScreen({ navigation }) {
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
-const styles = StyleSheet.create({
-  // ── Header
-  header:        { backgroundColor: NAVY, paddingTop: 52, paddingBottom: 22, paddingHorizontal: 20 },
-  headerGoldBar: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: GOLD },
-  headerRow:     { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
-  backBtn:       { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)', justifyContent: 'center', alignItems: 'center' },
-  headerEyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 2, color: GOLD, textTransform: 'uppercase' },
-  headerTitle:   { fontSize: 24, fontWeight: '800', color: '#fff' },
-  headerSub:     { fontSize: 13, color: 'rgba(255,255,255,0.65)' },
-  addBtn:        { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: GOLD, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12 },
-  addBtnText:    { fontSize: 13, fontWeight: '800', color: NAVY },
+// ── Styles ─────────────────────────────────────────────────────────────────────
+const s = StyleSheet.create({
+  header:        { backgroundColor: CHARCOAL, paddingTop: 52, paddingHorizontal: 20, paddingBottom: 16 },
+  headerTop:     { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  backBtn:       { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.14)', justifyContent: 'center', alignItems: 'center' },
+  headerEye:     { fontSize: 10, fontWeight: '700', color: GOLD, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 2 },
+  headerTitle:   { fontSize: 26, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.2 },
+  headerRight:   { flexDirection: 'row', gap: 8 },
+  iconBtn:       { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.14)', justifyContent: 'center', alignItems: 'center' },
+  searchGlass:   { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
+  searchInput:   { flex: 1, fontSize: 14, color: '#FFFFFF', padding: 0 },
 
-  // ── Search + filter
-  searchWrap:  { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
-  searchBar:   { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, borderColor: 'rgba(26,54,93,0.10)', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 5, elevation: 1 },
-  searchInput: { flex: 1, fontSize: 14, color: '#2D3748', padding: 0 },
-  filterRow:   { paddingHorizontal: 16, paddingBottom: 12, gap: 8 },
-  chip:           { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(26,54,93,0.12)' },
-  chipActive:     { backgroundColor: NAVY, borderColor: NAVY },
-  chipText:       { fontSize: 12, fontWeight: '600', color: '#718096' },
-  chipTextActive: { color: '#fff' },
+  chipRow:  { paddingHorizontal: 16, paddingVertical: 14, gap: 8 },
+  chip:     { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  chipTxt:  { fontSize: 13 },
 
-  // ── Rule card
-  list:          { paddingHorizontal: 16, paddingBottom: 32, gap: 12 },
-  card:          { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(26,54,93,0.08)', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
-  cardLeftBar:   { width: 4 },
-  cardBody:      { flex: 1, padding: 14 },
-  cardTopRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
-  sevBadge:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  sevBadgeText:  { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
-  catBadge:      { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: '#EDF1F8' },
-  catBadgeText:  { fontSize: 11, fontWeight: '600', color: NAVY },
-  activeBadge:   { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  activeBadgeOn: { backgroundColor: '#D1FAE5' },
-  activeBadgeOff:{ backgroundColor: '#F1F5F9' },
-  activeDot:     { width: 6, height: 6, borderRadius: 3 },
-  activeBadgeText:{ fontSize: 11, fontWeight: '700' },
-  cardTitle:     { fontSize: 15, fontWeight: '700', color: '#2D3748', marginBottom: 5 },
-  cardDesc:      { fontSize: 12, color: '#718096', lineHeight: 17, marginBottom: 12 },
-  cardActions:   { flexDirection: 'row', gap: 8 },
-  editBtn:       { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: '#EDF1F8' },
-  editBtnText:   { fontSize: 12, fontWeight: '700', color: NAVY },
-  deleteBtn:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: '#FEE2E2' },
-  deleteBtnText: { fontSize: 12, fontWeight: '700', color: '#DC2626' },
+  list: { paddingHorizontal: 16, paddingBottom: 32, gap: 12 },
 
-  // ── Empty
-  empty:      { flex: 1, alignItems: 'center', paddingTop: 60, gap: 12 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: '#2D3748' },
-  emptySub:   { fontSize: 13, color: '#718096', textAlign: 'center', maxWidth: 240 },
+  // Card
+  card:        { flexDirection: 'row', backgroundColor: SURFACE, borderRadius: 16, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2, borderWidth: 1, borderColor: '#F3F4F6' },
+  cardBar:     { width: 4 },
+  cardContent: { flex: 1, padding: 14 },
+  cardRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
+  sevBadge:    { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
+  sevBadgeTxt: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
+  catBadge:    { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
+  catBadgeTxt: { fontSize: 11, fontWeight: '600' },
+  activeBadge:    { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  activeBadgeOn:  { backgroundColor: '#ECFDF5' },
+  activeBadgeOff: { backgroundColor: '#F1F5F9' },
+  activeDot:   { width: 6, height: 6, borderRadius: 3 },
+  activeTxt:   { fontSize: 11, fontWeight: '600' },
+  cardTitle:   { fontSize: 15, fontWeight: '700', color: DARK, marginBottom: 4 },
+  cardDesc:    { fontSize: 12, color: MUTED, lineHeight: 17, marginBottom: 12 },
+  cardActions: { flexDirection: 'row', gap: 8 },
+  editBtn:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: BORDER },
+  editTxt:     { fontSize: 12, fontWeight: '600', color: SLATE },
+  deleteBtn:   { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },
+  deleteTxt:   { fontSize: 12, fontWeight: '600', color: '#DC2626' },
 
-  // ── Modal structure
-  modalScroll:     { paddingBottom: 48 },
-  modalHeader:     { backgroundColor: NAVY, paddingTop: 52, paddingBottom: 22, paddingHorizontal: 20, position: 'relative' },
-  modalGoldBar:    { position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: GOLD },
-  modalHeaderRow:  { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  closeBtn:        { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)', justifyContent: 'center', alignItems: 'center' },
-  modalEyebrow:    { fontSize: 10, fontWeight: '800', letterSpacing: 2, color: GOLD, textTransform: 'uppercase' },
-  modalTitle:      { fontSize: 22, fontWeight: '800', color: '#fff' },
+  // Empty state
+  empty:        { flex: 1, alignItems: 'center', paddingTop: 64, paddingHorizontal: 32, gap: 14 },
+  emptyIconWrap:{ width: 90, height: 90, borderRadius: 45, justifyContent: 'center', alignItems: 'center' },
+  emptyGlow:    { position: 'absolute', width: 90, height: 90, borderRadius: 45, backgroundColor: '#F3F4F6', shadowColor: '#9CA3AF', shadowOpacity: 0.35, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
+  emptyTitle:   { fontSize: 20, fontWeight: '700', color: DARK, textAlign: 'center' },
+  emptySub:     { fontSize: 13, color: MUTED, textAlign: 'center', lineHeight: 20 },
+  emptyBtn:     { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: CHARCOAL, paddingHorizontal: 20, paddingVertical: 11, borderRadius: 12, marginTop: 4 },
+  emptyBtnTxt:  { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
 
-  // ── Form card
-  formCard:   { marginHorizontal: 16, marginTop: 20, backgroundColor: '#fff', borderRadius: 24, padding: 20, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3, borderWidth: 1, borderColor: 'rgba(26,54,93,0.07)' },
+  // Action sheet
+  sheetOverlay:     { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  sheet:            { backgroundColor: SURFACE, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingBottom: 36 },
+  sheetHandle:      { width: 36, height: 4, borderRadius: 2, backgroundColor: BORDER, alignSelf: 'center', marginTop: 10, marginBottom: 20 },
+  sheetTitle:       { fontSize: 18, fontWeight: '700', color: DARK, marginBottom: 4 },
+  sheetSub:         { fontSize: 13, color: MUTED, marginBottom: 20 },
+  sheetOption:      { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 14, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: BORDER, marginBottom: 10 },
+  sheetOptionIcon:  { width: 44, height: 44, borderRadius: 12, backgroundColor: SURFACE, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: BORDER },
+  sheetOptionTitle: { fontSize: 15, fontWeight: '700', color: DARK, marginBottom: 2 },
+  sheetOptionSub:   { fontSize: 12, color: MUTED },
+  sheetCancel:      { alignItems: 'center', paddingVertical: 14 },
+  sheetCancelTxt:   { fontSize: 14, fontWeight: '600', color: MUTED },
 
-  // ── Fields
-  label:      { fontSize: 13, fontWeight: '700', color: '#2D3748', marginBottom: 8 },
-  req:        { color: '#DC2626' },
-  input: {
-    backgroundColor: '#F8F9FA', borderRadius: 14, borderWidth: 1.5,
-    borderColor: 'rgba(26,54,93,0.13)',
-    paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 14 : 11,
-    fontSize: 14, color: '#2D3748',
-  },
-  inputError: { borderColor: '#DC2626', backgroundColor: '#FFF5F5' },
-  textarea:   { minHeight: 100, textAlignVertical: 'top' },
-  errorRow:   { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
-  errorMsg:   { fontSize: 12, color: '#DC2626' },
+  // Import
+  importHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
+  importFile:   { fontSize: 12, color: MUTED, marginTop: 3 },
+  importStats:  { flexDirection: 'row', gap: 10, marginBottom: 14 },
+  statChip:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  statTxt:      { fontSize: 12, fontWeight: '700' },
+  closeBtn:     { width: 30, height: 30, borderRadius: 8, backgroundColor: '#F9FAFB', justifyContent: 'center', alignItems: 'center' },
+  importRow:    { flexDirection: 'row', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', alignItems: 'center' },
+  importRowHead:{ borderBottomWidth: 2, borderBottomColor: BORDER, backgroundColor: '#F9FAFB' },
+  importCell:   { flex: 1, fontSize: 12, color: DARK, paddingHorizontal: 4 },
+  importCellHead:{ fontWeight: '700', fontSize: 11, color: MUTED, textTransform: 'uppercase' },
+  importSev:    { flex: 1, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginHorizontal: 4 },
+  importSevTxt: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+  errWrap:      { marginTop: 12, backgroundColor: '#FEF2F2', borderRadius: 10, padding: 12 },
+  errTitle:     { fontSize: 12, fontWeight: '700', color: '#DC2626', marginBottom: 6 },
+  errRow:       { fontSize: 12, color: '#991B1B', marginBottom: 2 },
+  importBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 52, borderRadius: 14, backgroundColor: GOLD, marginTop: 16 },
+  importBtnTxt: { fontSize: 15, fontWeight: '800', color: CHARCOAL },
 
-  // ── Category chip grid
-  catGrid:            { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  catOption:          { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: '#F8F9FA', borderWidth: 1.5, borderColor: 'rgba(26,54,93,0.12)' },
-  catOptionActive:    { backgroundColor: NAVY, borderColor: NAVY },
-  catOptionText:      { fontSize: 13, fontWeight: '600', color: '#718096' },
-  catOptionTextActive:{ color: '#fff' },
+  // Form modal
+  formHeader:     { backgroundColor: CHARCOAL, paddingTop: 52, paddingBottom: 20, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  formClose:      { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.14)', justifyContent: 'center', alignItems: 'center' },
+  formHeaderSub:  { fontSize: 10, fontWeight: '700', color: GOLD, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 2 },
+  formHeaderTitle:{ fontSize: 20, fontWeight: '700', color: '#FFFFFF' },
+  formBody:       { paddingHorizontal: 20, paddingTop: 24 },
+  fieldLabel:     { fontSize: 13, fontWeight: '600', color: SLATE, marginBottom: 7 },
+  req:            { color: '#DC2626' },
+  input:          { backgroundColor: SURFACE, borderRadius: 12, borderWidth: 1.5, borderColor: BORDER, paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 13 : 10, fontSize: 14, color: DARK },
+  inputErr:       { borderColor: '#DC2626', backgroundColor: '#FFF5F5' },
+  textarea:       { minHeight: 90, textAlignVertical: 'top' },
+  errMsgRow:      { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  errMsg:         { fontSize: 12, color: '#DC2626' },
+  catGrid:        { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  catOpt:         { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, borderWidth: 1.5 },
+  catOptTxt:      { fontSize: 13 },
 
-  // ── Severity radio group
-  sevRow:      { flexDirection: 'row', gap: 10 },
-  sevOption: {
-    flex: 1,
-    borderRadius: 16,
-    borderWidth: 2,
-    paddingVertical: 14,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-    gap: 6,
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-  },
-  sevRadio:     { width: 18, height: 18, borderRadius: 9, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
-  sevRadioFill: { width: 8, height: 8, borderRadius: 4 },
-  sevTextWrap:  { alignItems: 'center', gap: 3 },
-  sevLabel:     { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
-  sevHint:      { fontSize: 12, color: '#718096', marginTop: 8, lineHeight: 17, textAlign: 'center', fontStyle: 'italic' },
+  // Severity radio
+  sevRow:   { flexDirection: 'row', gap: 10 },
+  sevOpt:   { flex: 1, borderRadius: 14, borderWidth: 2, paddingVertical: 12, paddingHorizontal: 8, alignItems: 'center', gap: 5, shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  sevRadio: { width: 16, height: 16, borderRadius: 8, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
+  sevFill:  { width: 7, height: 7, borderRadius: 4 },
+  sevLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3, textAlign: 'center' },
+  sevHint:  { fontSize: 12, color: MUTED, textAlign: 'center', marginTop: 8, fontStyle: 'italic', lineHeight: 17 },
 
-  // ── Toggle
-  toggleCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F8F9FA', borderRadius: 16, padding: 14, marginTop: 18, borderWidth: 1, borderColor: 'rgba(26,54,93,0.10)' },
-  toggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  toggleIconWrap:{ width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  toggleLabel:{ fontSize: 14, fontWeight: '700', color: '#2D3748' },
-  toggleSub:  { fontSize: 12, color: '#718096', marginTop: 2 },
+  // Toggle
+  toggleRow:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: SURFACE, borderRadius: 12, padding: 14, marginTop: 16, borderWidth: 1, borderColor: BORDER },
+  toggleLeft:    { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  toggleIconWrap:{ width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  toggleLabel:   { fontSize: 14, fontWeight: '600', color: DARK },
+  toggleSub:     { fontSize: 12, color: MUTED, marginTop: 2 },
 
-  // ── Payload preview
-  payloadBox:    { marginTop: 18, backgroundColor: '#0F1C2E', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: 'rgba(197,160,71,0.20)' },
-  payloadHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 10 },
-  payloadTitle:  { fontSize: 12, fontWeight: '700', color: GOLD, textTransform: 'uppercase', letterSpacing: 0.8 },
-  payloadCode:   { fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace', fontSize: 12, color: '#86EFAC', lineHeight: 18 },
-
-  // ── Save button
-  saveBtn:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 56, borderRadius: 16, backgroundColor: GOLD, marginTop: 22 },
-  saveBtnDisabled: { opacity: 0.5 },
-  saveBtnText:     { fontSize: 16, fontWeight: '800', color: NAVY },
-
-  // ── Import button (header)
-  importBtn:      { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)' },
-  importBtnText:  { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.85)' },
-
-  // ── Import preview modal
-  importBackdrop:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-  importSheet:         { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 20, paddingBottom: 36, maxHeight: '88%', overflow: 'hidden' },
-  importGoldBar:       { height: 3, marginHorizontal: -20 },
-  importHandle:        { width: 44, height: 4, borderRadius: 2, backgroundColor: '#CBD5E0', alignSelf: 'center', marginTop: 10, marginBottom: 16 },
-  importSheetHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
-  importSheetTitle:    { fontSize: 18, fontWeight: '800', color: '#2D3748' },
-  importSheetFile:     { fontSize: 12, color: '#718096', marginTop: 3, maxWidth: 260 },
-  importCloseBtn:      { width: 32, height: 32, borderRadius: 10, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
-  importStats:         { flexDirection: 'row', gap: 10, marginBottom: 12 },
-  importStatChip:      { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
-  importStatText:      { fontSize: 13, fontWeight: '700' },
-  importHint:          { flexDirection: 'row', alignItems: 'flex-start', gap: 7, backgroundColor: 'rgba(197,160,71,0.10)', borderRadius: 12, padding: 10, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(197,160,71,0.25)' },
-  importHintText:      { flex: 1, fontSize: 12, color: '#4A5568', lineHeight: 17 },
-  importPreviewScroll: { maxHeight: 300, marginBottom: 16 },
-  importRow:           { flexDirection: 'row', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  importRowHeader:     { borderBottomWidth: 2, borderBottomColor: '#E2E8F0', backgroundColor: '#F8F9FA' },
-  importRowAlt:        { backgroundColor: '#FAFBFC' },
-  importCell:          { flex: 1, fontSize: 12, color: '#2D3748', paddingHorizontal: 4 },
-  importCellHeader:    { fontWeight: '800', fontSize: 11, color: '#718096', textTransform: 'uppercase', letterSpacing: 0.4 },
-  importSevBadge:      { flex: 1, alignSelf: 'center', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginHorizontal: 4 },
-  importSevText:       { fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
-  importMore:          { fontSize: 12, color: '#718096', textAlign: 'center', paddingVertical: 8, fontStyle: 'italic' },
-  importErrorsWrap:    { marginTop: 12, backgroundColor: '#FFF5F5', borderRadius: 12, padding: 12 },
-  importErrorsTitle:   { fontSize: 12, fontWeight: '700', color: '#DC2626', marginBottom: 6 },
-  importErrorRow:      { fontSize: 12, color: '#9B2335', marginBottom: 3 },
-  importConfirmBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 54, borderRadius: 16, backgroundColor: GOLD },
-  importConfirmText:   { fontSize: 15, fontWeight: '800', color: NAVY },
+  saveBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 54, borderRadius: 14, backgroundColor: GOLD, marginTop: 24 },
+  saveBtnTxt: { fontSize: 15, fontWeight: '800', color: CHARCOAL },
 });
