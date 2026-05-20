@@ -256,7 +256,7 @@ const AdminNavigator = () => {
         headerBackTitleVisible: false,
       }}
     >
-      <Stack.Screen name="AdminMain"        component={AdminDrawer}            options={{ headerShown: false }} />
+      <Stack.Screen name="AdminRoot"         component={AdminDrawer}            options={{ headerShown: false }} />
       <Stack.Screen name="CampusStructure"  component={CampusStructureScreen}  options={{ headerShown: false }} />
       <Stack.Screen name="CampusContent"    component={CampusContentScreen}    options={{ headerShown: false }} />
       <Stack.Screen name="ControlCentre"    component={ControlCentreScreen}    options={{ headerShown: false }} />
