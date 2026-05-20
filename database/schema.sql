@@ -639,6 +639,36 @@ CREATE POLICY "dining_select"  ON public.dining            FOR SELECT USING (tru
 CREATE POLICY "ss_select_auth" ON public.safety_and_support FOR SELECT USING (true);
 
 -- ---------------------------------------------------------------------------
+-- 12. OTP password-reset helper
+--     Required by the Forgot-Password flow:
+--     ForgotPasswordScreen calls supabase.rpc('check_email_exists')
+--     before sending an OTP so it can show a user-friendly "email not
+--     found" message instead of silently delivering (or not delivering)
+--     a code that will never verify.
+--
+--     Run this block once in the Supabase SQL Editor.
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.check_email_exists(p_email text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER          -- bypasses RLS so anon callers can use it
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.users
+    WHERE lower(trim(email)) = lower(trim(p_email))
+  );
+$$;
+
+-- Grant execute to anon and authenticated roles
+GRANT EXECUTE ON FUNCTION public.check_email_exists(text) TO anon;
+GRANT EXECUTE ON FUNCTION public.check_email_exists(text) TO authenticated;
+
+
+-- ---------------------------------------------------------------------------
 -- After running this SQL:
 --   1. Authentication > Providers > enable "Anonymous" sign-in.
 --   2. Fill in .env with your Project URL and anon key.

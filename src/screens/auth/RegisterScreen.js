@@ -151,16 +151,28 @@ export default function RegisterScreen({ navigation }) {
     { text: 'Cancel', style: 'cancel' },
   ]);
 
+  // Upload avatar AFTER signup so we have a valid session (auth.uid() is set).
+  // Uses the 'profiles' bucket with path <uid>/<timestamp>.<ext> which matches
+  // the profiles_own_insert RLS policy: auth.uid()::text = foldername[1].
   const uploadAvatar = async (uri) => {
     setUploadingAvatar(true);
     try {
-      const ext = uri.match(/\.(\w+)(\?|$)/)?.[1] || 'jpg';
+      const ext = (uri.match(/\.(\w+)(\?|$)/)?.[1] || 'jpg').toLowerCase();
       const contentType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
-      const filename = `avatars/${Date.now()}.${ext}`;
-      const file = new File(uri);
-      const { error } = await supabase.storage.from('locations').upload(filename, file, { contentType, upsert: true });
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No active session for avatar upload.');
+      const filename = `${user.id}/${Date.now()}.${ext}`;
+
+      // Fetch the file as a blob (works cross-platform in Expo)
+      const response = await fetch(uri);
+      const blob     = await response.blob();
+
+      const { error } = await supabase.storage
+        .from('profiles')
+        .upload(filename, blob, { contentType, upsert: true });
       if (error) throw error;
-      const { data } = supabase.storage.from('locations').getPublicUrl(filename);
+
+      const { data } = supabase.storage.from('profiles').getPublicUrl(filename);
       return data.publicUrl;
     } finally {
       setUploadingAvatar(false);
@@ -173,11 +185,23 @@ export default function RegisterScreen({ navigation }) {
     setErrors({});
     setLoading(true);
     try {
-      // Upload avatar if picked
-      let avatarUrl = null;
-      if (avatarUri) avatarUrl = await uploadAvatar(avatarUri);
+      // 1. Create account first (no avatar URL yet — avoids RLS issues)
+      await register({ ...values, avatarUrl: null });
 
-      await register({ ...values, avatarUrl });
+      // 2. After signup Supabase creates a session (even pre-email-confirmation).
+      //    Use that session to upload avatar to 'profiles' bucket.
+      let avatarUrl = null;
+      if (avatarUri) {
+        try {
+          avatarUrl = await uploadAvatar(avatarUri);
+          // Attach avatar URL to the auth user metadata
+          await supabase.auth.updateUser({ data: { avatar_url: avatarUrl } });
+        } catch (uploadErr) {
+          // Avatar failure must not block account creation
+          console.warn('[RegisterScreen] avatar upload skipped:', uploadErr.message);
+        }
+      }
+
       navigation.navigate('EmailSent', { email: values.email, type: 'signup' });
     } catch (err) {
       Alert.alert('Registration failed', err.message || 'Please try again.');
@@ -331,7 +355,7 @@ export default function RegisterScreen({ navigation }) {
             <InputRow focused={focused.email} error={errors.email}>
               <Ionicons name="mail-outline" size={17} color={focused.email ? WHITE : WHITE_70} />
               <TextInput style={s.input} value={form.email} onChangeText={(v) => { set('email')(v); clearError('email'); }}
-                placeholder="name@rmu.edu.gh" placeholderTextColor={WHITE_45}
+                placeholder="name@st.rmu.edu.gh" placeholderTextColor={WHITE_45}
                 autoCapitalize="none" keyboardType="email-address"
                 onFocus={() => onFocus('email')} onBlur={() => onBlur('email')} />
             </InputRow>

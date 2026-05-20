@@ -207,9 +207,50 @@ export const AuthProvider = ({ children }) => {
   };
 
   // ── forgotPassword ──────────────────────────────────────────────────────────
+  // 1. Checks the email exists in public.users via a SECURITY DEFINER RPC
+  //    (so anon users can call it without hitting the users RLS).
+  // 2. Sends a 6-digit OTP via signInWithOtp so the app can verify inline.
   const forgotPassword = async (email) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    // Step 1: email-existence check
+    const { data: exists, error: checkErr } = await supabase.rpc('check_email_exists', { p_email: email.toLowerCase().trim() });
+    if (checkErr) throw checkErr;
+    if (!exists) throw new Error('No account found with that email address. Please check and try again.');
+
+    // Step 2: send 6-digit OTP (shouldCreateUser: false prevents accidental signup)
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.toLowerCase().trim(),
+      options: { shouldCreateUser: false },
+    });
     if (error) throw error;
+  };
+
+  // ── verifyOtp ───────────────────────────────────────────────────────────────
+  // Verifies the 6-digit code from the email. On success, Supabase creates a
+  // session so the user can immediately call resetPassword().
+  const verifyOtp = async (email, token, type) => {
+    const otpType = type === 'recovery' ? 'email' : 'signup';
+    const { error } = await supabase.auth.verifyOtp({
+      email: email.toLowerCase().trim(),
+      token,
+      type: otpType,
+    });
+    if (error) throw error;
+  };
+
+  // ── resendOtp ───────────────────────────────────────────────────────────────
+  const resendOtp = async (email, type) => {
+    if (type === 'recovery') {
+      // Re-send password recovery OTP
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email.toLowerCase().trim(),
+        options: { shouldCreateUser: false },
+      });
+      if (error) throw error;
+    } else {
+      // Re-send signup confirmation
+      const { error } = await supabase.auth.resend({ type: 'signup', email: email.toLowerCase().trim() });
+      if (error) throw error;
+    }
   };
 
   // ── resetPassword ───────────────────────────────────────────────────────────
@@ -250,6 +291,8 @@ export const AuthProvider = ({ children }) => {
       logout,
       register,
       forgotPassword,
+      verifyOtp,
+      resendOtp,
       resetPassword,
       enterGuestMode,
     }}>

@@ -2,11 +2,20 @@ import { z } from 'zod';
 
 export const registerSchema = z
   .object({
-    fullName: z.string().min(2, 'Full name must be at least 2 characters'),
-    email: z.string().email('Enter a valid email address'),
-    indexNumber: z.string().min(3, 'Index number is required'),
-    programme: z.string().min(2, 'Please select a programme'),
-    password: z.string().min(8, 'Password must be at least 8 characters'),
+    fullName:        z.string().min(2, 'Full name must be at least 2 characters'),
+    displayName:     z.string().optional(),
+    email:           z
+      .string()
+      .email('Enter a valid email address')
+      .refine((e) => e.toLowerCase().endsWith('@st.rmu.edu.gh'), {
+        message: 'Only RMU student emails (@st.rmu.edu.gh) are accepted',
+      }),
+    studentId:       z.string().min(2, 'Student ID is required'),
+    indexNumber:     z.string().min(2, 'Index number is required'),
+    programme:       z.string().min(2, 'Please select a programme'),
+    department:      z.string().optional(),
+    phone:           z.string().optional(),
+    password:        z.string().min(8, 'Password must be at least 8 characters'),
     confirmPassword: z.string(),
   })
   .refine((d) => d.password === d.confirmPassword, {
