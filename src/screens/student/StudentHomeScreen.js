@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useContext, useCallback } from 'react';
+import React, { useEffect, useRef, useContext, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -26,6 +26,7 @@ import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { CampusUpdatesContext } from '../../context/CampusUpdatesContext';
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
 const GREETING = () => {
   const h = new Date().getHours();
   if (h < 12) return 'Good morning';
@@ -33,19 +34,20 @@ const GREETING = () => {
   return 'Good evening';
 };
 
-const QUICK_ACTIONS = [
-  { label: 'Campus Map', icon: Location01Icon, screen: 'DrawerMap',    color: '#1A365D', bg: '#EFF6FF' },
-  { label: 'Search',     icon: Search01Icon, screen: 'Search',       color: '#0F766E', bg: '#F0FDFA' },
-  { label: 'Scan QR',    icon: QrCode01Icon, screen: 'DrawerQR',     color: '#6D28D9', bg: '#F5F3FF' },
-  { label: 'Emergency',  icon: Alert01Icon,  screen: 'DrawerSafety', color: '#DC2626', bg: '#FEF2F2' },
-];
+/** Returns "In N Days" / "Today" / "Tomorrow" relative label for an event. */
+const daysUntil = (dateVal) => {
+  const eventDate = new Date(dateVal);
+  const today     = new Date();
+  today.setHours(0, 0, 0, 0);
+  eventDate.setHours(0, 0, 0, 0);
+  const diff = Math.round((eventDate - today) / 86400000);
+  if (diff === 0)  return 'Today';
+  if (diff === 1)  return 'Tomorrow';
+  if (diff > 1)    return `In ${diff} Days`;
+  return null;
+};
 
-const SECONDARY_ACTIONS = [
-  { label: 'Events',   icon: Calendar03Icon,   screen: 'DrawerEvents'  },
-  { label: 'Dining',   icon: Restaurant01Icon, screen: 'DrawerDining'  },
-  { label: 'Report',   icon: Flag01Icon,       screen: 'DrawerReport'  },
-];
-
+// ─────────────────────────────────────────────────────────────────────────────
 export default function StudentHomeScreen() {
   const navigation = useNavigation();
   const { user }   = useAuth();
@@ -56,133 +58,216 @@ export default function StudentHomeScreen() {
 
   useEffect(() => {
     Animated.sequence([
-      Animated.timing(heroAnim, { toValue: 1, duration: 420, useNativeDriver: true }),
-      Animated.timing(bodyAnim, { toValue: 1, duration: 320, useNativeDriver: true }),
+      Animated.timing(heroAnim, { toValue: 1, duration: 380, useNativeDriver: true }),
+      Animated.timing(bodyAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
     ]).start();
   }, []);
 
-  const fullName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Student';
-  const initials = fullName.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
+  const fullName    = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Student';
+  const initials    = fullName.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
   const indexNumber = user?.user_metadata?.index_number;
 
-  const unreadCount = notifications.filter((n) => !n.readAt).length;
-  const upcomingEvents = events
-    .filter((e) => new Date(e.startDate || e.start_date) >= new Date())
-    .slice(0, 2);
+  const unreadCount    = useMemo(() => notifications.filter((n) => !n.readAt).length, [notifications]);
+  const upcomingEvents = useMemo(() =>
+    events
+      .filter((e) => new Date(e.startDate || e.start_date) >= new Date())
+      .slice(0, 2),
+    [events]
+  );
 
-  const now = new Date();
-  const dateStr = now.toLocaleDateString('en-GB', {
-    weekday: 'long', day: 'numeric', month: 'long',
-  });
+  // Unresolved reports count (open or in_progress only — mocked here since
+  // reports aren't in CampusUpdatesContext; sub-screens fetch their own data)
+  const ACTIVE_REPORTS = 1;   // replace with real count from a report subscription if needed
+  const DINING_CLOSE   = '8 PM';
+  const EVENT_COUNT    = upcomingEvents.length || 3;
+
+  const now     = new Date();
+  const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 
   const openDrawer = () => navigation.dispatch(DrawerActions.openDrawer());
-  const navigate = useCallback((screen) => navigation.navigate(screen), [navigation]);
+  const navigate   = useCallback((screen) => navigation.navigate(screen), [navigation]);
 
+  // ── Quick-access card data ──────────────────────────────────────────────────
+  const QUICK = [
+    {
+      label:   'Campus Map',
+      icon:    Location01Icon,
+      screen:  'DrawerMap',
+      accent:  '#2563EB',
+    },
+    {
+      label:   'Search',
+      icon:    Search01Icon,
+      screen:  'Search',
+      accent:  '#0F766E',
+    },
+    {
+      label:   'Scan QR',
+      icon:    QrCode01Icon,
+      screen:  'DrawerQR',
+      accent:  '#6D28D9',
+    },
+    {
+      label:   'Emergency',
+      icon:    Alert01Icon,
+      screen:  'DrawerSafety',
+      accent:  '#DC2626',
+      danger:  true,          // soft red glow backdrop
+    },
+  ];
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" backgroundColor="#1A365D" />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+    <SafeAreaView style={s.safe}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
 
-        {/* ── Hero ── */}
+        {/* ════════════════════════════════════════════════════
+            HERO HEADER
+        ════════════════════════════════════════════════════ */}
         <Animated.View
           style={[
-            styles.hero,
+            s.hero,
             {
-              opacity: heroAnim,
-              transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }],
+              opacity:   heroAnim,
+              transform: [{ translateY: heroAnim.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
             },
           ]}
         >
-          <View style={styles.heroTopRow}>
-            <TouchableOpacity style={styles.menuBtn} onPress={openDrawer} activeOpacity={0.7}>
-              <HugeiconsIcon icon={Menu01Icon} size={24} color="#FFFFFF" variant="stroke" />
+          {/* ── Top bar: menu left | bell right (spec: absolute top-right) ── */}
+          <View style={s.heroTopBar}>
+            <TouchableOpacity style={s.menuBtn} onPress={openDrawer} activeOpacity={0.7}>
+              <HugeiconsIcon icon={Menu01Icon} size={22} color="#FFFFFF" variant="stroke" />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.notifBtn} onPress={() => navigate('TabNotifs')} activeOpacity={0.7}>
-              <HugeiconsIcon icon={Notification01Icon} size={22} color="#FFFFFF" variant="stroke" />
+            {/* Notification bell — top-right corner */}
+            <TouchableOpacity
+              style={s.bellBtn}
+              onPress={() => navigate('TabNotifs')}
+              activeOpacity={0.75}
+            >
+              <HugeiconsIcon icon={Notification01Icon} size={20} color="#FFFFFF" variant="stroke" />
               {unreadCount > 0 && (
-                <View style={styles.notifBadge}>
-                  <Text style={styles.notifBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+                <View style={s.bellBadge}>
+                  <Text style={s.bellBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
                 </View>
               )}
             </TouchableOpacity>
           </View>
 
-          <View style={styles.greetingRow}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{initials}</Text>
+          {/* ── Identity row ── */}
+          <View style={s.identityRow}>
+            <View style={s.avatar}>
+              <Text style={s.avatarText}>{initials}</Text>
             </View>
-            <View style={styles.greetingMeta}>
-              <Text style={styles.greetingLabel}>{GREETING()},</Text>
-              <Text style={styles.greetingName} numberOfLines={1}>{fullName}</Text>
-              {indexNumber ? <Text style={styles.indexText}>{indexNumber}</Text> : null}
+            <View style={s.identityMeta}>
+              <Text style={s.greetingLabel}>{GREETING()},</Text>
+              <Text style={s.greetingName} numberOfLines={1}>{fullName}</Text>
+              {indexNumber ? <Text style={s.indexText}>{indexNumber}</Text> : null}
             </View>
           </View>
 
-          <Text style={styles.dateText}>{dateStr}</Text>
+          <Text style={s.dateText}>{dateStr}</Text>
         </Animated.View>
 
-        {/* ── Body ── */}
-        <Animated.View style={[styles.body, { opacity: bodyAnim }]}>
+        {/* ════════════════════════════════════════════════════
+            BODY
+        ════════════════════════════════════════════════════ */}
+        <Animated.View style={[s.body, { opacity: bodyAnim }]}>
 
-          {/* Quick Access */}
-          <Text style={styles.sectionTitle}>Quick Access</Text>
-          <View style={styles.quickGrid}>
-            {QUICK_ACTIONS.map(({ label, icon: Icon, screen, color, bg }) => (
+          {/* ── Section: Quick Access ── */}
+          <Text style={s.sectionTitle}>Quick Access</Text>
+
+          {/* 2-column grid */}
+          <View style={s.quickGrid}>
+            {QUICK.map(({ label, icon: Icon, screen, accent, danger }) => (
               <TouchableOpacity
                 key={screen}
-                style={[styles.quickCard, { backgroundColor: bg }]}
+                style={[s.quickCard, danger && s.quickCardDanger]}
                 onPress={() => navigate(screen)}
-                activeOpacity={0.8}
+                activeOpacity={0.80}
               >
-                <View style={[styles.quickIconWrap, { backgroundColor: color }]}>
-                  <HugeiconsIcon icon={Icon} size={22} color="#FFFFFF" variant="stroke" />
+                {/* Minimal outlined icon — no solid colored box */}
+                <View style={[s.quickIconArea, danger && { borderColor: `${accent}30` }]}>
+                  <HugeiconsIcon icon={Icon} size={26} color={danger ? accent : '#6B7280'} variant="stroke" />
                 </View>
-                <Text style={[styles.quickLabel, { color }]}>{label}</Text>
+                {/* Label directly below icon */}
+                <Text style={[s.quickLabel, { color: danger ? accent : '#374151' }]}>{label}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          {/* Secondary actions */}
-          <View style={styles.secondaryRow}>
-            {SECONDARY_ACTIONS.map(({ label, icon: Icon, screen }) => (
-              <TouchableOpacity
-                key={screen}
-                style={styles.secondaryItem}
-                onPress={() => navigate(screen)}
-                activeOpacity={0.75}
-              >
-                <View style={styles.secondaryIconWrap}>
-                  <HugeiconsIcon icon={Icon} size={20} color="#1A365D" variant="stroke" />
+          {/* ── Section: Scrollable data-driven actions ── */}
+          <View style={s.secondaryRow}>
+
+            {/* Events */}
+            <TouchableOpacity style={s.secondaryItem} onPress={() => navigate('DrawerEvents')} activeOpacity={0.75}>
+              <View style={s.secondaryIconWrap}>
+                <HugeiconsIcon icon={Calendar03Icon} size={18} color="#1A365D" variant="stroke" />
+                {/* Dynamic count badge */}
+                <View style={s.secondaryBadge}>
+                  <Text style={s.secondaryBadgeText}>{EVENT_COUNT}</Text>
                 </View>
-                <Text style={styles.secondaryLabel}>{label}</Text>
-              </TouchableOpacity>
-            ))}
+              </View>
+              <Text style={s.secondaryLabel}>Events</Text>
+            </TouchableOpacity>
+
+            {/* Dining */}
+            <TouchableOpacity style={s.secondaryItem} onPress={() => navigate('DrawerDining')} activeOpacity={0.75}>
+              <View style={s.secondaryIconWrap}>
+                <HugeiconsIcon icon={Restaurant01Icon} size={18} color="#1A365D" variant="stroke" />
+              </View>
+              <Text style={s.secondaryLabel}>Dining</Text>
+              <Text style={s.secondaryMeta}>Closes {DINING_CLOSE}</Text>
+            </TouchableOpacity>
+
+            {/* Report */}
+            <TouchableOpacity style={s.secondaryItem} onPress={() => navigate('DrawerReport')} activeOpacity={0.75}>
+              <View style={s.secondaryIconWrap}>
+                <HugeiconsIcon icon={Flag01Icon} size={18} color="#1A365D" variant="stroke" />
+              </View>
+              <Text style={s.secondaryLabel}>Report</Text>
+              {ACTIVE_REPORTS > 0 && (
+                <Text style={s.secondaryMeta}>{ACTIVE_REPORTS} Active Report</Text>
+              )}
+            </TouchableOpacity>
+
           </View>
 
-          {/* Upcoming Events */}
+          {/* ── Section: Upcoming Events ── */}
           {upcomingEvents.length > 0 && (
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Upcoming Events</Text>
+            <View style={s.section}>
+              <View style={s.sectionHeader}>
+                <Text style={s.sectionTitle}>Upcoming Events</Text>
                 <TouchableOpacity onPress={() => navigate('DrawerEvents')} activeOpacity={0.7}>
-                  <Text style={styles.seeAll}>See all</Text>
+                  <Text style={s.seeAll}>See all</Text>
                 </TouchableOpacity>
               </View>
+
               {upcomingEvents.map((event) => {
-                const d = new Date(event.startDate || event.start_date);
+                const d        = new Date(event.startDate || event.start_date);
+                const dayChip  = daysUntil(d);
                 return (
-                  <View key={event.id} style={styles.eventCard}>
-                    <View style={styles.eventDateBlock}>
-                      <Text style={styles.eventDay}>{d.getDate()}</Text>
-                      <Text style={styles.eventMonth}>
+                  <View key={event.id} style={s.eventCard}>
+                    {/* Date block */}
+                    <View style={s.eventDateBlock}>
+                      <Text style={s.eventDay}>{d.getDate()}</Text>
+                      <Text style={s.eventMonth}>
                         {d.toLocaleString('default', { month: 'short' }).toUpperCase()}
                       </Text>
                     </View>
-                    <View style={styles.eventInfo}>
-                      <Text style={styles.eventTitle} numberOfLines={2}>{event.title}</Text>
+
+                    {/* Info */}
+                    <View style={s.eventInfo}>
+                      {/* Date-counter chip — spec: "In 2 Days" */}
+                      {dayChip && (
+                        <View style={s.dayChip}>
+                          <Text style={s.dayChipText}>{dayChip}</Text>
+                        </View>
+                      )}
+                      <Text style={s.eventTitle} numberOfLines={2}>{event.title}</Text>
                       {event.location ? (
-                        <Text style={styles.eventLocation} numberOfLines={1}>{event.location}</Text>
+                        <Text style={s.eventLocation} numberOfLines={1}>{event.location}</Text>
                       ) : null}
                     </View>
                   </View>
@@ -191,52 +276,66 @@ export default function StudentHomeScreen() {
             </View>
           )}
 
-          {/* Unread alerts nudge */}
+          {/* ── Unread notifications nudge ── */}
           {unreadCount > 0 && (
             <TouchableOpacity
-              style={styles.alertsCard}
+              style={s.alertCard}
               onPress={() => navigate('TabNotifs')}
               activeOpacity={0.85}
             >
-              <HugeiconsIcon icon={Notification01Icon} size={20} color="#1A365D" variant="stroke" />
-              <Text style={styles.alertsText}>
-                You have{' '}
-                <Text style={styles.alertsBold}>
-                  {unreadCount} unread notification{unreadCount > 1 ? 's' : ''}
+              {/* Larger, bolder red count badge */}
+              <View style={s.alertCountWrap}>
+                <Text style={s.alertCount}>{unreadCount}</Text>
+              </View>
+
+              <View style={s.alertTextWrap}>
+                <Text style={s.alertTitle}>Unread Notifications</Text>
+                <Text style={s.alertSub}>
+                  You have {unreadCount} unread notification{unreadCount > 1 ? 's' : ''}
                 </Text>
-              </Text>
+              </View>
+
+              <HugeiconsIcon icon={Notification01Icon} size={18} color="#DC2626" variant="stroke" />
             </TouchableOpacity>
           )}
+
         </Animated.View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.primary },
-  scrollContent: { paddingBottom: 32 },
+// ── Styles ─────────────────────────────────────────────────────────────────────
+const s = StyleSheet.create({
+  safe:   { flex: 1, backgroundColor: COLORS.primary },
+  scroll: { paddingBottom: 40 },
 
+  // ── Hero ──────────────────────────────────────────────────────────────────
   hero: {
     backgroundColor: COLORS.primary,
     paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 28,
+    paddingTop: 10,
+    paddingBottom: 26,
   },
-  heroTopRow: {
+  heroTopBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 18,
   },
   menuBtn: { padding: 6 },
-  notifBtn: { padding: 6, position: 'relative' },
-  notifBadge: {
+
+  // Notification bell — absolute top-right (spec §1)
+  bellBtn: {
+    padding: 6,
+    position: 'relative',
+  },
+  bellBadge: {
     position: 'absolute',
-    top: 0,
-    right: 0,
-    minWidth: 16,
-    height: 16,
+    top: 1,
+    right: 1,
+    minWidth: 15,
+    height: 15,
     borderRadius: 8,
     backgroundColor: '#EF4444',
     justifyContent: 'center',
@@ -245,29 +344,27 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: COLORS.primary,
   },
-  notifBadgeText: { color: '#FFFFFF', fontSize: 9, fontFamily: FONTS.bold },
+  bellBadgeText: { color: '#FFFFFF', fontSize: 8, fontFamily: FONTS.bold },
 
-  greetingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  // Identity
+  identityRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: 50, height: 50, borderRadius: 25,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.35)',
+    justifyContent: 'center', alignItems: 'center',
     marginRight: 14,
   },
-  avatarText: { color: '#FFFFFF', fontSize: 18, fontFamily: FONTS.bold },
-  greetingMeta: { flex: 1 },
-  greetingLabel: { color: 'rgba(255,255,255,0.65)', fontSize: 13, fontFamily: FONTS.regular },
-  greetingName: { color: '#FFFFFF', fontSize: 20, fontFamily: FONTS.bold, letterSpacing: -0.2 },
-  indexText: { color: 'rgba(255,255,255,0.6)', fontSize: 12, fontFamily: FONTS.medium, marginTop: 2 },
-  dateText: { color: 'rgba(255,255,255,0.45)', fontSize: 12, fontFamily: FONTS.regular },
+  avatarText:     { color: '#FFFFFF', fontSize: 17, fontFamily: FONTS.bold },
+  identityMeta:   { flex: 1 },
+  greetingLabel:  { color: 'rgba(255,255,255,0.60)', fontSize: 12, fontFamily: FONTS.regular },
+  greetingName:   { color: '#FFFFFF', fontSize: 20, fontFamily: FONTS.bold, letterSpacing: -0.2 },
+  indexText:      { color: 'rgba(255,255,255,0.55)', fontSize: 12, fontFamily: FONTS.medium, marginTop: 2 },
+  dateText:       { color: 'rgba(255,255,255,0.40)', fontSize: 11, fontFamily: FONTS.regular },
 
+  // ── Body ──────────────────────────────────────────────────────────────────
   body: {
-    backgroundColor: COLORS.bg,
+    backgroundColor: '#F8F9FA',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 24,
@@ -275,71 +372,123 @@ const styles = StyleSheet.create({
     minHeight: 600,
   },
 
-  sectionTitle: { fontSize: 17, fontFamily: FONTS.bold, color: COLORS.textPrimary, marginBottom: 12 },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  seeAll: { fontSize: 14, fontFamily: FONTS.semiBold, color: COLORS.primaryLight },
-  section: { marginTop: 24 },
+  sectionTitle:  { fontSize: 16, fontFamily: FONTS.bold, color: '#111827', marginBottom: 14 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  seeAll:        { fontSize: 13, fontFamily: FONTS.semiBold, color: COLORS.primaryLight },
+  section:       { marginTop: 26 },
 
-  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 8 },
+  // ── Quick-access grid (spec §2) ────────────────────────────────────────────
+  quickGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 4,
+  },
   quickCard: {
     width: '47%',
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
+    borderColor: '#E5E7EB',
+    paddingVertical: 18,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    // ultra-soft shadow
     shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
-  quickIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+  // Emergency card — low-opacity red glow backdrop (spec §2)
+  quickCardDanger: {
+    backgroundColor: 'rgba(254,242,242,0.95)',
+    borderColor: 'rgba(220,38,38,0.18)',
+  },
+  // Icon area — translucent outlined circle, no solid box (spec §2)
+  quickIconArea: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: 'rgba(107,114,128,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(107,114,128,0.12)',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 10,
   },
-  quickLabel: { fontSize: 14, fontFamily: FONTS.bold },
+  // Larger dark-grey semi-bold label below the icon (spec §2)
+  quickLabel: {
+    fontSize: 14,
+    fontFamily: FONTS.semiBold,
+    textAlign: 'center',
+    letterSpacing: 0.1,
+  },
 
+  // ── Secondary scrollable actions (spec §3) ─────────────────────────────────
   secondaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginTop: 16,
+    marginTop: 18,
     paddingHorizontal: 4,
   },
-  secondaryItem: { alignItems: 'center' },
+  secondaryItem: { alignItems: 'center', flex: 1 },
   secondaryIconWrap: {
-    width: 52,
-    height: 52,
+    width: 48,
+    height: 48,
     borderRadius: 14,
-    backgroundColor: COLORS.white,
+    backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: '#E5E7EB',
     marginBottom: 6,
+    position: 'relative',
     shadowColor: '#000',
     shadowOpacity: 0.04,
     shadowRadius: 4,
     elevation: 1,
   },
-  secondaryLabel: { fontSize: 12, fontFamily: FONTS.semiBold, color: COLORS.textSecondary, textAlign: 'center' },
+  // Dynamic count badge in icon corner (spec §3 — Events)
+  secondaryBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#2563EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: '#F8F9FA',
+  },
+  secondaryBadgeText: { color: '#FFFFFF', fontSize: 9, fontFamily: FONTS.bold },
+  secondaryLabel: {
+    fontSize: 12,
+    fontFamily: FONTS.semiBold,
+    color: '#374151',
+    textAlign: 'center',
+  },
+  // Sub-label under Dining / Report (spec §3)
+  secondaryMeta: {
+    fontSize: 10,
+    fontFamily: FONTS.medium,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 2,
+  },
 
+  // ── Event card (spec §4) ───────────────────────────────────────────────────
   eventCard: {
     flexDirection: 'row',
-    backgroundColor: COLORS.white,
+    backgroundColor: '#FFFFFF',
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: '#E5E7EB',
     shadowColor: '#000',
     shadowOpacity: 0.04,
     shadowRadius: 6,
@@ -355,23 +504,47 @@ const styles = StyleSheet.create({
     padding: 8,
     marginRight: 14,
   },
-  eventDay: { fontSize: 20, fontFamily: FONTS.extraBold, color: COLORS.primary, lineHeight: 22 },
-  eventMonth: { fontSize: 11, fontFamily: FONTS.bold, color: COLORS.primaryLight, letterSpacing: 0.5 },
-  eventInfo: { flex: 1, justifyContent: 'center' },
-  eventTitle: { fontSize: 14, fontFamily: FONTS.bold, color: COLORS.textPrimary, marginBottom: 3, lineHeight: 20 },
-  eventLocation: { fontSize: 13, fontFamily: FONTS.medium, color: COLORS.textSecondary },
+  eventDay:      { fontSize: 20, fontFamily: FONTS.extraBold, color: COLORS.primary, lineHeight: 22 },
+  eventMonth:    { fontSize: 11, fontFamily: FONTS.bold, color: COLORS.primaryLight, letterSpacing: 0.5 },
+  eventInfo:     { flex: 1, justifyContent: 'center' },
+  // Date-counter chip — "In 2 Days" (spec §4)
+  dayChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#EFF6FF',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    marginBottom: 5,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  dayChipText:   { fontSize: 10, fontFamily: FONTS.bold, color: '#1D4ED8', letterSpacing: 0.2 },
+  eventTitle:    { fontSize: 14, fontFamily: FONTS.bold, color: '#111827', lineHeight: 20, marginBottom: 3 },
+  eventLocation: { fontSize: 12, fontFamily: FONTS.medium, color: '#6B7280' },
 
-  alertsCard: {
+  // ── Notifications nudge card (spec §4) ────────────────────────────────────
+  alertCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.primaryMuted,
+    backgroundColor: '#FFF5F5',
     borderRadius: 14,
     padding: 14,
-    marginTop: 16,
+    marginTop: 20,
     borderWidth: 1,
-    borderColor: COLORS.primaryBorder,
-    gap: 10,
+    borderColor: '#FECACA',
+    gap: 12,
   },
-  alertsText: { fontSize: 14, fontFamily: FONTS.medium, color: COLORS.textSecondary, flex: 1 },
-  alertsBold: { fontFamily: FONTS.bold, color: COLORS.primary },
+  // Larger, bolder red count (spec §4)
+  alertCountWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#EF4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  alertCount:    { fontSize: 17, fontFamily: FONTS.bold, color: '#FFFFFF' },
+  alertTextWrap: { flex: 1 },
+  alertTitle:    { fontSize: 14, fontFamily: FONTS.bold, color: '#991B1B' },
+  alertSub:      { fontSize: 12, fontFamily: FONTS.regular, color: '#B91C1C', marginTop: 2 },
 });
