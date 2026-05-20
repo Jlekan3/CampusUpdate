@@ -32,19 +32,24 @@ const GuestTabs = () => {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#C5A047',
-        tabBarInactiveTintColor: 'rgba(255,255,255,0.42)',
+        tabBarActiveTintColor:   '#1A365D',
+        tabBarInactiveTintColor: '#94A3B8',
         tabBarStyle: {
-          backgroundColor: '#1A365D',
-          borderTopColor: 'rgba(197,160,71,0.22)',
+          backgroundColor: '#FFFFFF',
+          borderTopColor: '#E2E8F0',
+          borderTopWidth: 1,
           height: 62,
           paddingBottom: 10,
           paddingTop: 8,
+          shadowColor: '#0A1628',
+          shadowOpacity: 0.06,
+          shadowRadius: 10,
+          elevation: 8,
         },
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '700',
-          letterSpacing: 0.3,
+          letterSpacing: 0.2,
         },
         headerShown: false,
       })}
