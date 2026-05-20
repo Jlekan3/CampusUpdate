@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  ActivityIndicator,
   View,
   Text,
   TextInput,
@@ -102,6 +103,7 @@ export default function RegisterScreen({ navigation }) {
   const [showDept,     setShowDept]     = useState(false);
   const [loading,      setLoading]      = useState(false);
   const [departments,  setDepartments]  = useState([]);
+  const [loadingDepts, setLoadingDepts] = useState(true);
   const [avatarUri,    setAvatarUri]    = useState(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
@@ -110,10 +112,18 @@ export default function RegisterScreen({ navigation }) {
   const onBlur  = (k) => setFocused((f) => ({ ...f, [k]: false }));
   const clearError = (k) => setErrors((e) => ({ ...e, [k]: undefined }));
 
-  // Fetch departments
+  // Fetch departments — runs without an auth session (registration page).
+  // Requires the departments RLS policy to allow auth.role() = 'anon'.
+  // Run the PATCH block in database/schema.sql if this returns empty.
   useEffect(() => {
-    supabase.from('departments').select('id, name').order('name')
-      .then(({ data }) => setDepartments(data || []));
+    supabase
+      .from('departments')
+      .select('id, name')
+      .order('name')
+      .then(({ data, error }) => {
+        if (!error && data?.length) setDepartments(data);
+      })
+      .finally(() => setLoadingDepts(false));
   }, []);
 
   // Avatar picker
@@ -284,12 +294,23 @@ export default function RegisterScreen({ navigation }) {
             {errors.programme ? <Text style={s.err}>{errors.programme}</Text> : null}
 
             <Text style={s.label}>Department</Text>
-            <TouchableOpacity style={s.inputRow} onPress={() => setShowDept(true)} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={s.inputRow}
+              onPress={() => !loadingDepts && setShowDept(true)}
+              activeOpacity={0.8}
+              disabled={loadingDepts}
+            >
               <Ionicons name="layers-outline" size={17} color={WHITE_70} />
               <Text style={[s.input, !form.department && { color: WHITE_45 }]} numberOfLines={1}>
-                {form.department || 'Select department (optional)'}
+                {loadingDepts
+                  ? 'Loading departments…'
+                  : departments.length === 0
+                    ? 'No departments available'
+                    : form.department || 'Select department (optional)'}
               </Text>
-              <Ionicons name="chevron-down-outline" size={15} color={WHITE_70} />
+              {loadingDepts
+                ? <ActivityIndicator size="small" color={WHITE_70} />
+                : <Ionicons name="chevron-down-outline" size={15} color={WHITE_70} />}
             </TouchableOpacity>
 
             {/* ── Contact ── */}

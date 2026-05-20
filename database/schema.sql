@@ -615,6 +615,30 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.safety_and_support;
 -- ---------------------------------------------------------------------------
 -- END OF SCHEMA
 -- ---------------------------------------------------------------------------
+-- PATCH — Public read access for registration & guest dashboard
+-- ---------------------------------------------------------------------------
+-- Run this block if:
+--   • The Department dropdown on the sign-up screen is empty (the page
+--     loads before any auth session exists, so auth.role() = 'anon').
+--   • The guest dashboard cards (Campus Rules, Dining, Emergency) show
+--     no data even though rows exist in those tables.
+--
+-- Departments, campus rules, dining menus, and emergency contacts are
+-- all public information — no auth is required to read them.
+-- ---------------------------------------------------------------------------
+
+DROP POLICY IF EXISTS "dept_select"   ON public.departments;
+DROP POLICY IF EXISTS "rules_select"  ON public.campus_rules;
+DROP POLICY IF EXISTS "dining_select" ON public.dining;
+DROP POLICY IF EXISTS "ss_select_auth" ON public.safety_and_support;
+
+-- Allow anyone (including pre-login visitors) to read these tables
+CREATE POLICY "dept_select"    ON public.departments      FOR SELECT USING (true);
+CREATE POLICY "rules_select"   ON public.campus_rules     FOR SELECT USING (true);
+CREATE POLICY "dining_select"  ON public.dining            FOR SELECT USING (true);
+CREATE POLICY "ss_select_auth" ON public.safety_and_support FOR SELECT USING (true);
+
+-- ---------------------------------------------------------------------------
 -- After running this SQL:
 --   1. Authentication > Providers > enable "Anonymous" sign-in.
 --   2. Fill in .env with your Project URL and anon key.
