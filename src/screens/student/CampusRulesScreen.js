@@ -1,507 +1,236 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
   LayoutAnimation,
-  UIManager,
   Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
   TextInput,
+  TouchableOpacity,
+  UIManager,
+  View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenWrapper from '../../components/ScreenWrapper';
-import { COLORS } from '../../utils/constants';
 import { subscribeToCampusRules } from '../../services/databaseService';
 
-const DEFAULT_RULE_SECTIONS = [
+if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
+
+const NAVY = '#1A365D';
+const GOLD = '#C5A047';
+const BG   = '#F8F9FA';
+
+const DEFAULT_SECTIONS = [
   {
     id: 'academic',
     title: 'Academic Integrity',
-    subtitle: 'Rules for honesty, assignments, and exams',
+    subtitle: 'Honesty, assignments and exams',
     icon: 'school-outline',
+    color: NAVY,
     rules: [
       'Submit only original work unless collaboration is explicitly allowed.',
       'Do not share answers, exam questions, or graded materials.',
       'Cite all sources used in papers, projects, and presentations.',
       'Follow all exam instructions and time limits exactly as given.',
-      'Report suspected cheating or plagiarism through the proper channel.',
+      'Report suspected cheating through the proper channel.',
     ],
   },
   {
     id: 'conduct',
     title: 'Campus Conduct',
-    subtitle: 'Rules for respectful behavior and shared spaces',
+    subtitle: 'Respectful behaviour and shared spaces',
     icon: 'people-outline',
+    color: '#2563EB',
     rules: [
       'Treat students, staff, and visitors with respect at all times.',
       'Keep common areas clean and dispose of waste properly.',
       'Follow posted signs, campus policies, and staff directions.',
       'Use campus facilities responsibly and avoid damaging property.',
-      'Maintain a quiet, professional environment in study areas and classrooms.',
+      'Maintain a quiet, professional environment in study areas.',
     ],
   },
   {
     id: 'safety',
     title: 'Safety & Security',
-    subtitle: 'Rules for emergencies, access, and campus protection',
+    subtitle: 'Emergencies, access, and campus protection',
     icon: 'shield-checkmark-outline',
+    color: '#059669',
     rules: [
-      'Carry your student ID and present it when requested by campus staff.',
+      'Carry your student ID and present it when requested.',
       'Do not prop open secure doors or share access credentials.',
       'Report suspicious activity, hazards, or injuries immediately.',
-      'Follow evacuation routes and emergency instructions during drills or alerts.',
-      'Use designated walkways, lighting, and safe transport options after dark.',
+      'Follow evacuation routes during drills or emergency alerts.',
+      'Use designated walkways and lighting after dark.',
+    ],
+  },
+  {
+    id: 'digital',
+    title: 'Digital Responsibility',
+    subtitle: 'Technology and online behaviour',
+    icon: 'laptop-outline',
+    color: '#7C3AED',
+    rules: [
+      'Use campus Wi-Fi and computers for academic purposes only.',
+      'Do not access, alter, or delete other users\' data.',
+      'Respect copyright and licensing for all digital materials.',
+      'Report cybersecurity incidents to IT immediately.',
     ],
   },
 ];
 
-const mapFirestoreRulesToSections = (rules) => {
-  return (rules || []).map((rule) => {
-    const description = (rule.description || '').trim();
-    const lines = description
-      ? description.split(/\n+/).map((line) => line.trim()).filter(Boolean)
-      : [];
-
-    return {
-      id: rule.id,
-      title: rule.title || 'Campus rule',
-      subtitle: 'Official campus policy',
-      icon: 'document-text-outline',
-      rules: lines.length > 0 ? lines : ['No details provided yet.'],
-    };
-  });
-};
-
-const CampusRulesScreen = () => {
-  const [expandedCategory, setExpandedCategory] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [firestoreRules, setFirestoreRules] = useState([]);
-  const [rulesLoading, setRulesLoading] = useState(true);
+export default function CampusRulesScreen({ navigation }) {
+  const [dbSections,   setDbSections]   = useState([]);
+  const [search,       setSearch]       = useState('');
+  const [expandedId,   setExpandedId]   = useState(null);
 
   useEffect(() => {
-    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-      UIManager.setLayoutAnimationEnabledExperimental(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = subscribeToCampusRules((items) => {
-      setFirestoreRules(items || []);
-      setRulesLoading(false);
-    });
-
-    return () => {
-      try {
-        unsubscribe?.();
-      } catch (error) {
-        // ignore
+    const unsub = subscribeToCampusRules((rules) => {
+      if (rules?.length) {
+        const mapped = rules.map((r, i) => ({
+          id:       r.id || String(i),
+          title:    r.title,
+          subtitle: r.category || '',
+          icon:     'document-text-outline',
+          color:    NAVY,
+          rules:    r.description ? [r.description] : [],
+        }));
+        setDbSections(mapped);
       }
-    };
+    });
+    return () => { try { unsub?.(); } catch (_) {} };
   }, []);
 
-  const ruleSections = useMemo(() => {
-    const fromFirestore = mapFirestoreRulesToSections(firestoreRules);
-    if (fromFirestore.length > 0) return fromFirestore;
-    return DEFAULT_RULE_SECTIONS;
-  }, [firestoreRules]);
+  const sections = dbSections.length ? dbSections : DEFAULT_SECTIONS;
 
-  const usingFallback = firestoreRules.length === 0 && !rulesLoading;
-
-  const filteredSections = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return ruleSections;
-
-    return ruleSections.filter((section) => {
-      const title = (section.title || '').toLowerCase();
-      const subtitle = (section.subtitle || '').toLowerCase();
-      const rules = section.rules || [];
-
-      return (
-        title.includes(query) ||
-        subtitle.includes(query) ||
-        rules.some((rule) => rule.toLowerCase().includes(query))
-      );
-    });
-  }, [ruleSections, searchQuery]);
-
-  const visibleCount = filteredSections.length;
-  const totalRules = filteredSections.reduce((count, section) => count + (section.rules?.length || 0), 0);
-
-  const toggleSection = (sectionId) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpandedCategory((current) => (current === sectionId ? null : sectionId));
-  };
-
-  const renderAccordionSection = (section) => {
-    const expanded = expandedCategory === section.id;
-
-    return (
-      <View key={section.id} style={styles.accordionCard}>
-        <TouchableOpacity
-          style={styles.accordionHeader}
-          activeOpacity={0.85}
-          onPress={() => toggleSection(section.id)}
-        >
-          <View style={styles.accordionHeaderLeft}>
-            <View style={styles.ruleIconWrap}>
-              <View style={styles.ruleIconContainer}>
-                <Ionicons name={section.icon} size={22} color={COLORS.primary} />
-              </View>
-            </View>
-            <View style={styles.headerTextWrap}>
-              <Text style={styles.ruleTitle}>{section.title}</Text>
-              <Text style={styles.ruleSubtitle}>{section.subtitle}</Text>
-            </View>
-          </View>
-          <Ionicons
-            name={expanded ? 'chevron-up' : 'chevron-down'}
-            size={20}
-            color={COLORS.muted}
-          />
-        </TouchableOpacity>
-
-        {expanded ? (
-          <View style={styles.accordionBody}>
-            {section.rules.map((rule, index) => (
-              <View key={`${section.id}-${index}`} style={styles.ruleRow}>
-                <View style={styles.ruleBullet} />
-                <Text style={styles.ruleDescription}>{rule}</Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
-      </View>
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return sections;
+    return sections.filter((s) =>
+      s.title.toLowerCase().includes(q) ||
+      s.rules.some((r) => r.toLowerCase().includes(q))
     );
+  }, [sections, search]);
+
+  const toggle = (id) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpandedId((prev) => (prev === id ? null : id));
   };
+
+  const canGoBack = navigation?.canGoBack?.();
 
   return (
-    <ScreenWrapper scrollable showsVerticalScrollIndicator>
-      <View style={styles.heroCard}>
-        <View style={styles.heroTopRow}>
-          <View style={styles.heroTextBlock}>
-            <Text style={styles.heroEyebrow}>Student Dashboard</Text>
-            <Text style={styles.headerTitle}>Campus Rules</Text>
-            <Text style={styles.headerSubtitle}>
-              {usingFallback
-                ? 'Showing default guidelines until admin publishes official rules.'
-                : 'Review the official RMU campus rules and guidelines.'}
-            </Text>
-          </View>
-          <View style={styles.heroIconWrap}>
-            <Ionicons name="shield-checkmark-outline" size={26} color={COLORS.white} />
-          </View>
-        </View>
-
-        <View style={styles.heroStatsRow}>
-          <View style={styles.heroStatPill}>
-            <Ionicons name="list-outline" size={14} color={COLORS.white} />
-            <Text style={styles.heroStatText}>{visibleCount} sections</Text>
-          </View>
-          <View style={styles.heroStatPillSecondary}>
-            <Ionicons name="documents-outline" size={14} color={COLORS.primary} />
-            <Text style={styles.heroStatTextSecondary}>{totalRules} rules shown</Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.searchContainer}>
-        <View style={styles.searchInputWrap}>
-          <Ionicons name="search" size={18} color={COLORS.muted} style={styles.searchIcon} />
-          <TextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Search campus rules..."
-            placeholderTextColor={COLORS.muted}
-            style={styles.searchInput}
-          />
-          {searchQuery ? (
-            <TouchableOpacity
-              onPress={() => setSearchQuery('')}
-              style={styles.clearSearchButton}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="close-circle" size={18} color={COLORS.muted} />
+    <ScreenWrapper backgroundColor={BG} statusBarStyle="light-content">
+      {/* ── Header ── */}
+      <View style={styles.header}>
+        <View style={styles.headerGoldBar} />
+        <View style={styles.headerContent}>
+          {canGoBack && (
+            <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.8}>
+              <Ionicons name="arrow-back" size={20} color="#fff" />
             </TouchableOpacity>
-          ) : null}
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerEyebrow}>CAMPUS</Text>
+            <Text style={styles.headerTitle}>Campus Rules</Text>
+          </View>
+          <View style={styles.headerIcon}>
+            <Ionicons name="shield-outline" size={24} color={GOLD} />
+          </View>
         </View>
-        <View style={styles.searchMetaRow}>
-          <Text style={styles.searchMetaText}>
-            {searchQuery ? 'Filtered by your search' : 'Tap a section to expand the rules'}
-          </Text>
-          <Text style={styles.searchMetaCount}>{visibleCount} visible</Text>
+        <Text style={styles.headerSub}>Know your rights and responsibilities on campus.</Text>
+      </View>
+
+      {/* ── Search ── */}
+      <View style={styles.searchWrap}>
+        <View style={styles.searchBar}>
+          <Ionicons name="search-outline" size={18} color={GOLD} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search rules…"
+            placeholderTextColor="#A0AEC0"
+            value={search}
+            onChangeText={setSearch}
+          />
+          {search ? <TouchableOpacity onPress={() => setSearch('')}><Ionicons name="close-circle" size={18} color="#A0AEC0" /></TouchableOpacity> : null}
         </View>
       </View>
 
-      <View style={styles.listContent}>
-        {filteredSections.length > 0 ? (
-          filteredSections.map(renderAccordionSection)
-        ) : (
-          <View style={styles.emptyStateCard}>
-            <View style={styles.emptyStateIconWrap}>
-              <Ionicons name="shield-outline" size={42} color={COLORS.primary} />
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.list}>
+        {filtered.map((section) => {
+          const open = expandedId === section.id;
+          return (
+            <View key={section.id} style={styles.section}>
+              <TouchableOpacity style={styles.sectionHeader} onPress={() => toggle(section.id)} activeOpacity={0.85}>
+                <View style={[styles.sectionIconBox, { backgroundColor: `${section.color}14` }]}>
+                  <Ionicons name={section.icon} size={20} color={section.color} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sectionTitle}>{section.title}</Text>
+                  <Text style={styles.sectionSub}>{section.subtitle}</Text>
+                </View>
+                <View style={[styles.countBadge, { backgroundColor: `${section.color}14` }]}>
+                  <Text style={[styles.countBadgeText, { color: section.color }]}>{section.rules.length}</Text>
+                </View>
+                <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color="#A0AEC0" style={{ marginLeft: 6 }} />
+              </TouchableOpacity>
+
+              {open && (
+                <View style={styles.rulesWrap}>
+                  {section.rules.map((rule, i) => (
+                    <View key={i} style={styles.ruleRow}>
+                      <View style={[styles.ruleNum, { backgroundColor: section.color }]}>
+                        <Text style={styles.ruleNumText}>{i + 1}</Text>
+                      </View>
+                      <Text style={styles.ruleText}>{rule}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
-            <Text style={styles.emptyStateTitle}>No matching rules</Text>
-            <Text style={styles.emptyStateText}>
-              Try a different keyword or clear the search.
-            </Text>
+          );
+        })}
+
+        {filtered.length === 0 && (
+          <View style={styles.empty}>
+            <Ionicons name="search-outline" size={36} color={GOLD} />
+            <Text style={styles.emptyText}>No rules matched "{search}"</Text>
           </View>
         )}
-      </View>
+      </ScrollView>
     </ScreenWrapper>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  header: {
-    marginBottom: 20,
-  },
-  heroCard: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 24,
-    padding: 18,
-    marginBottom: 16,
-    shadowColor: '#1E293B',
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 5,
-  },
-  heroTopRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 16,
-  },
-  heroTextBlock: {
-    flex: 1,
-  },
-  heroEyebrow: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.85)',
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-    marginBottom: 8,
-  },
-  headerTitle: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: COLORS.white,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
-    marginTop: 6,
-    lineHeight: 20,
-  },
-  heroIconWrap: {
-    width: 54,
-    height: 54,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-  heroStatsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 16,
-    flexWrap: 'wrap',
-  },
-  heroStatPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-  },
-  heroStatPillSecondary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: COLORS.white,
-  },
-  heroStatText: {
-    color: COLORS.white,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  heroStatTextSecondary: {
-    color: COLORS.primary,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  listContent: {
-    paddingBottom: 24,
-  },
-  searchContainer: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 18,
-    padding: 12,
-    marginBottom: 16,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
-  },
-  searchInputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: COLORS.dark,
-  },
-  clearSearchButton: {
-    padding: 4,
-    marginLeft: 8,
-  },
-  searchMetaRow: {
-    marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  searchMetaText: {
-    fontSize: 12,
-    color: COLORS.muted,
-    fontWeight: '600',
-  },
-  searchMetaCount: {
-    fontSize: 12,
-    color: COLORS.primary,
-    fontWeight: '700',
-  },
-  accordionCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 20,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E8EEF9',
-    overflow: 'hidden',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.05,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 2,
-  },
-  accordionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-  },
-  accordionHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    paddingRight: 12,
-  },
-  ruleIconWrap: {
-    marginRight: 12,
-  },
-  ruleIconContainer: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-    backgroundColor: '#EEF4FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTextWrap: {
-    flex: 1,
-  },
-  ruleTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.dark,
-  },
-  ruleSubtitle: {
-    fontSize: 12,
-    color: COLORS.muted,
-    marginTop: 3,
-  },
-  accordionBody: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    paddingTop: 0,
-    backgroundColor: '#F8FAFF',
-  },
-  ruleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 12,
-  },
-  ruleDescription: {
-    fontSize: 13,
-    color: '#475569',
-    lineHeight: 20,
-    flex: 1,
-  },
-  ruleBullet: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.primary,
-    marginTop: 7,
-    marginRight: 10,
-  },
-  emptyStateCard: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 48,
-    paddingHorizontal: 24,
-    backgroundColor: COLORS.white,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E8EEF9',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.05,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 2,
-  },
-  emptyStateIconWrap: {
-    width: 74,
-    height: 74,
-    borderRadius: 22,
-    backgroundColor: '#EEF4FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyStateTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: COLORS.dark,
-    marginTop: 12,
-  },
-  emptyStateText: {
-    fontSize: 13,
-    color: COLORS.muted,
-    marginTop: 6,
-    textAlign: 'center',
-  },
-  emptyText: {
-    fontSize: 14,
-    color: COLORS.muted,
-    marginTop: 8,
-  },
-});
+  header:          { backgroundColor: NAVY, paddingTop: 52, paddingBottom: 22, paddingHorizontal: 20 },
+  headerGoldBar:   { position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: GOLD },
+  headerContent:   { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
+  backBtn:         { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)', justifyContent: 'center', alignItems: 'center' },
+  headerEyebrow:   { fontSize: 10, fontWeight: '800', letterSpacing: 2, color: GOLD, textTransform: 'uppercase' },
+  headerTitle:     { fontSize: 26, fontWeight: '800', color: '#fff' },
+  headerSub:       { fontSize: 13, color: 'rgba(255,255,255,0.65)' },
+  headerIcon:      { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(197,160,71,0.18)', justifyContent: 'center', alignItems: 'center' },
 
-export default CampusRulesScreen;
+  searchWrap: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 10 },
+  searchBar:  { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, borderColor: 'rgba(26,54,93,0.10)' },
+  searchInput:{ flex: 1, fontSize: 14, color: '#2D3748', padding: 0 },
+
+  list: { paddingHorizontal: 16, paddingBottom: 32, gap: 10 },
+
+  section:       { backgroundColor: '#fff', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(26,54,93,0.08)', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
+  sectionIconBox:{ width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  sectionTitle:  { fontSize: 15, fontWeight: '700', color: '#2D3748', marginBottom: 2 },
+  sectionSub:    { fontSize: 12, color: '#718096' },
+  countBadge:    { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 10 },
+  countBadgeText:{ fontSize: 12, fontWeight: '800' },
+
+  rulesWrap: { paddingHorizontal: 16, paddingBottom: 16, borderTopWidth: 1, borderTopColor: 'rgba(26,54,93,0.06)', paddingTop: 12, gap: 10 },
+  ruleRow:   { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  ruleNum:   { width: 22, height: 22, borderRadius: 7, justifyContent: 'center', alignItems: 'center', marginTop: 1 },
+  ruleNumText:{ fontSize: 11, fontWeight: '800', color: '#fff' },
+  ruleText:  { flex: 1, fontSize: 13, color: '#4A5568', lineHeight: 19 },
+
+  empty:     { alignItems: 'center', paddingTop: 40, gap: 10 },
+  emptyText: { fontSize: 14, color: '#718096' },
+});

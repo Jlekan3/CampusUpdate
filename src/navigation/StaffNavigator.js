@@ -31,10 +31,10 @@ const StaffTabs = () => {
   const [readMap, setReadMap] = React.useState({});
 
   React.useEffect(() => {
-    if (!user?.uid) { setReadMap({}); return; }
+    if (!user?.id) { setReadMap({}); return; }
     const unsub = subscribeToUserNotificationReads(user.id, (e) => setReadMap(e || {}));
     return () => { try { unsub?.(); } catch (_) {} };
-  }, [user?.uid]);
+  }, [user?.id]);
 
   const unreadCount = React.useMemo(
     () => notifications.reduce((n, item) => (readMap[item.id]?.readAt ? n : n + 1), 0),

@@ -1,20 +1,19 @@
-import React, { useState, useContext, useEffect, useMemo } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
+  Alert,
+  Animated,
   FlatList,
   Modal,
-  Animated,
-  ActivityIndicator,
-  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
   TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenWrapper from '../../components/ScreenWrapper';
-import { COLORS, EVENT_CATEGORIES, EVENT_CATEGORY_ICONS } from '../../utils/constants';
+import { EVENT_CATEGORIES, EVENT_CATEGORY_ICONS } from '../../utils/constants';
 import { CampusUpdatesContext } from '../../context/CampusUpdatesContext';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -23,1117 +22,351 @@ import {
   removeUserEventInterest,
 } from '../../services/databaseService';
 
-const EVENT_THEME = '#7C3AED';
-const EVENT_THEME_SOFT = '#8B5CF6';
+const NAVY = '#1A365D';
+const GOLD = '#C5A047';
+const BG   = '#F8F9FA';
 
-const CampusEventsScreen = () => {
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-  const [interestedEvents, setInterestedEvents] = useState([]);
-  const [showReminderModal, setShowReminderModal] = useState(false);
-  const [showCancelModal, setShowCancelModal] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState(null);
-  const [selectedReminder, setSelectedReminder] = useState(null);
-  const [showNotification, setShowNotification] = useState(false);
-  const [notificationMessage, setNotificationMessage] = useState('');
-  const [fadeAnim] = useState(new Animated.Value(0));
-  const [interestsLoading, setInterestsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+const REMINDER_OPTIONS = [
+  { id: '0',    label: 'At event time',   minutes: 0 },
+  { id: '30',   label: '30 minutes before', minutes: 30 },
+  { id: '60',   label: '1 hour before',   minutes: 60 },
+  { id: '1440', label: '1 day before',    minutes: 1440 },
+];
 
+const toDate = (v) => {
+  if (!v) return null;
+  if (v instanceof Date) return v;
+  if (typeof v?.toDate === 'function') return v.toDate();
+  const d = new Date(v); return isNaN(d) ? null : d;
+};
+
+const fmtDate = (v) => {
+  const d = toDate(v);
+  if (!d) return null;
+  return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+};
+
+const fmtTime = (v) => {
+  const d = toDate(v);
+  if (!d) return null;
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+};
+
+export default function CampusEventsScreen({ navigation }) {
   const { events, eventsLoading } = useContext(CampusUpdatesContext);
-  const { user, userRole } = useAuth();
-  const categories = ['All', ...EVENT_CATEGORIES];
+  const { user, userRole }        = useAuth();
 
-  const visibleEvents = events.filter((event) => {
-    const audience = (event.audience || 'everyone').toString().toLowerCase();
-    if (audience !== 'staff') return true;
-
-    return [userRole, user?.role, user?.userRole, user?.type]
-      .some((roleValue) => (roleValue || '').toString().toLowerCase().includes('admin')
-        || (roleValue || '').toString().toLowerCase().includes('faculty')
-        || (roleValue || '').toString().toLowerCase().includes('staff'));
-  });
-
-  const reminderOptions = [
-    { id: '0', label: 'At Event Time', minutes: 0 },
-    { id: '30', label: '30 minutes before', minutes: 30 },
-    { id: '60', label: '1 hour before', minutes: 60 },
-    { id: '1440', label: '1 day before', minutes: 1440 },
-  ];
-
-  const showSuccessNotification = (message) => {
-    setNotificationMessage(message);
-    setShowNotification(true);
-    Animated.sequence([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.delay(2000),
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start(() => setShowNotification(false));
-  };
+  const [search,       setSearch]       = useState('');
+  const [category,     setCategory]     = useState('All');
+  const [interests,    setInterests]    = useState({});
+  const [selected,     setSelected]     = useState(null);
+  const [showReminder, setShowReminder] = useState(false);
+  const [showCancel,   setShowCancel]   = useState(false);
+  const [reminder,     setReminder]     = useState(null);
+  const [toast,        setToast]        = useState('');
+  const fadeAnim = useState(new Animated.Value(0))[0];
 
   useEffect(() => {
-    if (!user?.id) {
-      setInterestedEvents([]);
-      setInterestsLoading(false);
-      return;
-    }
-
-    setInterestsLoading(true);
-    const unsubscribe = subscribeToUserEventInterests(user.id, (items) => {
-      setInterestedEvents(items);
-      setInterestsLoading(false);
-    });
-
-    return () => {
-      try {
-        unsubscribe?.();
-      } catch (e) {
-        // ignore unsubscribe errors
-      }
-    };
+    if (!user?.id) return;
+    const unsub = subscribeToUserEventInterests(user.id, (map) => setInterests(map || {}));
+    return () => { try { unsub?.(); } catch (_) {} };
   }, [user?.id]);
 
-  const handleInterestedClick = (event) => {
-    if (isEventInterested(event.id)) {
-      // Already interested, show cancel option
-      setSelectedEvent(event);
-      setShowCancelModal(true);
-    } else {
-      // Not interested yet, show reminder options
-      setSelectedEvent(event);
-      setSelectedReminder(null);
-      setShowReminderModal(true);
-    }
+  const showToast = (msg) => {
+    setToast(msg);
+    Animated.sequence([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 260, useNativeDriver: true }),
+      Animated.delay(2000),
+      Animated.timing(fadeAnim, { toValue: 0, duration: 260, useNativeDriver: true }),
+    ]).start(() => setToast(''));
   };
 
-  const handleReminderSelect = (reminder) => {
-    setSelectedReminder(reminder);
-  };
-
-  const handleConfirmReminder = async () => {
-    if (selectedEvent && selectedReminder) {
-      // Add to interested events with reminder
-      const newInterestedEvent = {
-        eventId: selectedEvent.id,
-        reminderTime: selectedReminder.minutes,
-        reminderLabel: selectedReminder.label,
-        savedAt: new Date(),
-      };
-
-      try {
-        if (user?.id) {
-          await saveUserEventInterest(user.id, selectedEvent.id, selectedReminder);
-        } else {
-          setInterestedEvents((prevInterestedEvents) => [
-            ...prevInterestedEvents.filter((e) => e.eventId !== selectedEvent.id),
-            newInterestedEvent,
-          ]);
-        }
-      } catch (e) {
-        Alert.alert('Error', 'Unable to save reminder right now. Please try again.');
-        return;
-      }
-
-      setShowReminderModal(false);
-      showSuccessNotification(
-        `✓ Reminder set! You'll be notified ${selectedReminder.label}`
-      );
-    }
-  };
-
-  const handleRemoveInterest = async () => {
-    if (selectedEvent) {
-      try {
-        if (user?.id) {
-          await removeUserEventInterest(user.id, selectedEvent.id);
-        } else {
-          setInterestedEvents((prevInterestedEvents) =>
-            prevInterestedEvents.filter((e) => e.eventId !== selectedEvent.id)
-          );
-        }
-      } catch (e) {
-        Alert.alert('Error', 'Unable to remove interest right now. Please try again.');
-        return;
-      }
-
-      setShowCancelModal(false);
-      showSuccessNotification(
-        `✓ Removed interest in ${selectedEvent.title}`
-      );
-    }
-  };
-
-  const isEventInterested = (eventId) => {
-    return interestedEvents.some((e) => e.eventId === eventId);
-  };
-
-  const getEventReminder = (eventId) => {
-    const interested = interestedEvents.find((e) => e.eventId === eventId);
-    return interested;
-  };
-
-  const filteredEvents = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-
-    const categoryFiltered = selectedCategory === 'All'
-      ? visibleEvents
-      : visibleEvents.filter((e) => e.category === selectedCategory);
-
-    if (!query) return categoryFiltered;
-
-    return categoryFiltered.filter((event) => {
-      const title = (event.title || '').toLowerCase();
-      const category = (event.category || '').toLowerCase();
-      const location = (event.location || '').toLowerCase();
-      const date = (event.date || '').toLowerCase();
-      const time = (event.time || '').toLowerCase();
-
-      return (
-        title.includes(query) ||
-        category.includes(query) ||
-        location.includes(query) ||
-        date.includes(query) ||
-        time.includes(query)
-      );
+  const visible = useMemo(() => {
+    const staffLike = ['admin', 'faculty', 'staff'];
+    return events.filter((e) => {
+      const aud = (e.audience || 'everyone').toLowerCase();
+      if (aud !== 'staff') return true;
+      return staffLike.some((r) => (userRole || '').toLowerCase().includes(r));
     });
-  }, [searchQuery, selectedCategory, visibleEvents]);
+  }, [events, userRole]);
 
-  const getIconForCategory = (category) => {
-    return EVENT_CATEGORY_ICONS[category] || 'calendar-outline';
+  const filtered = useMemo(() => {
+    let items = category === 'All' ? visible : visible.filter((e) => e.category === category);
+    const q = search.trim().toLowerCase();
+    if (q) items = items.filter((e) => [e.title, e.category, e.location].some((v) => (v || '').toLowerCase().includes(q)));
+    return items;
+  }, [visible, category, search]);
+
+  const isInterested = (id) => !!interests[id];
+
+  const handleRSVP = (event) => {
+    if (isInterested(event.id)) {
+      setSelected(event); setShowCancel(true);
+    } else {
+      setSelected(event); setReminder(null); setShowReminder(true);
+    }
   };
 
-  const renderEventCard = ({ item }) => {
-    const isInterested = isEventInterested(item.id);
-    const reminderInfo = getEventReminder(item.id);
-
-    return (
-      <View style={[styles.eventCard, isInterested && styles.eventCardInterested]}>
-        <View style={styles.eventAccent} />
-        <View style={styles.eventBody}>
-          <View style={styles.eventHeader}>
-            <View style={styles.iconContainer}>
-              <Ionicons name={getIconForCategory(item.category)} size={24} color={EVENT_THEME} />
-            </View>
-            <View style={styles.eventTitle}>
-              <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
-              <Text style={styles.category}>{item.category}</Text>
-            </View>
-            {isInterested && (
-              <View style={styles.interestedBadge}>
-                <Ionicons name="checkmark-circle" size={18} color="#16A34A" />
-              </View>
-            )}
-          </View>
-
-          <View style={styles.eventDetails}>
-            <View style={styles.detail}>
-              <Ionicons name="calendar-outline" size={16} color={COLORS.muted} />
-              <Text style={styles.detailText}>{item.date}</Text>
-            </View>
-            <View style={styles.detail}>
-              <Ionicons name="time-outline" size={16} color={COLORS.muted} />
-              <Text style={styles.detailText}>{item.time}</Text>
-            </View>
-            <View style={styles.detail}>
-              <Ionicons name="location-outline" size={16} color={COLORS.muted} />
-              <Text style={styles.detailText}>{item.location}</Text>
-            </View>
-            {reminderInfo && (
-              <View style={styles.reminderDisplay}>
-                <Ionicons name="notifications-outline" size={14} color={EVENT_THEME} />
-                <Text style={styles.reminderText}>{reminderInfo.reminderLabel}</Text>
-              </View>
-            )}
-          </View>
-
-          <TouchableOpacity
-            style={[
-              styles.registerButton,
-              isInterested && styles.registerButtonInterested,
-            ]}
-            onPress={() => handleInterestedClick(item)}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={isInterested ? 'heart' : 'heart-outline'}
-              size={16}
-              color={COLORS.white}
-              style={{ marginRight: 6 }}
-            />
-            <Text style={styles.registerText}>
-              {isInterested ? 'Interested ✓' : 'Interested'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
+  const confirmReminder = async () => {
+    if (!selected || !reminder) return;
+    try {
+      if (user?.id) await saveUserEventInterest(user.id, selected.id);
+      setShowReminder(false);
+      showToast(`✓ RSVP'd — ${reminder.label}`);
+    } catch (_) {
+      Alert.alert('Error', 'Could not save RSVP. Please try again.');
+    }
   };
+
+  const confirmCancel = async () => {
+    if (!selected) return;
+    try {
+      if (user?.id) await removeUserEventInterest(user.id, selected.id);
+      setShowCancel(false);
+      showToast(`Removed RSVP for ${selected.title}`);
+    } catch (_) {
+      Alert.alert('Error', 'Could not remove RSVP.');
+    }
+  };
+
+  const canGoBack = navigation?.canGoBack?.();
+  const CATS = ['All', ...EVENT_CATEGORIES];
 
   return (
-    <ScreenWrapper>
-      <ScrollView showsVerticalScrollIndicator={false} style={styles.contentScroll}>
-        <View style={styles.heroCard}>
-          <View style={styles.heroGlow} />
-          <View style={styles.heroTopRow}>
-            <View>
-              <Text style={styles.headerTitle}>Campus Events</Text>
-              <Text style={styles.headerSubtitle}>Explore upcoming events and save reminders for what matters most.</Text>
-            </View>
-            <View style={styles.heroIconWrap}>
-              <Ionicons name="calendar-outline" size={20} color={COLORS.white} />
-            </View>
-          </View>
-          <View style={styles.heroPillsRow}>
-            <View style={styles.heroPill}>
-              <Ionicons name="sparkles-outline" size={14} color={COLORS.white} />
-              <Text style={styles.heroPillText}>Fresh events</Text>
-            </View>
-            <View style={styles.heroPill}>
-              <Ionicons name="notifications-outline" size={14} color={COLORS.white} />
-              <Text style={styles.heroPillText}>Reminder support</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={18} color={COLORS.muted} style={styles.searchIcon} />
-          <TextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Search events..."
-            placeholderTextColor={COLORS.muted}
-            style={styles.searchInput}
-          />
-          {searchQuery ? (
-            <TouchableOpacity
-              onPress={() => setSearchQuery('')}
-              style={styles.clearSearchButton}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="close-circle" size={18} color={COLORS.muted} />
+    <ScreenWrapper backgroundColor={BG} statusBarStyle="light-content">
+      {/* ── Header ── */}
+      <View style={styles.header}>
+        <View style={styles.headerGoldBar} />
+        <View style={styles.headerContent}>
+          {canGoBack && (
+            <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.8}>
+              <Ionicons name="arrow-back" size={20} color="#fff" />
             </TouchableOpacity>
-          ) : null}
-        </View>
-
-        <View style={styles.dropdownSection}>
-          <Text style={styles.dropdownLabel}>Category</Text>
-          <TouchableOpacity
-            style={styles.dropdownTrigger}
-            onPress={() => setShowCategoryDropdown((current) => !current)}
-            activeOpacity={0.85}
-          >
-            <View style={styles.dropdownTriggerContent}>
-              <View style={styles.dropdownIconWrap}>
-                <Ionicons name="grid-outline" size={18} color={EVENT_THEME} />
-              </View>
-              <View style={styles.dropdownTextWrap}>
-                <Text style={styles.dropdownValueLabel}>Selected category</Text>
-                <Text style={styles.dropdownValue}>{selectedCategory}</Text>
-              </View>
-            </View>
-            <Ionicons
-              name={showCategoryDropdown ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={EVENT_THEME}
-            />
-          </TouchableOpacity>
-
-          {showCategoryDropdown && (
-            <View style={styles.dropdownMenu}>
-              {categories.map((cat) => {
-                const active = selectedCategory === cat;
-                return (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[styles.dropdownOption, active && styles.dropdownOptionActive]}
-                    onPress={() => {
-                      setSelectedCategory(cat);
-                      setShowCategoryDropdown(false);
-                    }}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={[styles.dropdownOptionText, active && styles.dropdownOptionTextActive]}>
-                      {cat}
-                    </Text>
-                    {active ? (
-                      <Ionicons name="checkmark-circle" size={18} color={EVENT_THEME} />
-                    ) : null}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
           )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerEyebrow}>CAMPUS</Text>
+            <Text style={styles.headerTitle}>Events</Text>
+          </View>
+          <View style={styles.headerIcon}>
+            <Ionicons name="calendar-outline" size={24} color={GOLD} />
+          </View>
         </View>
+        <Text style={styles.headerSub}>Upcoming academic and social events on campus.</Text>
+      </View>
 
-        <View style={styles.eventsListBox}>
-          <FlatList
-            data={filteredEvents}
-            renderItem={renderEventCard}
-            keyExtractor={(item) => item.id}
-            scrollEnabled={true}
-            nestedScrollEnabled
-            showsVerticalScrollIndicator={true}
-            indicatorStyle="black"
-            contentContainerStyle={styles.listContent}
-            ListEmptyComponent={
-              eventsLoading || interestsLoading ? (
-                <View style={styles.emptyContainer}>
-                  <ActivityIndicator size="large" color={COLORS.primary} />
-                  <Text style={styles.emptyText}>Loading events...</Text>
-                </View>
-              ) : (
-                <View style={styles.emptyContainer}>
-                  <Ionicons name="calendar-outline" size={48} color={COLORS.muted} />
-                  <Text style={styles.emptyText}>
-                    {searchQuery ? 'No matching events found' : 'No events found'}
-                  </Text>
-                  {searchQuery ? (
-                    <Text style={styles.emptySubtext}>
-                      Try a different keyword or clear the search.
-                    </Text>
-                  ) : null}
-                </View>
-              )
-            }
+      {/* ── Search ── */}
+      <View style={styles.searchWrap}>
+        <View style={styles.searchBar}>
+          <Ionicons name="search-outline" size={18} color={GOLD} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search events…"
+            placeholderTextColor="#A0AEC0"
+            value={search}
+            onChangeText={setSearch}
           />
+          {search ? <TouchableOpacity onPress={() => setSearch('')}><Ionicons name="close-circle" size={18} color="#A0AEC0" /></TouchableOpacity> : null}
         </View>
+      </View>
+
+      {/* ── Category chips ── */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+        {CATS.map((cat) => (
+          <TouchableOpacity
+            key={cat}
+            style={[styles.chip, category === cat && styles.chipActive]}
+            onPress={() => setCategory(cat)}
+            activeOpacity={0.8}
+          >
+            {cat !== 'All' && (
+              <Ionicons
+                name={EVENT_CATEGORY_ICONS[cat] || 'calendar-outline'}
+                size={13}
+                color={category === cat ? '#fff' : '#718096'}
+              />
+            )}
+            <Text style={[styles.chipText, category === cat && styles.chipTextActive]}>{cat}</Text>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
 
-      {/* Reminder Modal */}
-      <Modal
-        transparent
-        visible={showReminderModal}
-        animationType="fade"
-        onRequestClose={() => setShowReminderModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHandle} />
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle}>Set Reminder</Text>
-                <Text style={styles.modalSubtitle}>Choose when you want to be notified</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setShowReminderModal(false)}
-                style={styles.closeButton}
-                activeOpacity={0.6}
-              >
-                <Ionicons name="close-circle" size={24} color={EVENT_THEME} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.selectedEventCard}>
-              <Ionicons name="calendar-outline" size={18} color={EVENT_THEME} />
-              <Text style={styles.selectedEventText} numberOfLines={2}>{selectedEvent?.title}</Text>
-            </View>
-
-            <View style={styles.remindersContainer}>
-              {reminderOptions.map((reminder) => (
-                <TouchableOpacity
-                  key={reminder.id}
-                  style={[
-                    styles.reminderOption,
-                    selectedReminder?.id === reminder.id &&
-                      styles.reminderOptionSelected,
-                  ]}
-                  onPress={() => handleReminderSelect(reminder)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.reminderOptionContent}>
-                    <Ionicons
-                      name={
-                        selectedReminder?.id === reminder.id
-                          ? 'radio-button-on'
-                          : 'radio-button-off'
-                      }
-                      size={20}
-                      color={
-                        selectedReminder?.id === reminder.id
-                            ? EVENT_THEME
-                          : COLORS.muted
-                      }
-                    />
-                    <Text
-                      style={[
-                        styles.reminderLabel,
-                        selectedReminder?.id === reminder.id &&
-                          styles.reminderLabelSelected,
-                      ]}
-                    >
-                      {reminder.label}
-                    </Text>
+      {/* ── Events list ── */}
+      <FlatList
+        data={filtered}
+        keyExtractor={(item, i) => item.id || String(i)}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.list}
+        renderItem={({ item }) => {
+          const rsvp = isInterested(item.id);
+          const date = fmtDate(item.startDate || item.date || item.createdAt);
+          const time = fmtTime(item.startDate || item.date);
+          return (
+            <View style={styles.card}>
+              <View style={styles.cardGoldBar} />
+              <View style={styles.cardBody}>
+                {/* Category chip */}
+                {item.category && (
+                  <View style={styles.catRow}>
+                    <Ionicons name={EVENT_CATEGORY_ICONS[item.category] || 'calendar-outline'} size={13} color={GOLD} />
+                    <Text style={styles.catText}>{item.category}</Text>
                   </View>
+                )}
+                <Text style={styles.cardTitle}>{item.title || item.name || 'Campus Event'}</Text>
+                {item.description ? <Text style={styles.cardDesc} numberOfLines={2}>{item.description}</Text> : null}
+
+                <View style={styles.cardMeta}>
+                  {date && (
+                    <View style={styles.metaRow}>
+                      <Ionicons name="calendar-outline" size={13} color="#718096" />
+                      <Text style={styles.metaText}>{date}{time ? `  ·  ${time}` : ''}</Text>
+                    </View>
+                  )}
+                  {item.location && (
+                    <View style={styles.metaRow}>
+                      <Ionicons name="location-outline" size={13} color="#718096" />
+                      <Text style={styles.metaText}>{item.location}</Text>
+                    </View>
+                  )}
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.rsvpBtn, rsvp && styles.rsvpBtnActive]}
+                  onPress={() => handleRSVP(item)}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name={rsvp ? 'checkmark-circle' : 'calendar-outline'} size={16} color={rsvp ? '#fff' : NAVY} />
+                  <Text style={[styles.rsvpBtnText, rsvp && styles.rsvpBtnTextActive]}>
+                    {rsvp ? 'RSVP\'d' : 'RSVP'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        }}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Ionicons name="calendar-outline" size={48} color={GOLD} />
+            <Text style={styles.emptyTitle}>{eventsLoading ? 'Loading events…' : 'No events found'}</Text>
+            <Text style={styles.emptySub}>{eventsLoading ? '' : 'Check back soon for upcoming campus events.'}</Text>
+          </View>
+        }
+      />
+
+      {/* ── Toast ── */}
+      {!!toast && (
+        <Animated.View style={[styles.toast, { opacity: fadeAnim }]}>
+          <Text style={styles.toastText}>{toast}</Text>
+        </Animated.View>
+      )}
+
+      {/* ── Reminder modal ── */}
+      <Modal visible={showReminder} transparent animationType="slide" onRequestClose={() => setShowReminder(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalGoldBar} />
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Set a Reminder</Text>
+            <Text style={styles.modalSub}>{selected?.title}</Text>
+            <View style={styles.reminderList}>
+              {REMINDER_OPTIONS.map((opt) => (
+                <TouchableOpacity
+                  key={opt.id}
+                  style={[styles.reminderRow, reminder?.id === opt.id && styles.reminderRowActive]}
+                  onPress={() => setReminder(opt)}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name={reminder?.id === opt.id ? 'radio-button-on' : 'radio-button-off'} size={20} color={reminder?.id === opt.id ? GOLD : '#A0AEC0'} />
+                  <Text style={[styles.reminderText, reminder?.id === opt.id && styles.reminderTextActive]}>{opt.label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => setShowReminderModal(false)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.confirmButton,
-                  !selectedReminder && styles.confirmButtonDisabled,
-                ]}
-                onPress={handleConfirmReminder}
-                disabled={!selectedReminder}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name="checkmark-circle"
-                  size={18}
-                  color={COLORS.white}
-                  style={{ marginRight: 6 }}
-                />
-                <Text style={styles.confirmButtonText}>Set Reminder</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity style={[styles.confirmBtn, !reminder && styles.confirmBtnDisabled]} onPress={confirmReminder} disabled={!reminder} activeOpacity={0.85}>
+              <Text style={styles.confirmBtnText}>Confirm RSVP</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.cancelLink} onPress={() => setShowReminder(false)}>
+              <Text style={styles.cancelLinkText}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Cancel Interest Modal */}
-      <Modal
-        transparent
-        visible={showCancelModal}
-        animationType="fade"
-        onRequestClose={() => setShowCancelModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.cancelModalContent}>
-            <View style={styles.cancelIconContainer}>
-              <Ionicons name="help-circle-outline" size={48} color={COLORS.primary} />
-            </View>
-
-            <Text style={styles.cancelModalTitle}>Remove Interest?</Text>
-            <Text style={styles.cancelModalSubtitle}>
-              Are you sure you want to remove your interest in this event?
-            </Text>
-
-            <View style={styles.cancelDescription}>
-              <Text style={styles.eventNameText}>{selectedEvent?.title}</Text>
-            </View>
-
-            <View style={styles.cancelModalActions}>
-              <TouchableOpacity
-                style={styles.cancelKeepButton}
-                onPress={() => setShowCancelModal(false)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.cancelKeepButtonText}>Keep Interest</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.cancelRemoveButton}
-                onPress={handleRemoveInterest}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name="trash-outline"
-                  size={16}
-                  color={COLORS.white}
-                  style={{ marginRight: 6 }}
-                />
-                <Text style={styles.cancelRemoveButtonText}>Remove</Text>
-              </TouchableOpacity>
-            </View>
+      {/* ── Cancel modal ── */}
+      <Modal visible={showCancel} transparent animationType="fade" onRequestClose={() => setShowCancel(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalSheet, { borderRadius: 24 }]}>
+            <View style={styles.modalGoldBar} />
+            <Text style={[styles.modalTitle, { marginTop: 20 }]}>Remove RSVP?</Text>
+            <Text style={styles.modalSub}>{selected?.title}</Text>
+            <TouchableOpacity style={[styles.confirmBtn, { backgroundColor: '#E53E3E' }]} onPress={confirmCancel} activeOpacity={0.85}>
+              <Text style={styles.confirmBtnText}>Yes, Remove</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.cancelLink} onPress={() => setShowCancel(false)}>
+              <Text style={styles.cancelLinkText}>Keep RSVP</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
-
-      {/* Success Notification */}
-      {showNotification && (
-        <Animated.View
-          style={[
-            styles.notification,
-            {
-              opacity: fadeAnim,
-            },
-          ]}
-        >
-          <View style={styles.notificationContent}>
-            <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
-            <Text style={styles.notificationText}>{notificationMessage}</Text>
-          </View>
-        </Animated.View>
-      )}
     </ScreenWrapper>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  header: {
-    marginBottom: 0,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: COLORS.white,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.92)',
-    marginTop: 4,
-    lineHeight: 18,
-  },
-  contentScroll: {
-    flex: 1,
-  },
-  heroCard: {
-    backgroundColor: EVENT_THEME,
-    borderRadius: 24,
-    padding: 18,
-    marginBottom: 14,
-    overflow: 'hidden',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    elevation: 6,
-  },
-  heroGlow: {
-    position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    top: -70,
-    right: -60,
-  },
-  heroTopRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  heroIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
-  },
-  heroPillsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 16,
-  },
-  heroPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  heroPillText: {
-    color: COLORS.white,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  eventsListBox: {
-    maxHeight: 500,
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    overflow: 'hidden',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    marginBottom: 14,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: COLORS.dark,
-  },
-  clearSearchButton: {
-    padding: 4,
-    marginLeft: 8,
-  },
-  dropdownSection: {
-    marginBottom: 16,
-  },
-  dropdownLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#475569',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  dropdownTrigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  dropdownTriggerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  dropdownIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: '#F5F3FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  dropdownTextWrap: {
-    flex: 1,
-  },
-  dropdownValueLabel: {
-    fontSize: 11,
-    color: '#64748B',
-    fontWeight: '600',
-  },
-  dropdownValue: {
-    marginTop: 2,
-    fontSize: 15,
-    fontWeight: '800',
-    color: COLORS.dark,
-  },
-  dropdownMenu: {
-    marginTop: 10,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 18,
-    padding: 8,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-  dropdownOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-  },
-  dropdownOptionActive: {
-    backgroundColor: '#F5F3FF',
-  },
-  dropdownOptionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#334155',
-  },
-  dropdownOptionTextActive: {
-    color: EVENT_THEME,
-    fontWeight: '700',
-  },
-  listContent: {
-    paddingBottom: 20,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 40,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: COLORS.muted,
-    marginTop: 12,
-  },
-  emptySubtext: {
-    fontSize: 13,
-    color: COLORS.muted,
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  eventCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 20,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    overflow: 'hidden',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 2,
-  },
-  eventCardInterested: {
-    borderColor: '#C4B5FD',
-  },
-  eventAccent: {
-    height: 6,
-    backgroundColor: EVENT_THEME,
-  },
-  eventBody: {
-    padding: 16,
-  },
-  eventHeader: {
-    flexDirection: 'row',
-    marginBottom: 12,
-    alignItems: 'center',
-  },
-  iconContainer: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-    backgroundColor: '#F3E8FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  eventTitle: {
-    flex: 1,
-    justifyContent: 'space-between',
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.dark,
-  },
-  category: {
-    fontSize: 12,
-    color: EVENT_THEME,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  interestedBadge: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#ECFDF5',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  eventDetails: {
-    marginBottom: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  detail: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  detailText: {
-    fontSize: 13,
-    color: COLORS.muted,
-    marginLeft: 8,
-  },
-  reminderDisplay: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
-  },
-  reminderText: {
-    fontSize: 12,
-    color: EVENT_THEME,
-    marginLeft: 6,
-    fontWeight: '600',
-  },
-  registerButton: {
-    backgroundColor: EVENT_THEME,
-    paddingVertical: 11,
-    borderRadius: 14,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  registerButtonInterested: {
-    backgroundColor: '#10b981',
-  },
-  registerText: {
-    color: COLORS.white,
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  // Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 30,
-    maxHeight: '82%',
-    overflow: 'hidden',
-  },
-  modalHandle: {
-    width: 54,
-    height: 5,
-    borderRadius: 999,
-    alignSelf: 'center',
-    backgroundColor: EVENT_THEME,
-    marginBottom: 14,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: COLORS.dark,
-  },
-  closeButton: {
-    padding: 4,
-    marginTop: -2,
-  },
-  modalSubtitle: {
-    fontSize: 13,
-    color: COLORS.muted,
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  selectedEventCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 18,
-    padding: 12,
-    borderRadius: 16,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  selectedEventText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.dark,
-  },
-  remindersContainer: {
-    marginBottom: 24,
-  },
-  reminderOption: {
-    paddingVertical: 13,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    marginBottom: 10,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  reminderOptionSelected: {
-    backgroundColor: '#F5F3FF',
-    borderColor: EVENT_THEME,
-  },
-  reminderOptionContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  reminderLabel: {
-    fontSize: 14,
-    color: COLORS.muted,
-    marginLeft: 12,
-    fontWeight: '500',
-  },
-  reminderLabelSelected: {
-    color: EVENT_THEME,
-    fontWeight: '600',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  cancelButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: EVENT_THEME,
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  cancelButtonText: {
-    color: EVENT_THEME,
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  confirmButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 14,
-    backgroundColor: EVENT_THEME,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  confirmButtonDisabled: {
-    backgroundColor: COLORS.muted,
-    opacity: 0.5,
-  },
-  confirmButtonText: {
-    color: COLORS.white,
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  // Cancel Modal Styles
-  cancelModalContent: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 20,
-    paddingTop: 30,
-    paddingBottom: 30,
-    alignItems: 'center',
-  },
-  cancelIconContainer: {
-    marginBottom: 16,
-  },
-  cancelModalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.dark,
-    marginBottom: 8,
-  },
-  cancelModalSubtitle: {
-    fontSize: 14,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  cancelDescription: {
-    backgroundColor: '#F5F3FF',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    marginBottom: 24,
-    width: '100%',
-    borderWidth: 1,
-    borderColor: '#DDD6FE',
-  },
-  eventNameText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: EVENT_THEME,
-    textAlign: 'center',
-  },
-  cancelModalActions: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
-  cancelKeepButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: EVENT_THEME,
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  cancelKeepButtonText: {
-    color: EVENT_THEME,
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  cancelRemoveButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: '#EF4444',
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  cancelRemoveButtonText: {
-    color: COLORS.white,
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  // Notification Styles
-  notification: {
-    position: 'absolute',
-    bottom: 30,
-    left: 20,
-    right: 20,
-    backgroundColor: EVENT_THEME,
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  notificationContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  notificationText: {
-    color: COLORS.white,
-    marginLeft: 12,
-    fontWeight: '500',
-    fontSize: 14,
-    flex: 1,
-  },
+  header:          { backgroundColor: NAVY, paddingTop: 52, paddingBottom: 22, paddingHorizontal: 20 },
+  headerGoldBar:   { position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: GOLD },
+  headerContent:   { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
+  backBtn:         { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)', justifyContent: 'center', alignItems: 'center' },
+  headerEyebrow:   { fontSize: 10, fontWeight: '800', letterSpacing: 2, color: GOLD, textTransform: 'uppercase' },
+  headerTitle:     { fontSize: 26, fontWeight: '800', color: '#fff' },
+  headerSub:       { fontSize: 13, color: 'rgba(255,255,255,0.65)' },
+  headerIcon:      { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(197,160,71,0.18)', justifyContent: 'center', alignItems: 'center' },
+
+  searchWrap: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 10 },
+  searchBar:  { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, borderColor: 'rgba(26,54,93,0.10)' },
+  searchInput:{ flex: 1, fontSize: 14, color: '#2D3748', padding: 0 },
+
+  chipRow: { paddingHorizontal: 16, paddingBottom: 12, gap: 8 },
+  chip:    { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(26,54,93,0.12)' },
+  chipActive:    { backgroundColor: NAVY, borderColor: NAVY },
+  chipText:      { fontSize: 12, fontWeight: '600', color: '#718096' },
+  chipTextActive:{ color: '#fff' },
+
+  list: { paddingHorizontal: 16, paddingBottom: 32, gap: 12 },
+  card: { backgroundColor: '#fff', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(26,54,93,0.08)', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  cardGoldBar: { height: 3, backgroundColor: GOLD },
+  cardBody:    { padding: 16 },
+  catRow:      { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 8 },
+  catText:     { fontSize: 11, fontWeight: '700', color: GOLD, textTransform: 'uppercase', letterSpacing: 0.5 },
+  cardTitle:   { fontSize: 16, fontWeight: '800', color: '#2D3748', marginBottom: 6 },
+  cardDesc:    { fontSize: 13, color: '#718096', lineHeight: 18, marginBottom: 12 },
+  cardMeta:    { gap: 5, marginBottom: 14 },
+  metaRow:     { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  metaText:    { fontSize: 12, color: '#718096' },
+  rsvpBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11, borderRadius: 13, backgroundColor: '#EDF1F8', borderWidth: 1, borderColor: 'rgba(26,54,93,0.14)' },
+  rsvpBtnActive:    { backgroundColor: NAVY, borderColor: NAVY },
+  rsvpBtnText:      { fontSize: 13, fontWeight: '700', color: NAVY },
+  rsvpBtnTextActive:{ color: '#fff' },
+
+  empty:      { flex: 1, alignItems: 'center', paddingTop: 60, gap: 12 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: '#2D3748' },
+  emptySub:   { fontSize: 13, color: '#718096', textAlign: 'center', maxWidth: 240 },
+
+  toast:     { position: 'absolute', bottom: 40, left: 20, right: 20, backgroundColor: NAVY, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 20, alignItems: 'center' },
+  toastText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+
+  modalBackdrop:  { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalSheet:     { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 20, paddingBottom: 36, overflow: 'hidden' },
+  modalGoldBar:   { height: 3, backgroundColor: GOLD, marginHorizontal: -20 },
+  modalHandle:    { width: 44, height: 4, borderRadius: 2, backgroundColor: '#CBD5E0', alignSelf: 'center', marginTop: 10, marginBottom: 16 },
+  modalTitle:     { fontSize: 20, fontWeight: '800', color: '#2D3748', marginBottom: 6 },
+  modalSub:       { fontSize: 13, color: '#718096', marginBottom: 20 },
+  reminderList:   { gap: 6, marginBottom: 20 },
+  reminderRow:    { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, backgroundColor: '#F8F9FA', borderWidth: 1, borderColor: 'rgba(26,54,93,0.08)' },
+  reminderRowActive:    { backgroundColor: 'rgba(197,160,71,0.10)', borderColor: 'rgba(197,160,71,0.30)' },
+  reminderText:         { fontSize: 14, color: '#4A5568' },
+  reminderTextActive:   { fontWeight: '700', color: NAVY },
+  confirmBtn:           { height: 52, borderRadius: 16, backgroundColor: GOLD, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
+  confirmBtnDisabled:   { opacity: 0.45 },
+  confirmBtnText:       { fontSize: 15, fontWeight: '800', color: NAVY },
+  cancelLink:           { alignItems: 'center', paddingVertical: 6 },
+  cancelLinkText:       { fontSize: 14, fontWeight: '600', color: '#718096' },
 });
-
-export default CampusEventsScreen;
-

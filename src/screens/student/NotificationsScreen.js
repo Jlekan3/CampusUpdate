@@ -1,8 +1,15 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput } from 'react-native';
+import {
+  FlatList,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenWrapper from '../../components/ScreenWrapper';
-import { COLORS, USER_ROLES } from '../../utils/constants';
+import { USER_ROLES } from '../../utils/constants';
 import { CampusUpdatesContext } from '../../context/CampusUpdatesContext';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -10,601 +17,240 @@ import {
   subscribeToUserNotificationReads,
 } from '../../services/databaseService';
 
-const NOTIFICATION_COLOR = '#06B6D4';
+const NAVY = '#1A365D';
+const GOLD = '#C5A047';
+const BG   = '#F8F9FA';
 
-const NotificationsScreen = ({ navigation }) => {
+const PRIORITY = {
+  emergency:      { color: '#E53E3E', bg: '#FEE2E2', label: 'Emergency' },
+  academic:       { color: NAVY,      bg: 'rgba(197,160,71,0.14)', label: 'Academic' },
+  administrative: { color: '#2563EB', bg: '#DBEAFE', label: 'Admin' },
+  departmental:   { color: '#0D9488', bg: '#CCFBF1', label: 'Department' },
+  events:         { color: '#7C3AED', bg: '#EDE9FE', label: 'Event' },
+  default:        { color: NAVY,      bg: '#EDF1F8', label: 'Notice' },
+};
+
+const getPriority = (item) => {
+  const cat = (item?.category || item?.type || '').toLowerCase();
+  return PRIORITY[cat] || PRIORITY.default;
+};
+
+const fmtRelative = (v) => {
+  if (!v) return '';
+  const d  = v instanceof Date ? v : new Date(v);
+  if (isNaN(d)) return '';
+  const m = Math.floor((Date.now() - d.getTime()) / 60000);
+  if (m < 1)   return 'Just now';
+  if (m < 60)  return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24)  return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+};
+
+const FILTERS = ['All', 'Unread', 'Academic', 'Events', 'Emergency'];
+
+export default function NotificationsScreen({ navigation }) {
   const { notifications } = useContext(CampusUpdatesContext);
-  const { userRole, user } = useAuth();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [readMap, setReadMap] = useState({});
-  const [filterMode, setFilterMode] = useState('all');
+  const { userRole, user }  = useAuth();
+
+  const [search,     setSearch]     = useState('');
+  const [readMap,    setReadMap]    = useState({});
+  const [filter,     setFilter]     = useState('All');
 
   useEffect(() => {
-    if (!user?.id) {
-      setReadMap({});
-      return undefined;
-    }
-
-    const unsubscribe = subscribeToUserNotificationReads(user.id, (entries) => {
-      setReadMap(entries || {});
-    });
-
-    return () => {
-      try {
-        unsubscribe?.();
-      } catch (error) {
-        // ignore
-      }
-    };
+    if (!user?.id) { setReadMap({}); return; }
+    const unsub = subscribeToUserNotificationReads(user.id, (e) => setReadMap(e || {}));
+    return () => { try { unsub?.(); } catch (_) {} };
   }, [user?.id]);
 
-  const visibleNotifications = useMemo(() => {
-    const userId = user?.id;
+  const visible = useMemo(() => {
     const staffRoles = [USER_ROLES.ADMIN, USER_ROLES.FACULTY];
-
     return notifications.filter((item) => {
-      const audience = (item.audience || 'everyone').toString().toLowerCase();
-      const recipientIds = Array.isArray(item.recipientIds)
-        ? item.recipientIds.filter(Boolean)
-        : item.recipientId
-          ? [item.recipientId]
-          : [];
-      const isDirect = audience === 'direct' || recipientIds.length > 0;
-
-      if (isDirect) {
-        if (!userId) return false;
-        return recipientIds.includes(userId);
-      }
-
-      if (audience === 'staff') {
-        return staffRoles.includes(userRole);
-      }
-
+      const audience    = (item.audience || 'everyone').toLowerCase();
+      const recipientIds = Array.isArray(item.recipientIds) ? item.recipientIds : item.recipientId ? [item.recipientId] : [];
+      if (audience === 'direct' || recipientIds.length > 0) return user?.id && recipientIds.includes(user.id);
+      if (audience === 'staff') return staffRoles.includes(userRole);
       return true;
     });
   }, [notifications, user?.id, userRole]);
 
-  const unreadNotificationCount = useMemo(
-    () => visibleNotifications.filter((item) => !readMap[item.id]?.readAt).length,
-    [readMap, visibleNotifications]
-  );
-
-  const readNotificationCount = useMemo(
-    () => visibleNotifications.length - unreadNotificationCount,
-    [unreadNotificationCount, visibleNotifications.length]
-  );
-
-  const filteredNotifications = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    let items = visibleNotifications;
-
-    if (filterMode === 'unread') {
-      items = items.filter((item) => !readMap[item.id]?.readAt);
-    } else if (filterMode === 'read') {
-      items = items.filter((item) => !!readMap[item.id]?.readAt);
+  const filtered = useMemo(() => {
+    let items = visible;
+    if (filter === 'Unread') items = items.filter((i) => !readMap[i.id]?.readAt);
+    else if (filter !== 'All') items = items.filter((i) => (i.category || '').toLowerCase().includes(filter.toLowerCase()));
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      items = items.filter((i) => (i.title + i.message + i.category).toLowerCase().includes(q));
     }
+    return items;
+  }, [visible, filter, search, readMap]);
 
-    if (!query) return items;
+  const unread = useMemo(() => visible.filter((i) => !readMap[i.id]?.readAt).length, [visible, readMap]);
 
-    return items.filter((item) => {
-      const title = (item.title || '').toLowerCase();
-      const body = (item.body || '').toLowerCase();
-
-      return title.includes(query) || body.includes(query);
-    });
-  }, [filterMode, readMap, searchQuery, visibleNotifications]);
-
-  const handleMarkAsRead = async (notificationId) => {
-    if (!user?.id || !notificationId) return;
-
-    try {
-      setReadMap((current) => ({
-        ...current,
-        [notificationId]: { readAt: new Date() },
-      }));
-      await markNotificationAsRead(user.id, notificationId);
-    } catch (error) {
-      setReadMap((current) => {
-        const next = { ...current };
-        delete next[notificationId];
-        return next;
-      });
+  const handleRead = async (item) => {
+    if (!readMap[item.id]?.readAt && user?.id) {
+      await markNotificationAsRead(user.id, item.id).catch(() => {});
     }
   };
 
-  return (
-    <ScreenWrapper backgroundColor="#F3F8FF" statusBarStyle="dark-content">
-      <View style={styles.container}>
-        <View style={styles.heroCard}>
-          <View style={styles.heroGlow} />
-          <View style={styles.heroTopRow}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => navigation.navigate('Home')}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="arrow-back" size={20} color={COLORS.white} />
-            </TouchableOpacity>
-            <View style={styles.heroIconWrap}>
-              <Ionicons name="notifications-outline" size={20} color={COLORS.white} />
-            </View>
-          </View>
-          <Text style={styles.heroTitle}>Notifications</Text>
-          <Text style={styles.heroSubtitle}>Keep up with campus updates and quickly clear what you have already seen.</Text>
-        </View>
+  const canGoBack = navigation?.canGoBack?.();
 
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={18} color={COLORS.muted} style={styles.searchIcon} />
+  const renderItem = ({ item }) => {
+    const pri  = getPriority(item);
+    const isNew = !readMap[item.id]?.readAt;
+    return (
+      <TouchableOpacity
+        style={[styles.card, isNew && styles.cardUnread]}
+        activeOpacity={0.85}
+        onPress={() => handleRead(item)}
+      >
+        {isNew && <View style={[styles.cardDot, { backgroundColor: pri.color }]} />}
+        <View style={[styles.cardLeftBar, { backgroundColor: pri.color }]} />
+        <View style={styles.cardBody}>
+          <View style={styles.cardTopRow}>
+            <View style={[styles.priChip, { backgroundColor: pri.bg }]}>
+              <Text style={[styles.priChipText, { color: pri.color }]}>{pri.label}</Text>
+            </View>
+            <Text style={styles.cardTime}>{fmtRelative(item.createdAt)}</Text>
+          </View>
+          <Text style={[styles.cardTitle, isNew && styles.cardTitleBold]} numberOfLines={1}>
+            {item.title || 'Campus Notice'}
+          </Text>
+          <Text style={styles.cardPreview} numberOfLines={2}>
+            {item.message || item.body || item.description || ''}
+          </Text>
+          {item.postedByName ? (
+            <Text style={styles.cardMeta}>Posted by {item.postedByName}</Text>
+          ) : null}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  return (
+    <ScreenWrapper backgroundColor={BG} statusBarStyle="light-content">
+      {/* ── Header ── */}
+      <View style={styles.header}>
+        <View style={styles.headerGoldBar} />
+        <View style={styles.headerContent}>
+          {canGoBack && (
+            <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.8}>
+              <Ionicons name="arrow-back" size={20} color="#fff" />
+            </TouchableOpacity>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerEyebrow}>CAMPUS</Text>
+            <Text style={styles.headerTitle}>Notifications</Text>
+          </View>
+          {unread > 0 && (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadBadgeText}>{unread} new</Text>
+            </View>
+          )}
+        </View>
+        <Text style={styles.headerSub}>Academic updates, campus notices and alerts.</Text>
+      </View>
+
+      {/* ── Search ── */}
+      <View style={styles.searchWrap}>
+        <View style={styles.searchBar}>
+          <Ionicons name="search-outline" size={18} color={GOLD} />
           <TextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Search notifications..."
-            placeholderTextColor={COLORS.muted}
             style={styles.searchInput}
+            placeholder="Search notifications…"
+            placeholderTextColor="#A0AEC0"
+            value={search}
+            onChangeText={setSearch}
           />
-          {searchQuery ? (
-            <TouchableOpacity
-              onPress={() => setSearchQuery('')}
-              style={styles.clearSearchButton}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="close-circle" size={18} color={COLORS.muted} />
+          {search ? (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <Ionicons name="close-circle" size={18} color="#A0AEC0" />
             </TouchableOpacity>
           ) : null}
         </View>
-
-        <View style={styles.filterRow}>
-          {[
-            { key: 'all', label: 'All', count: visibleNotifications.length },
-            { key: 'unread', label: 'Unread', count: unreadNotificationCount },
-            { key: 'read', label: 'Read', count: readNotificationCount },
-          ].map((filter) => {
-            const active = filterMode === filter.key;
-            return (
-              <TouchableOpacity
-                key={filter.key}
-                style={[styles.filterPill, active && styles.filterPillActive]}
-                onPress={() => setFilterMode(filter.key)}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.filterPillLabel, active && styles.filterPillLabelActive]}>{filter.label}</Text>
-                <View style={[styles.filterPillCount, active && styles.filterPillCountActive]}>
-                  <Text style={[styles.filterPillCountText, active && styles.filterPillCountTextActive]}>
-                    {filter.count > 99 ? '99+' : filter.count}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <FlatList
-          data={filteredNotifications}
-          keyExtractor={(i) => i.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={filteredNotifications.length === 0 ? styles.emptyContainer : styles.listContent}
-          renderItem={({ item }) => {
-            const createdAt = item.createdAt ? new Date(item.createdAt) : null;
-            const timeLabel = createdAt
-              ? createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-              : null;
-            const dateLabel = createdAt
-              ? createdAt.toLocaleDateString([], { month: 'short', day: 'numeric' })
-              : null;
-            const isRead = !!readMap[item.id]?.readAt;
-            const accentColor = isRead ? '#94A3B8' : COLORS.primary;
-            const recipientIds = Array.isArray(item.recipientIds)
-              ? item.recipientIds.filter(Boolean)
-              : item.recipientId
-                ? [item.recipientId]
-                : [];
-            const isDirect = (item.audience || '').toString().toLowerCase() === 'direct' || recipientIds.length > 0;
-
-            return (
-              <View style={[styles.item, isRead && styles.itemRead]}>
-                <View style={[styles.itemAccent, { backgroundColor: accentColor }]} />
-                <View style={styles.itemBody}>
-                  <View style={styles.itemHeader}>
-                    <View style={[styles.iconBadge, isRead && styles.iconBadgeRead]}>
-                      <Ionicons name="notifications-outline" size={18} color={isRead ? '#6B7280' : COLORS.primary} />
-                    </View>
-                    <View style={styles.headerTextArea}>
-                      <Text style={[styles.itemTitle, isRead && styles.itemTitleRead]} numberOfLines={1}>
-                        {item.title}
-                      </Text>
-                      <View style={styles.metaRow}>
-                        {timeLabel ? <Text style={styles.timestamp}>{timeLabel}</Text> : null}
-                        {dateLabel ? <Text style={styles.timestamp}>{dateLabel}</Text> : null}
-                      </View>
-                    </View>
-                    <View style={[styles.statusPill, isRead ? styles.statusPillRead : styles.statusPillUnread]}>
-                      <Ionicons
-                        name={isRead ? 'checkmark-done' : 'ellipse'}
-                        size={11}
-                        color={isRead ? '#15803D' : '#1D4ED8'}
-                      />
-                      <Text style={[styles.statusPillText, isRead ? styles.statusPillTextRead : styles.statusPillTextUnread]}>
-                        {isRead ? 'Read' : 'New'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {isDirect ? (
-                    <View style={styles.directBadgeRow}>
-                      <Ionicons name="person-circle-outline" size={12} color="#0F766E" style={styles.directBadgeIcon} />
-                      <Text style={styles.directBadgeLabel} numberOfLines={1}>
-                        {item.recipientName ? `Direct to ${item.recipientName}` : 'Direct message'}
-                      </Text>
-                    </View>
-                  ) : null}
-
-                  {item.body ? (
-                    <Text style={[styles.itemText, isRead && styles.itemTextRead]} numberOfLines={3}>
-                      {item.body}
-                    </Text>
-                  ) : null}
-
-                  <View style={styles.itemFooter}>
-                    {!isRead && user?.id ? (
-                      <TouchableOpacity
-                        style={styles.markReadButton}
-                        onPress={() => handleMarkAsRead(item.id)}
-                        activeOpacity={0.8}
-                      >
-                        <Ionicons name="checkmark-circle-outline" size={16} color={COLORS.primary} />
-                        <Text style={styles.markReadButtonText}>Mark as read</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <View style={styles.readNote}>
-                        <Ionicons name="checkmark-done" size={14} color="#15803D" />
-                        <Text style={styles.readNoteText}>You already viewed this update</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              </View>
-            );
-          }}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <View style={styles.emptyIconWrap}>
-                <Ionicons name="notifications-off-outline" size={34} color={COLORS.primary} />
-              </View>
-              <Text style={styles.emptyTitle}>
-                {searchQuery ? 'No matching notifications' : filterMode === 'unread' ? 'No unread notifications' : 'No notifications yet'}
-              </Text>
-              <Text style={styles.emptySubtitle}>
-                {searchQuery
-                  ? 'Try a different keyword or clear the search.'
-                  : filterMode === 'read'
-                    ? 'Read items will show here after you open them.'
-                    : 'You’ll see important campus updates here.'}
-              </Text>
-            </View>
-          }
-        />
       </View>
+
+      {/* ── Filter chips ── */}
+      <View style={styles.filterRow}>
+        {FILTERS.map((f) => (
+          <TouchableOpacity
+            key={f}
+            style={[styles.chip, filter === f && styles.chipActive]}
+            onPress={() => setFilter(f)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.chipText, filter === f && styles.chipTextActive]}>{f}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* ── List ── */}
+      <FlatList
+        data={filtered}
+        keyExtractor={(item, i) => item.id || String(i)}
+        renderItem={renderItem}
+        contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Ionicons name="notifications-off-outline" size={48} color={GOLD} />
+            <Text style={styles.emptyTitle}>No notifications</Text>
+            <Text style={styles.emptySub}>
+              {filter !== 'All' ? 'Try a different filter.' : 'Check back later for campus updates.'}
+            </Text>
+          </View>
+        }
+      />
     </ScreenWrapper>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: 12, paddingHorizontal: 20 },
-  heroCard: {
-    backgroundColor: NOTIFICATION_COLOR,
-    borderRadius: 24,
-    padding: 18,
-    marginBottom: 16,
-    overflow: 'hidden',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    elevation: 6,
-  },
-  heroGlow: {
-    position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: 'rgba(255, 255, 255, 0.22)',
-    top: -60,
-    right: -50,
-  },
-  heroTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  backButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.24)',
-  },
-  heroIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.24)',
-  },
-  heroTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: COLORS.white,
-  },
-  heroSubtitle: {
-    marginTop: 6,
-    fontSize: 13,
-    lineHeight: 19,
-    color: 'rgba(255,255,255,0.92)',
-    maxWidth: 320,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    marginBottom: 12,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 13,
-    fontSize: 14,
-    color: COLORS.dark,
-  },
-  clearSearchButton: {
-    padding: 4,
-    marginLeft: 8,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 14,
-  },
-  filterPill: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  filterPillActive: {
-    backgroundColor: NOTIFICATION_COLOR,
-    borderColor: NOTIFICATION_COLOR,
-  },
-  filterPillLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#334155',
-  },
-  filterPillLabelActive: {
-    color: COLORS.white,
-  },
-  filterPillCount: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#E2E8F0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-  },
-  filterPillCountActive: {
-    backgroundColor: 'rgba(255,255,255,0.18)',
-  },
-  filterPillCountText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#475569',
-  },
-  filterPillCountTextActive: {
-    color: COLORS.white,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    marginBottom: 14,
-  },
-  listContent: {
-    paddingTop: 2,
-    paddingBottom: 20,
-  },
-  item: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.white,
-    borderRadius: 20,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 3,
-    overflow: 'hidden',
-  },
-  itemRead: {
-    backgroundColor: '#F8FAFC',
-  },
-  itemAccent: {
-    width: 6,
-  },
-  itemBody: {
-    flex: 1,
-    padding: 14,
-  },
-  itemHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  iconBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 12,
-    backgroundColor: '#ECFEFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  iconBadgeRead: {
-    backgroundColor: '#E5E7EB',
-  },
-  headerTextArea: {
-    flex: 1,
-    marginRight: 8,
-  },
-  itemTitle: {
-    fontWeight: '700',
-    color: COLORS.dark,
-    fontSize: 15,
-  },
-  itemTitleRead: {
-    color: '#475569',
-  },
-  metaRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 3,
-  },
-  itemText: {
-    color: COLORS.muted,
-    marginTop: 4,
-    fontSize: 13,
-    lineHeight: 20,
-  },
-  itemTextRead: {
-    color: '#94A3B8',
-  },
-  directBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  directBadgeIcon: {
-    marginRight: 6,
-  },
-  directBadgeLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#0F766E',
-  },
-  timestamp: {
-    color: '#9CA3AF',
-    fontSize: 11,
-  },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 999,
-    marginLeft: 8,
-  },
-  statusPillUnread: {
-    backgroundColor: '#CFFAFE',
-  },
-  statusPillRead: {
-    backgroundColor: '#ECFDF5',
-  },
-  statusPillText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  statusPillTextUnread: {
-    color: NOTIFICATION_COLOR,
-  },
-  statusPillTextRead: {
-    color: '#15803D',
-  },
-  itemFooter: {
-    marginTop: 10,
-  },
-  readNote: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  readNoteText: {
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '600',
-  },
-  markReadButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: '#ECFEFF',
-    borderWidth: 1,
-    borderColor: '#A5F3FC',
-  },
-  markReadButtonText: {
-    color: NOTIFICATION_COLOR,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 48,
-    paddingHorizontal: 24,
-  },
-  emptyTitle: {
-    marginTop: 10,
-    fontSize: 18,
-    fontWeight: '800',
-    color: COLORS.dark,
-  },
-  emptySubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    color: COLORS.muted,
-    textAlign: 'center',
-    lineHeight: 19,
-  },
-  emptyIconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 22,
-    backgroundColor: '#CFFAFE',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2,
-  },
-});
+  // Header
+  header:          { backgroundColor: NAVY, paddingTop: 52, paddingBottom: 22, paddingHorizontal: 20, overflow: 'hidden' },
+  headerGoldBar:   { position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: GOLD },
+  headerContent:   { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
+  backBtn:         { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)', justifyContent: 'center', alignItems: 'center' },
+  headerEyebrow:   { fontSize: 10, fontWeight: '800', letterSpacing: 2, color: GOLD, textTransform: 'uppercase' },
+  headerTitle:     { fontSize: 26, fontWeight: '800', color: '#fff' },
+  headerSub:       { fontSize: 13, color: 'rgba(255,255,255,0.65)' },
+  unreadBadge:     { backgroundColor: GOLD, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  unreadBadgeText: { fontSize: 12, fontWeight: '800', color: NAVY },
 
-export default NotificationsScreen;
+  // Search
+  searchWrap: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },
+  searchBar:  { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, borderColor: 'rgba(26,54,93,0.10)', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, elevation: 1 },
+  searchInput:{ flex: 1, fontSize: 14, color: '#2D3748', padding: 0 },
+
+  // Filters
+  filterRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 12 },
+  chip:      { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(26,54,93,0.12)' },
+  chipActive:    { backgroundColor: NAVY, borderColor: NAVY },
+  chipText:      { fontSize: 12, fontWeight: '600', color: '#718096' },
+  chipTextActive:{ color: '#fff' },
+
+  // Cards
+  list: { paddingHorizontal: 16, paddingBottom: 32 },
+  card: {
+    flexDirection: 'row', backgroundColor: '#fff', borderRadius: 18, borderWidth: 1,
+    borderColor: 'rgba(26,54,93,0.08)', marginBottom: 10, overflow: 'hidden',
+    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1,
+  },
+  cardUnread:    { borderColor: 'rgba(197,160,71,0.30)', backgroundColor: '#FFFEF8' },
+  cardDot:       { position: 'absolute', top: 14, right: 14, width: 8, height: 8, borderRadius: 4 },
+  cardLeftBar:   { width: 4, borderRadius: 0 },
+  cardBody:      { flex: 1, padding: 14 },
+  cardTopRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  priChip:       { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  priChipText:   { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
+  cardTime:      { fontSize: 11, color: '#A0AEC0' },
+  cardTitle:     { fontSize: 14, color: '#2D3748', marginBottom: 4 },
+  cardTitleBold: { fontWeight: '700' },
+  cardPreview:   { fontSize: 12, color: '#718096', lineHeight: 17 },
+  cardMeta:      { fontSize: 11, color: '#A0AEC0', marginTop: 6 },
+
+  // Empty
+  empty:      { flex: 1, alignItems: 'center', paddingTop: 60, gap: 12 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: '#2D3748' },
+  emptySub:   { fontSize: 13, color: '#718096', textAlign: 'center', maxWidth: 240 },
+});
