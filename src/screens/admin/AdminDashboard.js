@@ -67,6 +67,7 @@ const QUICK_ACTIONS = [
   { label: 'Issues Reported & Analytics', icon: 'bar-chart-outline', color: ADMIN_THEME.success, nav: 'ReportsAnalytics' },
   { label: 'Control Centre',   icon: 'shield-outline',          color: '#DC2626',                  nav: 'ControlCentre' },
   { label: 'Emergency Contacts', icon: 'call-outline',          color: '#E53E3E',                  nav: 'EmergencyContacts' },
+  { label: 'Campus Rules',       icon: 'document-text-outline', color: ADMIN_THEME.info,            nav: 'ManageCampusRules'  },
 ];
 
 const AdminDashboard = ({ navigation }) => {

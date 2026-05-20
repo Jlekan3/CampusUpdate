@@ -1,19 +1,21 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  TextInput,
   Alert,
+  Animated,
+  Easing,
+  FlatList,
   Modal,
+  Platform,
   ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenWrapper from '../../components/ScreenWrapper';
-import CustomButton from '../../components/CustomButton';
-import { COLORS } from '../../utils/constants';
 import {
   subscribeToCampusRules,
   addCampusRule,
@@ -21,795 +23,598 @@ import {
   deleteCampusRule,
 } from '../../services/databaseService';
 
-const defaultRuleForm = {
-  title: '',
-  description: '',
+// ── Brand tokens ─────────────────────────────────────────────────────────────
+const NAVY = '#1A365D';
+const GOLD = '#C5A047';
+const BG   = '#F8F9FA';
+
+// ── Severity config ───────────────────────────────────────────────────────────
+const SEV = {
+  info:     { label: 'Info',     color: '#2563EB', bg: '#DBEAFE', ring: '#93C5FD', icon: 'information-circle-outline' },
+  warning:  { label: 'Warning', color: '#D97706', bg: '#FEF3C7', ring: '#FCD34D', icon: 'warning-outline'            },
+  critical: { label: 'Critical',color: '#DC2626', bg: '#FEE2E2', ring: '#FCA5A5', icon: 'alert-circle-outline'       },
 };
 
-const ManageCampusRulesScreen = () => {
-  const [rules, setRules] = useState([]);
-  const [selectedRuleId, setSelectedRuleId] = useState(null);
-  const [editingId, setEditingId] = useState(null);
-  const [formData, setFormData] = useState(defaultRuleForm);
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+// ── Category options ──────────────────────────────────────────────────────────
+const CATEGORIES = ['Academic', 'Residential', 'Traffic & Parking', 'Code of Conduct'];
+
+// ── Blank form ────────────────────────────────────────────────────────────────
+const EMPTY = {
+  title:       '',
+  description: '',
+  category:    'Academic',
+  severity:    'info',
+  is_active:   true,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+export default function ManageCampusRulesScreen({ navigation }) {
+  const [rules,     setRules]     = useState([]);
   const [showModal, setShowModal] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [form,      setForm]      = useState(EMPTY);
+  const [editingId, setEditingId] = useState(null);
+  const [saving,    setSaving]    = useState(false);
+  const [filterCat, setFilterCat] = useState('All');
+  const [search,    setSearch]    = useState('');
+  const [errors,    setErrors]    = useState({});
 
-  const filteredRules = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return rules;
-
-    return rules.filter((rule) => {
-      const titleValue = (rule.title || '').toLowerCase();
-      const descriptionValue = (rule.description || '').toLowerCase();
-
-      return titleValue.includes(query) || descriptionValue.includes(query);
-    });
-  }, [rules, searchQuery]);
+  // Shake animation refs for invalid fields
+  const shakeTitle = useRef(new Animated.Value(0)).current;
+  const shakeDesc  = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    console.log('ManageCampusRulesScreen: Setting up subscription to campus rules...');
-    const unsubscribe = subscribeToCampusRules((items) => {
-      console.log('ManageCampusRulesScreen: Received campus rules snapshot, count:', items?.length || 0);
-      setRules(items || []);
-    });
-
-    return () => {
-      console.log('ManageCampusRulesScreen: Cleaning up subscription');
-      try {
-        unsubscribe && unsubscribe();
-      } catch (e) {
-        console.error('ManageCampusRulesScreen: Error during cleanup:', e);
-      }
-    };
+    const unsub = subscribeToCampusRules((items) => setRules(items || []));
+    return () => { try { unsub?.(); } catch (_) {} };
   }, []);
 
-  const resetForm = () => {
-    setSelectedRuleId(null);
-    setEditingId(null);
-    setFormData(defaultRuleForm);
-    setShowModal(false);
+  // ── Filtered list ───────────────────────────────────────────────────────────
+  const displayed = useMemo(() => {
+    let items = filterCat === 'All' ? rules : rules.filter((r) => r.category === filterCat);
+    const q   = search.trim().toLowerCase();
+    if (q) items = items.filter((r) => (r.title + r.description).toLowerCase().includes(q));
+    return items;
+  }, [rules, filterCat, search]);
+
+  // ── Shake helper ────────────────────────────────────────────────────────────
+  const shake = (anim) => {
+    Animated.sequence([
+      Animated.timing(anim, { toValue: 8,  duration: 60, useNativeDriver: true, easing: Easing.linear }),
+      Animated.timing(anim, { toValue: -8, duration: 60, useNativeDriver: true, easing: Easing.linear }),
+      Animated.timing(anim, { toValue: 6,  duration: 50, useNativeDriver: true, easing: Easing.linear }),
+      Animated.timing(anim, { toValue: -6, duration: 50, useNativeDriver: true, easing: Easing.linear }),
+      Animated.timing(anim, { toValue: 0,  duration: 40, useNativeDriver: true, easing: Easing.linear }),
+    ]).start();
   };
 
-  const handleSelectRule = (rule) => {
-    setSelectedRuleId(rule.id);
-    setEditingId(rule.id);
-    setFormData({
-      title: rule.title || '',
+  // ── Form helpers ────────────────────────────────────────────────────────────
+  const set = (key, value) => {
+    setForm((p) => ({ ...p, [key]: value }));
+    if (errors[key]) setErrors((p) => ({ ...p, [key]: null }));
+  };
+
+  const openAdd = () => {
+    setForm(EMPTY); setEditingId(null); setErrors({}); setShowModal(true);
+  };
+
+  const openEdit = (rule) => {
+    setForm({
+      title:       rule.title       || '',
       description: rule.description || '',
+      category:    rule.category    || 'Academic',
+      severity:    rule.severity    || 'info',
+      is_active:   rule.is_active !== false,
     });
+    setEditingId(rule.id);
+    setErrors({});
     setShowModal(true);
   };
 
-  const handleAddNew = () => {
-    setSelectedRuleId(null);
-    setEditingId(null);
-    setFormData(defaultRuleForm);
-    setShowModal(true);
+  // ── Validation ──────────────────────────────────────────────────────────────
+  const validate = () => {
+    const errs = {};
+    if (!form.title.trim())       { errs.title       = 'Title is required';       shake(shakeTitle); }
+    if (!form.description.trim()) { errs.description = 'Description is required'; shake(shakeDesc);  }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
   };
 
+  // ── Submit ──────────────────────────────────────────────────────────────────
   const handleSave = async () => {
-    if (!formData.title.trim() || !formData.description.trim()) {
-      Alert.alert('Validation', 'Please enter both a title and description.');
-      return;
-    }
+    if (!validate()) return;
+    setSaving(true);
+
+    const payload = {
+      title:       form.title.trim(),
+      description: form.description.trim(),
+      category:    form.category,
+      severity:    form.severity,
+      is_active:   form.is_active,
+    };
+
+    // Required by spec: log submission payload
+    console.log('[ManageCampusRulesScreen] Submission payload:', JSON.stringify(payload, null, 2));
 
     try {
-      setSaving(true);
-      const payload = {
-        title: formData.title.trim(),
-        description: formData.description.trim(),
-      };
-
       if (editingId) {
-        console.log('Updating campus rule:', editingId, payload);
         await updateCampusRule(editingId, payload);
-        console.log('✓ Campus rule updated successfully');
+        console.log('[ManageCampusRulesScreen] ✓ Rule updated:', editingId);
       } else {
-        console.log('Adding new campus rule:', payload);
-        await addCampusRule(payload);
-        console.log('✓ Campus rule added successfully');
+        const newId = await addCampusRule(payload);
+        console.log('[ManageCampusRulesScreen] ✓ Rule created:', newId);
       }
-
-      Alert.alert('Success', editingId ? 'Rule updated successfully!' : 'Rule added successfully!');
-      resetForm();
-    } catch (e) {
-      console.error('Error saving campus rule:', e.code, e.message);
-      Alert.alert('Error', `Unable to save rule: ${e.message}`);
+      setShowModal(false);
+    } catch (err) {
+      console.error('[ManageCampusRulesScreen] ✗ Save failed:', err?.message);
+      Alert.alert('Error', err?.message || 'Could not save rule.');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (targetId = editingId) => {
-    if (!targetId) return;
-
-    Alert.alert('Delete Rule', 'Are you sure you want to delete this rule?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            setDeleting(true);
-            console.log('Deleting campus rule:', targetId);
-            await deleteCampusRule(targetId);
-            console.log('✓ Campus rule deleted successfully');
-            Alert.alert('Success', 'Rule deleted successfully!');
-            resetForm();
-          } catch (e) {
-            console.error('Error deleting campus rule:', e.code, e.message);
-            Alert.alert('Error', `Unable to delete rule: ${e.message}`);
-          } finally {
-            setDeleting(false);
-          }
+  // ── Delete ──────────────────────────────────────────────────────────────────
+  const handleDelete = (rule) => {
+    Alert.alert(
+      'Delete Rule',
+      `Remove "${rule.title}"? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete', style: 'destructive',
+          onPress: async () => {
+            try { await deleteCampusRule(rule.id); }
+            catch (err) { Alert.alert('Error', err?.message || 'Could not delete.'); }
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
-  const renderRuleItem = ({ item }) => {
-    const updatedAt = item.updatedAt || item.createdAt;
-    const dateLabel = updatedAt
-      ? (updatedAt instanceof Date ? updatedAt : new Date(updatedAt)).toLocaleDateString([], {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        })
-      : null;
+  const canGoBack = navigation?.canGoBack?.();
 
+  // ── Rule card ───────────────────────────────────────────────────────────────
+  const renderRule = ({ item }) => {
+    const sev = SEV[item.severity] || SEV.info;
     return (
-      <View style={[styles.ruleCard, selectedRuleId === item.id && styles.ruleCardActive]}>
-        <TouchableOpacity
-          style={styles.ruleCardBody}
-          onPress={() => handleSelectRule(item)}
-          activeOpacity={0.85}
-        >
-          <View style={styles.ruleTopRow}>
-            <View style={styles.ruleIconWrap}>
-              <Ionicons name="shield-outline" size={20} color={COLORS.primary} />
+      <View style={styles.card}>
+        <View style={[styles.cardLeftBar, { backgroundColor: sev.color }]} />
+        <View style={styles.cardBody}>
+          {/* Top row */}
+          <View style={styles.cardTopRow}>
+            <View style={[styles.sevBadge, { backgroundColor: sev.bg }]}>
+              <Ionicons name={sev.icon} size={12} color={sev.color} />
+              <Text style={[styles.sevBadgeText, { color: sev.color }]}>{sev.label}</Text>
             </View>
-            <View style={styles.ruleBodyText}>
-              <Text style={styles.ruleTitle} numberOfLines={1}>
-                {item.title || 'Untitled rule'}
+            {item.category ? (
+              <View style={styles.catBadge}>
+                <Text style={styles.catBadgeText}>{item.category}</Text>
+              </View>
+            ) : null}
+            <View style={[styles.activeBadge, item.is_active !== false ? styles.activeBadgeOn : styles.activeBadgeOff]}>
+              <View style={[styles.activeDot, { backgroundColor: item.is_active !== false ? '#059669' : '#9CA3AF' }]} />
+              <Text style={[styles.activeBadgeText, { color: item.is_active !== false ? '#059669' : '#9CA3AF' }]}>
+                {item.is_active !== false ? 'Live' : 'Hidden'}
               </Text>
-              {item.description ? (
-                <Text style={styles.ruleSubtitle} numberOfLines={2}>
-                  {item.description}
-                </Text>
-              ) : (
-                <Text style={styles.ruleSubtitleMuted}>No description provided</Text>
-              )}
-            </View>
-            <View style={styles.ruleChevron}>
-              <Ionicons name="chevron-forward" size={16} color={COLORS.muted} />
             </View>
           </View>
 
-          <View style={styles.ruleMetaRow}>
-            {dateLabel ? (
-              <View style={styles.ruleMetaChip}>
-                <Ionicons name="time-outline" size={12} color={COLORS.primary} />
-                <Text style={styles.ruleMetaText}>Updated {dateLabel}</Text>
-              </View>
-            ) : (
-              <View style={styles.ruleMetaChip}>
-                <Ionicons name="alert-circle-outline" size={12} color={COLORS.primary} />
-                <Text style={styles.ruleMetaText}>Effective immediately</Text>
-              </View>
-            )}
-          </View>
-        </TouchableOpacity>
+          {/* Title */}
+          <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
 
-        <View style={styles.ruleActionsRow}>
-          <TouchableOpacity
-            style={[styles.ruleActionButton, styles.ruleActionEdit]}
-            onPress={() => handleSelectRule(item)}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="create-outline" size={14} color={COLORS.primary} />
-            <Text style={styles.ruleActionTextPrimary}>Edit</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.ruleActionButton, styles.ruleActionDelete]}
-            onPress={() => handleDelete(item.id)}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="trash-outline" size={14} color={COLORS.white} />
-            <Text style={styles.ruleActionTextDanger}>Delete</Text>
-          </TouchableOpacity>
+          {/* Description preview */}
+          <Text style={styles.cardDesc} numberOfLines={2}>{item.description}</Text>
+
+          {/* Actions */}
+          <View style={styles.cardActions}>
+            <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(item)} activeOpacity={0.85}>
+              <Ionicons name="pencil-outline" size={14} color={NAVY} />
+              <Text style={styles.editBtnText}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(item)} activeOpacity={0.85}>
+              <Ionicons name="trash-outline" size={14} color="#DC2626" />
+              <Text style={styles.deleteBtnText}>Delete</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     );
   };
 
-  const totalRecords = rules.length;
-  const visibleCount = filteredRules.length;
-
+  // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <ScreenWrapper>
-      <View style={styles.container}>
-        <View style={styles.heroCard}>
-          <View style={styles.heroTopRow}>
-            <View style={styles.heroTextBlock}>
-              <Text style={styles.heroEyebrow}>Admin Dashboard</Text>
-              <Text style={styles.heroTitle}>Campus Rules</Text>
-              <Text style={styles.heroSubtitle}>Keep policy updates aligned across students and staff</Text>
-            </View>
-            <View style={styles.heroIconWrap}>
-              <Ionicons name="shield-checkmark-outline" size={26} color={COLORS.white} />
-            </View>
+    <ScreenWrapper backgroundColor={BG} statusBarStyle="light-content">
+      {/* ── Header ── */}
+      <View style={styles.header}>
+        <View style={styles.headerGoldBar} />
+        <View style={styles.headerRow}>
+          {canGoBack && (
+            <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.8}>
+              <Ionicons name="arrow-back" size={20} color="#fff" />
+            </TouchableOpacity>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerEyebrow}>ADMIN</Text>
+            <Text style={styles.headerTitle}>Campus Rules</Text>
           </View>
-
-          <View style={styles.heroStatsRow}>
-            <View style={styles.heroPill}>
-              <Ionicons name="shield-outline" size={14} color={COLORS.white} />
-              <Text style={styles.heroPillText}>{totalRecords} records</Text>
-            </View>
-            <View style={styles.heroPillSecondary}>
-              <Ionicons name="search-outline" size={14} color={COLORS.primary} />
-              <Text style={styles.heroPillTextSecondary}>{visibleCount} shown</Text>
-            </View>
-          </View>
-
-          <TouchableOpacity style={styles.addButton} onPress={handleAddNew} activeOpacity={0.9}>
-            <Ionicons name="add" size={20} color={COLORS.white} />
-            <Text style={styles.addButtonText}>Add Rule</Text>
+          <TouchableOpacity style={styles.addBtn} onPress={openAdd} activeOpacity={0.85}>
+            <Ionicons name="add" size={20} color={NAVY} />
+            <Text style={styles.addBtnText}>Add Rule</Text>
           </TouchableOpacity>
         </View>
+        <Text style={styles.headerSub}>Create and manage campus rules and policies.</Text>
+      </View>
 
-        <View style={styles.searchContainer}>
-          <View style={styles.searchInputWrap}>
-            <Ionicons name="search" size={18} color={COLORS.muted} style={styles.searchIcon} />
-            <TextInput
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Search campus rules..."
-              placeholderTextColor={COLORS.muted}
-              style={styles.searchInput}
-            />
-            {searchQuery ? (
-              <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearSearchButton} activeOpacity={0.8}>
-                <Ionicons name="close-circle" size={18} color={COLORS.muted} />
-              </TouchableOpacity>
-            ) : null}
-          </View>
-          <View style={styles.searchMetaRow}>
-            <Text style={styles.searchMetaText}>
-              {searchQuery ? 'Filtered campus rule list' : 'Search the current roster'}
-            </Text>
-            <Text style={styles.searchMetaCount}>{visibleCount} shown</Text>
-          </View>
-        </View>
-
-        <Text style={styles.listTitle}>
-          {visibleCount > 0 ? `Rules (${visibleCount})` : searchQuery ? 'No matching rules' : 'No Rules Yet'}
-        </Text>
-
-        <View style={styles.listShell}>
-          <FlatList
-            data={filteredRules}
-            keyExtractor={(item) => item.id}
-            renderItem={renderRuleItem}
-            scrollEnabled
-            showsVerticalScrollIndicator
-            contentContainerStyle={styles.listContent}
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <View style={styles.emptyIconWrap}>
-                  <Ionicons name="shield-outline" size={34} color={COLORS.primary} />
-                </View>
-                <Text style={styles.emptyText}>
-                  {searchQuery ? 'Try a different keyword or clear the search.' : 'Tap Add Rule to publish the first campus policy.'}
-                </Text>
-                {!searchQuery ? (
-                  <Text style={styles.emptySubtext}>Rules you add here appear in the student dashboard immediately.</Text>
-                ) : null}
-              </View>
-            }
+      {/* ── Search ── */}
+      <View style={styles.searchWrap}>
+        <View style={styles.searchBar}>
+          <Ionicons name="search-outline" size={17} color={GOLD} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search rules…"
+            placeholderTextColor="#A0AEC0"
+            value={search}
+            onChangeText={setSearch}
           />
+          {search ? (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <Ionicons name="close-circle" size={17} color="#A0AEC0" />
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 
-      <Modal visible={showModal} animationType="slide" transparent onRequestClose={resetForm}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+      {/* ── Category filter chips ── */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+        {['All', ...CATEGORIES].map((cat) => (
+          <TouchableOpacity
+            key={cat}
+            style={[styles.chip, filterCat === cat && styles.chipActive]}
+            onPress={() => setFilterCat(cat)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.chipText, filterCat === cat && styles.chipTextActive]}>{cat}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      {/* ── Rules list ── */}
+      <FlatList
+        data={displayed}
+        keyExtractor={(item, i) => item.id || String(i)}
+        renderItem={renderRule}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.list}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Ionicons name="shield-outline" size={48} color={GOLD} />
+            <Text style={styles.emptyTitle}>No rules yet</Text>
+            <Text style={styles.emptySub}>Tap "Add Rule" to create the first campus rule.</Text>
+          </View>
+        }
+      />
+
+      {/* ════════════════════════════════════════════════════════════════════════
+          FORM MODAL
+      ════════════════════════════════════════════════════════════════════════ */}
+      <Modal
+        visible={showModal}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setShowModal(false)}
+      >
+        <ScreenWrapper backgroundColor={BG} statusBarStyle="dark-content">
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.modalScroll}
+          >
+            {/* Modal header */}
             <View style={styles.modalHeader}>
-              <View style={styles.modalTitleBlock}>
-                <Text style={styles.modalEyebrow}>{editingId ? 'Edit record' : 'New record'}</Text>
-                <Text style={styles.modalTitle}>{editingId ? 'Edit Rule' : 'Add Rule'}</Text>
-              </View>
-              <TouchableOpacity onPress={resetForm} activeOpacity={0.85}>
-                <View style={styles.closeButton}>
-                  <Ionicons name="close" size={20} color={COLORS.dark} />
+              <View style={styles.modalGoldBar} />
+              <View style={styles.modalHeaderRow}>
+                <TouchableOpacity style={styles.closeBtn} onPress={() => setShowModal(false)}>
+                  <Ionicons name="close" size={22} color="#fff" />
+                </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalEyebrow}>CAMPUS RULES</Text>
+                  <Text style={styles.modalTitle}>{editingId ? 'Edit Rule' : 'New Rule'}</Text>
                 </View>
-              </TouchableOpacity>
+              </View>
             </View>
 
-            <ScrollView
-              style={styles.modalScroll}
-              contentContainerStyle={styles.modalScrollContent}
-              showsVerticalScrollIndicator
-            >
-              <View style={styles.formSectionCard}>
-                <Text style={styles.sectionLabel}>Rule Title <Text style={styles.requiredMark}>*</Text></Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g., General Campus Conduct"
-                  placeholderTextColor={COLORS.muted}
-                  value={formData.title}
-                  onChangeText={(value) => setFormData((prev) => ({ ...prev, title: value }))}
-                />
+            {/* ── Form card ── */}
+            <View style={styles.formCard}>
 
-                <Text style={styles.sectionLabel}>Rule Description <Text style={styles.requiredMark}>*</Text></Text>
+              {/* Title */}
+              <Text style={styles.label}>
+                Title <Text style={styles.req}>*</Text>
+              </Text>
+              <Animated.View style={{ transform: [{ translateX: shakeTitle }] }}>
                 <TextInput
-                  style={[styles.input, styles.textArea]}
-                  placeholder="Explain the policy, expectations, or consequences."
-                  placeholderTextColor={COLORS.muted}
-                  value={formData.description}
-                  onChangeText={(value) => setFormData((prev) => ({ ...prev, description: value }))}
+                  style={[styles.input, errors.title && styles.inputError]}
+                  placeholder="e.g. No Smoking on Campus Grounds"
+                  placeholderTextColor="#A0AEC0"
+                  value={form.title}
+                  onChangeText={(v) => set('title', v)}
+                  returnKeyType="next"
+                />
+                {errors.title ? (
+                  <View style={styles.errorRow}>
+                    <Ionicons name="alert-circle-outline" size={13} color="#DC2626" />
+                    <Text style={styles.errorMsg}>{errors.title}</Text>
+                  </View>
+                ) : null}
+              </Animated.View>
+
+              {/* Description */}
+              <Text style={[styles.label, { marginTop: 18 }]}>
+                Description <Text style={styles.req}>*</Text>
+              </Text>
+              <Animated.View style={{ transform: [{ translateX: shakeDesc }] }}>
+                <TextInput
+                  style={[styles.input, styles.textarea, errors.description && styles.inputError]}
+                  placeholder="Provide a clear and detailed description of this rule and the consequences of breaching it."
+                  placeholderTextColor="#A0AEC0"
+                  value={form.description}
+                  onChangeText={(v) => set('description', v)}
                   multiline
-                  numberOfLines={5}
+                  numberOfLines={4}
                   textAlignVertical="top"
                 />
+                {errors.description ? (
+                  <View style={styles.errorRow}>
+                    <Ionicons name="alert-circle-outline" size={13} color="#DC2626" />
+                    <Text style={styles.errorMsg}>{errors.description}</Text>
+                  </View>
+                ) : null}
+              </Animated.View>
 
-                <View style={styles.modalButtonRow}>
-                  <CustomButton
-                    title="Cancel"
-                    onPress={resetForm}
-                    variant="outline"
-                    style={styles.buttonFlex}
-                    disabled={saving || deleting}
-                  />
-                  {editingId ? (
-                    <CustomButton
-                      title={deleting ? 'Deleting...' : 'Delete'}
-                      onPress={() => handleDelete(editingId)}
-                      variant="danger"
-                      style={styles.buttonFlex}
-                      loading={deleting}
-                      disabled={saving || deleting}
-                    />
-                  ) : null}
-                  <CustomButton
-                    title={saving ? (editingId ? 'Updating...' : 'Saving...') : editingId ? 'Update Rule' : 'Save Rule'}
-                    onPress={handleSave}
-                    style={styles.buttonFlex}
-                    loading={saving}
-                    disabled={saving || deleting}
-                  />
-                </View>
+              {/* Category */}
+              <Text style={[styles.label, { marginTop: 18 }]}>Category</Text>
+              <View style={styles.catGrid}>
+                {CATEGORIES.map((cat) => (
+                  <TouchableOpacity
+                    key={cat}
+                    style={[styles.catOption, form.category === cat && styles.catOptionActive]}
+                    onPress={() => set('category', cat)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.catOptionText, form.category === cat && styles.catOptionTextActive]}>
+                      {cat}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-            </ScrollView>
-          </View>
-        </View>
+
+              {/* ── Severity — Radio group ── */}
+              <Text style={[styles.label, { marginTop: 18 }]}>Severity</Text>
+              <View style={styles.sevRow}>
+                {Object.entries(SEV).map(([key, cfg]) => {
+                  const active = form.severity === key;
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={[
+                        styles.sevOption,
+                        {
+                          borderColor:      active ? cfg.color : cfg.ring,
+                          backgroundColor:  active ? cfg.color : cfg.bg,
+                          shadowColor:      active ? cfg.color : 'transparent',
+                        },
+                      ]}
+                      onPress={() => set('severity', key)}
+                      activeOpacity={0.85}
+                    >
+                      {/* Outer ring indicator */}
+                      <View style={[styles.sevRadio, { borderColor: active ? '#fff' : cfg.color }]}>
+                        {active && <View style={[styles.sevRadioFill, { backgroundColor: '#fff' }]} />}
+                      </View>
+                      <View style={styles.sevTextWrap}>
+                        <Ionicons name={cfg.icon} size={16} color={active ? '#fff' : cfg.color} />
+                        <Text style={[styles.sevLabel, { color: active ? '#fff' : cfg.color }]}>
+                          {cfg.label}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={styles.sevHint}>
+                {form.severity === 'info'     && 'Informational — general guidance, no penalty.'}
+                {form.severity === 'warning'  && 'Warning — violation may result in disciplinary action.'}
+                {form.severity === 'critical' && 'Critical — serious breach with severe consequences.'}
+              </Text>
+
+              {/* ── is_active toggle ── */}
+              <View style={styles.toggleCard}>
+                <View style={styles.toggleLeft}>
+                  <View style={[styles.toggleIconWrap, { backgroundColor: form.is_active ? '#D1FAE5' : '#F1F5F9' }]}>
+                    <Ionicons
+                      name={form.is_active ? 'eye-outline' : 'eye-off-outline'}
+                      size={18}
+                      color={form.is_active ? '#059669' : '#9CA3AF'}
+                    />
+                  </View>
+                  <View>
+                    <Text style={styles.toggleLabel}>Rule is Live</Text>
+                    <Text style={styles.toggleSub}>
+                      {form.is_active ? 'Visible to all students and staff' : 'Hidden — not shown to users'}
+                    </Text>
+                  </View>
+                </View>
+                <Switch
+                  value={form.is_active}
+                  onValueChange={(v) => set('is_active', v)}
+                  trackColor={{ false: '#CBD5E0', true: NAVY }}
+                  thumbColor={form.is_active ? GOLD : '#fff'}
+                />
+              </View>
+
+              {/* ── Payload preview (dev) ── */}
+              <View style={styles.payloadBox}>
+                <View style={styles.payloadHeader}>
+                  <Ionicons name="code-slash-outline" size={14} color={GOLD} />
+                  <Text style={styles.payloadTitle}>Submission Payload</Text>
+                </View>
+                <Text style={styles.payloadCode}>
+                  {JSON.stringify(
+                    {
+                      title:       form.title.trim()       || '(required)',
+                      description: form.description.trim() || '(required)',
+                      category:    form.category,
+                      severity:    form.severity,
+                      is_active:   form.is_active,
+                    },
+                    null,
+                    2,
+                  )}
+                </Text>
+              </View>
+
+              {/* ── Submit ── */}
+              <TouchableOpacity
+                style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
+                onPress={handleSave}
+                disabled={saving}
+                activeOpacity={0.85}
+              >
+                <Ionicons
+                  name={editingId ? 'checkmark-circle-outline' : 'add-circle-outline'}
+                  size={20}
+                  color={NAVY}
+                />
+                <Text style={styles.saveBtnText}>
+                  {saving ? 'Saving…' : editingId ? 'Save Changes' : 'Create Rule'}
+                </Text>
+              </TouchableOpacity>
+
+            </View>
+          </ScrollView>
+        </ScreenWrapper>
       </Modal>
     </ScreenWrapper>
   );
-};
+}
 
+// ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: {
+  // ── Header
+  header:        { backgroundColor: NAVY, paddingTop: 52, paddingBottom: 22, paddingHorizontal: 20 },
+  headerGoldBar: { position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: GOLD },
+  headerRow:     { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
+  backBtn:       { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)', justifyContent: 'center', alignItems: 'center' },
+  headerEyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 2, color: GOLD, textTransform: 'uppercase' },
+  headerTitle:   { fontSize: 24, fontWeight: '800', color: '#fff' },
+  headerSub:     { fontSize: 13, color: 'rgba(255,255,255,0.65)' },
+  addBtn:        { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: GOLD, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12 },
+  addBtnText:    { fontSize: 13, fontWeight: '800', color: NAVY },
+
+  // ── Search + filter
+  searchWrap:  { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
+  searchBar:   { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#fff', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, borderColor: 'rgba(26,54,93,0.10)', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 5, elevation: 1 },
+  searchInput: { flex: 1, fontSize: 14, color: '#2D3748', padding: 0 },
+  filterRow:   { paddingHorizontal: 16, paddingBottom: 12, gap: 8 },
+  chip:           { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: 'rgba(26,54,93,0.12)' },
+  chipActive:     { backgroundColor: NAVY, borderColor: NAVY },
+  chipText:       { fontSize: 12, fontWeight: '600', color: '#718096' },
+  chipTextActive: { color: '#fff' },
+
+  // ── Rule card
+  list:          { paddingHorizontal: 16, paddingBottom: 32, gap: 12 },
+  card:          { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(26,54,93,0.08)', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  cardLeftBar:   { width: 4 },
+  cardBody:      { flex: 1, padding: 14 },
+  cardTopRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
+  sevBadge:      { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  sevBadgeText:  { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
+  catBadge:      { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: '#EDF1F8' },
+  catBadgeText:  { fontSize: 11, fontWeight: '600', color: NAVY },
+  activeBadge:   { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  activeBadgeOn: { backgroundColor: '#D1FAE5' },
+  activeBadgeOff:{ backgroundColor: '#F1F5F9' },
+  activeDot:     { width: 6, height: 6, borderRadius: 3 },
+  activeBadgeText:{ fontSize: 11, fontWeight: '700' },
+  cardTitle:     { fontSize: 15, fontWeight: '700', color: '#2D3748', marginBottom: 5 },
+  cardDesc:      { fontSize: 12, color: '#718096', lineHeight: 17, marginBottom: 12 },
+  cardActions:   { flexDirection: 'row', gap: 8 },
+  editBtn:       { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: '#EDF1F8' },
+  editBtnText:   { fontSize: 12, fontWeight: '700', color: NAVY },
+  deleteBtn:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: '#FEE2E2' },
+  deleteBtnText: { fontSize: 12, fontWeight: '700', color: '#DC2626' },
+
+  // ── Empty
+  empty:      { flex: 1, alignItems: 'center', paddingTop: 60, gap: 12 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: '#2D3748' },
+  emptySub:   { fontSize: 13, color: '#718096', textAlign: 'center', maxWidth: 240 },
+
+  // ── Modal structure
+  modalScroll:     { paddingBottom: 48 },
+  modalHeader:     { backgroundColor: NAVY, paddingTop: 52, paddingBottom: 22, paddingHorizontal: 20, position: 'relative' },
+  modalGoldBar:    { position: 'absolute', top: 0, left: 0, right: 0, height: 3, backgroundColor: GOLD },
+  modalHeaderRow:  { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  closeBtn:        { width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)', justifyContent: 'center', alignItems: 'center' },
+  modalEyebrow:    { fontSize: 10, fontWeight: '800', letterSpacing: 2, color: GOLD, textTransform: 'uppercase' },
+  modalTitle:      { fontSize: 22, fontWeight: '800', color: '#fff' },
+
+  // ── Form card
+  formCard:   { marginHorizontal: 16, marginTop: 20, backgroundColor: '#fff', borderRadius: 24, padding: 20, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3, borderWidth: 1, borderColor: 'rgba(26,54,93,0.07)' },
+
+  // ── Fields
+  label:      { fontSize: 13, fontWeight: '700', color: '#2D3748', marginBottom: 8 },
+  req:        { color: '#DC2626' },
+  input: {
+    backgroundColor: '#F8F9FA', borderRadius: 14, borderWidth: 1.5,
+    borderColor: 'rgba(26,54,93,0.13)',
+    paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 14 : 11,
+    fontSize: 14, color: '#2D3748',
+  },
+  inputError: { borderColor: '#DC2626', backgroundColor: '#FFF5F5' },
+  textarea:   { minHeight: 100, textAlignVertical: 'top' },
+  errorRow:   { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
+  errorMsg:   { fontSize: 12, color: '#DC2626' },
+
+  // ── Category chip grid
+  catGrid:            { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  catOption:          { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12, backgroundColor: '#F8F9FA', borderWidth: 1.5, borderColor: 'rgba(26,54,93,0.12)' },
+  catOptionActive:    { backgroundColor: NAVY, borderColor: NAVY },
+  catOptionText:      { fontSize: 13, fontWeight: '600', color: '#718096' },
+  catOptionTextActive:{ color: '#fff' },
+
+  // ── Severity radio group
+  sevRow:      { flexDirection: 'row', gap: 10 },
+  sevOption: {
     flex: 1,
-    padding: 18,
-  },
-  heroCard: {
-    backgroundColor: '#0F172A',
-    borderRadius: 28,
-    padding: 18,
-    marginBottom: 18,
-    shadowColor: '#020617',
-    shadowOpacity: 0.24,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 8,
-  },
-  heroTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 16,
-  },
-  heroTextBlock: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  heroEyebrow: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: 'rgba(255,255,255,0.72)',
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-    marginBottom: 8,
-  },
-  heroTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: COLORS.white,
-  },
-  heroSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.82)',
-    marginTop: 6,
-    lineHeight: 20,
-  },
-  heroIconWrap: {
-    width: 54,
-    height: 54,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-  heroStatsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 16,
-    flexWrap: 'wrap',
-  },
-  heroPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
-  },
-  heroPillSecondary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: COLORS.white,
-  },
-  heroPillText: {
-    color: COLORS.white,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  heroPillTextSecondary: {
-    color: COLORS.primary,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 16,
-    paddingVertical: 12,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-  addButtonText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  searchContainer: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 18,
-    padding: 12,
-    marginBottom: 14,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
+    borderWidth: 2,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    gap: 6,
+    shadowOpacity: 0.18,
     shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
-  },
-  searchInputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    minWidth: 0,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: COLORS.dark,
-  },
-  clearSearchButton: {
-    padding: 4,
-    marginLeft: 8,
-  },
-  searchMetaRow: {
-    marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  searchMetaText: {
-    fontSize: 12,
-    color: COLORS.muted,
-    fontWeight: '600',
-  },
-  searchMetaCount: {
-    fontSize: 12,
-    color: COLORS.primary,
-    fontWeight: '700',
-  },
-  listTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: COLORS.dark,
-    marginBottom: 12,
-    marginTop: 4,
-  },
-  listShell: {
-    backgroundColor: COLORS.white,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    padding: 4,
-    maxHeight: 520,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.05,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
-  listContent: {
-    padding: 14,
-  },
-  ruleCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginBottom: 12,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
-  },
-  ruleCardActive: {
-    borderColor: COLORS.primary,
-  },
-  ruleCardBody: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEF2FF',
-  },
-  ruleTopRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  ruleIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: '#EEF4FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  ruleBodyText: {
-    flex: 1,
-    minWidth: 0,
-  },
-  ruleTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: COLORS.dark,
-  },
-  ruleSubtitle: {
-    fontSize: 13,
-    color: '#475569',
-    marginTop: 4,
-  },
-  ruleSubtitleMuted: {
-    fontSize: 13,
-    color: COLORS.muted,
-    marginTop: 4,
-  },
-  ruleChevron: {
-    width: 30,
-    alignItems: 'flex-end',
-    marginLeft: 8,
-  },
-  ruleMetaRow: {
-    marginTop: 12,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  ruleMetaChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#EEF2FF',
-  },
-  ruleMetaText: {
-    fontSize: 12,
-    color: '#1E293B',
-    fontWeight: '600',
-  },
-  ruleActionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-    padding: 12,
-  },
-  ruleActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  ruleActionEdit: {
-    borderColor: '#CBD5F5',
-    backgroundColor: '#EEF4FF',
-  },
-  ruleActionDelete: {
-    borderColor: '#DC2626',
-    backgroundColor: '#DC2626',
-  },
-  ruleActionTextPrimary: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.primary,
-  },
-  ruleActionTextDanger: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.white,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 40,
-  },
-  emptyIconWrap: {
-    width: 68,
-    height: 68,
-    borderRadius: 20,
-    backgroundColor: '#EEF4FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 14,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 18,
-  },
-  emptySubtext: {
-    fontSize: 13,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 6,
-    paddingHorizontal: 18,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.55)',
-    justifyContent: 'flex-end',
-  },
-  modalCard: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    maxHeight: '90%',
-    paddingBottom: 20,
-    shadowColor: '#020617',
-    shadowOpacity: 0.22,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: -8 },
-    elevation: 10,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8EEF9',
-  },
-  modalTitleBlock: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  modalEyebrow: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: COLORS.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 4,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: COLORS.dark,
-  },
-  closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  modalScroll: {
-    paddingHorizontal: 18,
-    paddingTop: 16,
-  },
-  modalScrollContent: {
-    paddingBottom: 24,
-  },
-  formSectionCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#E8EEF9',
-    padding: 16,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 1,
-  },
-  sectionLabel: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: COLORS.dark,
-    marginTop: 0,
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  requiredMark: {
-    color: '#DC2626',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: COLORS.dark,
-    marginBottom: 14,
-  },
-  textArea: {
-    minHeight: 110,
-  },
-  modalButtonRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 12,
-  },
-  buttonFlex: {
-    flex: 1,
-  },
-});
+  sevRadio:     { width: 18, height: 18, borderRadius: 9, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
+  sevRadioFill: { width: 8, height: 8, borderRadius: 4 },
+  sevTextWrap:  { alignItems: 'center', gap: 3 },
+  sevLabel:     { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4 },
+  sevHint:      { fontSize: 12, color: '#718096', marginTop: 8, lineHeight: 17, textAlign: 'center', fontStyle: 'italic' },
 
-export default ManageCampusRulesScreen;
+  // ── Toggle
+  toggleCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F8F9FA', borderRadius: 16, padding: 14, marginTop: 18, borderWidth: 1, borderColor: 'rgba(26,54,93,0.10)' },
+  toggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  toggleIconWrap:{ width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  toggleLabel:{ fontSize: 14, fontWeight: '700', color: '#2D3748' },
+  toggleSub:  { fontSize: 12, color: '#718096', marginTop: 2 },
+
+  // ── Payload preview
+  payloadBox:    { marginTop: 18, backgroundColor: '#0F1C2E', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: 'rgba(197,160,71,0.20)' },
+  payloadHeader: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 10 },
+  payloadTitle:  { fontSize: 12, fontWeight: '700', color: GOLD, textTransform: 'uppercase', letterSpacing: 0.8 },
+  payloadCode:   { fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace', fontSize: 12, color: '#86EFAC', lineHeight: 18 },
+
+  // ── Save button
+  saveBtn:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 56, borderRadius: 16, backgroundColor: GOLD, marginTop: 22 },
+  saveBtnDisabled: { opacity: 0.5 },
+  saveBtnText:     { fontSize: 16, fontWeight: '800', color: NAVY },
+});

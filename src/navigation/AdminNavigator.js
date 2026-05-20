@@ -262,6 +262,7 @@ const AdminNavigator = () => {
       <Stack.Screen name="ControlCentre"    component={ControlCentreScreen}    options={{ headerShown: false }} />
       <Stack.Screen name="ReportsAnalytics"    component={ReportsAnalyticsScreen}         options={{ headerShown: false }} />
       <Stack.Screen name="EmergencyContacts"   component={ManageEmergencyContactsScreen}  options={{ headerShown: false }} />
+      <Stack.Screen name="ManageCampusRules"   component={ManageCampusRulesScreen}        options={{ headerShown: false }} />
       <Stack.Screen name="LocationDetails"     component={LocationDetailsScreen}          options={{ title: 'Location Details' }} />
     </Stack.Navigator>
   );
