@@ -24,8 +24,8 @@ import Map from '../../components/Map';
 import {
   subscribeToLocations,
   subscribeToBuildings,
-  subscribeToAmenities,
   subscribeToDepartments,
+  subscribeToDining,
 } from '../../services/databaseService';
 import { fetchRouteGuidance, resolveLocationCoordinates } from '../../services/mapService';
 
@@ -210,7 +210,7 @@ const MapScreen = ({ navigation, route }) => {
   const [loading,    setLoading]    = useState(true);
   const [locations,  setLocations]  = useState([]);
   const [buildings,  setBuildings]  = useState([]);
-  const [amenities,  setAmenities]  = useState([]);
+  const [dining,     setDining]     = useState([]);
   const [departments, setDepartments] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSuggestionsVisible, setIsSuggestionsVisible] = useState(false);
@@ -276,7 +276,7 @@ const MapScreen = ({ navigation, route }) => {
 
     const unsubLocs  = subscribeToLocations((items)  => { setLocations(items   || []); done(); });
     const unsubBldgs = subscribeToBuildings((items)   => { setBuildings(items   || []); done(); });
-    const unsubAmen  = subscribeToAmenities((items)   => { setAmenities(items   || []); done(); });
+    const unsubAmen  = subscribeToDining((items)     => { setDining(items     || []); done(); });
     const unsubDepts = subscribeToDepartments((items) => { setDepartments(items || []); done(); });
 
     return () => {
@@ -361,18 +361,16 @@ const MapScreen = ({ navigation, route }) => {
     longitude: row.longitude ?? row.coordinates?.longitude,
   });
 
-  // Merge locations + buildings + amenities + departments
+  // Merge locations + buildings + departments + dining (all 4 tables have lat/lng)
   // Only include rows that have valid numeric coordinates
   const normalizedLocations = useMemo(() => {
     const allRows = [
       ...locations.map((r)   => toMapPoint(r, 'Location')),
-      ...buildings.map((r)   => toMapPoint(r, 'Building')),
-      ...amenities.map((r)   => toMapPoint(r, 'Amenity')),
-      ...departments
-        .filter((r) => typeof r.latitude === 'number' && typeof r.longitude === 'number')
-        .map((r)    => toMapPoint(r, 'Department')),
+      ...buildings.map((r)    => toMapPoint(r, 'Building')),
+      ...departments.map((r)  => toMapPoint(r, 'Department')),
+      ...dining.map((r)       => toMapPoint(r, 'Dining')),
     ];
-    // Deduplicate by id and filter to valid coords
+    // Deduplicate by id, filter to rows with valid numeric coordinates
     const seen = new Set();
     return allRows.filter((p) => {
       if (typeof p.latitude !== 'number' || typeof p.longitude !== 'number') return false;
@@ -380,7 +378,7 @@ const MapScreen = ({ navigation, route }) => {
       seen.add(p.id);
       return true;
     });
-  }, [locations, buildings, amenities, departments]);
+  }, [locations, buildings, departments, dining]);
 
   const mapLocations = useMemo(() => {
     if (!activeLocation) {
