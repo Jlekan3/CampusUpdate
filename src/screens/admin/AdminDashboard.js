@@ -79,8 +79,8 @@ const AdminDashboard = ({ navigation }) => {
   const [reports, setReports] = useState([]);
   const [notifications, setNotifications] = useState([]);
 
-  // 8 entrance animations
-  const cardAnims = useRef([...Array(QUICK_ACTIONS.length)].map(() => new Animated.Value(0))).current;
+  // One anim per stat card — statCards has 8 items, cardAnims must match
+  const cardAnims = useRef([...Array(8)].map(() => new Animated.Value(0))).current;
   const heroAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {

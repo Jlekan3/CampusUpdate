@@ -1,20 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   LayoutAnimation,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  UIManager,
+
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import { subscribeToCampusRules } from '../../services/databaseService';
 
-if (Platform.OS === 'android') UIManager.setLayoutAnimationEnabledExperimental?.(true);
+// LayoutAnimation works natively in the New Architecture — no UIManager setup needed
 
 const NAVY = '#1A365D';
 const GOLD = '#C5A047';
