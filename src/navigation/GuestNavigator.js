@@ -2,13 +2,16 @@ import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import GuestHomeScreen from '../screens/guest/GuestHomeScreen';
-import MapScreen from '../screens/common/MapScreen';
-import LocationDetailsScreen from '../screens/common/LocationDetailsScreen';
-import SearchLocationsScreen from '../screens/common/SearchLocationsScreen';
-import FavoritesScreen from '../screens/student/FavoritesScreen';
-import QRScannerScreen from '../screens/common/QRScannerScreen';
-import { COLORS } from '../utils/constants';
+import GuestHomeScreen         from '../screens/guest/GuestHomeScreen';
+import GuestCampusRulesScreen  from '../screens/guest/GuestCampusRulesScreen';
+import GuestEmergencyScreen    from '../screens/guest/GuestEmergencyScreen';
+import GuestDiningScreen       from '../screens/guest/GuestDiningScreen';
+import MapScreen               from '../screens/common/MapScreen';
+import LocationDetailsScreen   from '../screens/common/LocationDetailsScreen';
+import SearchLocationsScreen   from '../screens/common/SearchLocationsScreen';
+import FavoritesScreen         from '../screens/student/FavoritesScreen';
+import QRScannerScreen         from '../screens/common/QRScannerScreen';
+import { COLORS }              from '../utils/constants';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -107,7 +110,22 @@ const GuestNavigator = () => {
       <Stack.Screen
         name="QRScanner"
         component={QRScannerScreen}
-        options={{ title: 'Scan QR Code', headerShown: false }}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="GuestCampusRules"
+        component={GuestCampusRulesScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="GuestEmergency"
+        component={GuestEmergencyScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="GuestDining"
+        component={GuestDiningScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

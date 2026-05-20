@@ -250,7 +250,7 @@ export default function GuestHomeScreen({ navigation }) {
       accent:   '#7C3AED',
       accentBg: '#F5F3FF',
       preview:  <RulesPreview rules={rules} loading={loadingRules} />,
-      route:    'Search',
+      route:    'GuestCampusRules',
     },
     {
       id:       'emergency',
@@ -260,7 +260,7 @@ export default function GuestHomeScreen({ navigation }) {
       accent:   '#DC2626',
       accentBg: '#FEF2F2',
       preview:  <EmergencyPreview contacts={contacts} loading={loadingContacts} />,
-      route:    'Search',
+      route:    'GuestEmergency',
     },
     {
       id:       'dining',
@@ -270,7 +270,7 @@ export default function GuestHomeScreen({ navigation }) {
       accent:   '#D97706',
       accentBg: '#FFFBEB',
       preview:  <DiningPreview dining={dining} loading={loadingDining} />,
-      route:    'Search',
+      route:    'GuestDining',
     },
   ];
 
