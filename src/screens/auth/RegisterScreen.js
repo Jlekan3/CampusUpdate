@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,99 +11,151 @@ import {
   Alert,
   StatusBar,
   Modal,
-  FlatList,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { HugeiconsIcon } from '@hugeicons/react-native';
 import { CheckmarkCircle02Icon } from '@hugeicons/core-free-icons';
 import { useAuth } from '../../context/AuthContext';
 import { registerSchema, validate } from '../../utils/validationSchemas';
-import { COLORS, FONTS, RADIUS, SHADOW } from '../../utils/theme';
+import { supabase } from '../../config/supabase';
+import { FONTS } from '../../utils/theme';
+import { File } from 'expo-file-system';
+
+const PRIMARY      = '#1A365D';
+const INPUT_BG     = 'rgba(255,255,255,0.12)';
+const INPUT_FOCUS  = 'rgba(255,255,255,0.20)';
+const BORDER       = 'rgba(255,255,255,0.25)';
+const BORDER_FOCUS = 'rgba(255,255,255,0.70)';
+const BORDER_ERR   = '#FCA5A5';
+const WHITE        = '#FFFFFF';
+const WHITE_70     = 'rgba(255,255,255,0.70)';
+const WHITE_45     = 'rgba(255,255,255,0.45)';
 
 const PROGRAMMES = [
-  'BSc Nautical Science',
-  'BSc Marine Engineering',
-  'BSc Maritime Science',
-  'BSc Logistics & Supply Chain Management',
-  'BSc Port & Shipping Administration',
-  'BSc Maritime Business Management',
-  'BSc Information Technology',
-  'BSc Mechanical Engineering',
-  'MSc Maritime Affairs',
-  'MSc Port Management',
-  'MBA (Maritime Focus)',
-  'Other',
+  'BSc Nautical Science', 'BSc Marine Engineering', 'BSc Maritime Science',
+  'BSc Logistics & Supply Chain Management', 'BSc Port & Shipping Administration',
+  'BSc Maritime Business Management', 'BSc Information Technology',
+  'BSc Mechanical Engineering', 'MSc Maritime Affairs', 'MSc Port Management',
+  'MBA (Maritime Focus)', 'Other',
 ];
 
-function ProgrammePickerModal({ visible, value, onSelect, onClose }) {
+// ── Picker modal ─────────────────────────────────────────────────────────────
+function PickerModal({ visible, title, options, value, onSelect, onClose }) {
   return (
     <Modal visible={visible} animationType="slide" transparent presentationStyle="overFullScreen">
       <TouchableOpacity style={pm.overlay} activeOpacity={1} onPress={onClose} />
       <View style={pm.sheet}>
         <View style={pm.handle} />
-        <Text style={pm.sheetTitle}>Select Programme</Text>
-        <FlatList
-          data={PROGRAMMES}
-          keyExtractor={(item) => item}
-          renderItem={({ item }) => (
+        <Text style={pm.title}>{title}</Text>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
+          {options.map((opt, i) => (
             <TouchableOpacity
-              style={pm.option}
-              onPress={() => { onSelect(item); onClose(); }}
+              key={opt.value ?? opt}
+              style={[pm.option, i < options.length - 1 && pm.border]}
+              onPress={() => { onSelect(opt.value ?? opt); onClose(); }}
               activeOpacity={0.7}
             >
-              <Text style={[pm.optionText, item === value && pm.optionTextActive]}>{item}</Text>
-              {item === value && (
-                <HugeiconsIcon icon={CheckmarkCircle02Icon} size={18} color={COLORS.primaryLight} variant="solid" />
+              <Text style={[pm.optionText, value === (opt.value ?? opt) && pm.optionActive]}>
+                {opt.label ?? opt}
+              </Text>
+              {value === (opt.value ?? opt) && (
+                <HugeiconsIcon icon={CheckmarkCircle02Icon} size={18} color={PRIMARY} variant="solid" />
               )}
             </TouchableOpacity>
-          )}
-          ItemSeparatorComponent={() => <View style={pm.sep} />}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 32 }}
-        />
+          ))}
+        </ScrollView>
       </View>
     </Modal>
   );
 }
 
-function Field({ label, error, children }) {
+// ── Row input wrapper ─────────────────────────────────────────────────────────
+function InputRow({ focused, error, children }) {
   return (
-    <View style={s.fieldWrap}>
-      <Text style={s.label}>{label} <Text style={s.required}>*</Text></Text>
+    <View style={[
+      s.inputRow,
+      focused && s.inputRowFocused,
+      error  && s.inputRowError,
+    ]}>
       {children}
-      {error ? <Text style={s.fieldError}>{error}</Text> : null}
     </View>
   );
 }
 
 export default function RegisterScreen({ navigation }) {
-  const { register } = useAuth();
+  const { register, enterGuestMode } = useAuth();
 
   const [form, setForm] = useState({
-    fullName: '',
-    email: '',
-    indexNumber: '',
-    programme: '',
-    password: '',
-    confirmPassword: '',
+    fullName: '', displayName: '', email: '',
+    studentId: '', indexNumber: '',
+    programme: '', department: '', phone: '',
+    password: '', confirmPassword: '',
   });
-  const [errors, setErrors] = useState({});
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [showPicker, setShowPicker] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [focused, setFocused] = useState({});
+  const [errors,       setErrors]       = useState({});
+  const [focused,      setFocused]      = useState({});
+  const [showPw,       setShowPw]       = useState(false);
+  const [showCf,       setShowCf]       = useState(false);
+  const [showProg,     setShowProg]     = useState(false);
+  const [showDept,     setShowDept]     = useState(false);
+  const [loading,      setLoading]      = useState(false);
+  const [departments,  setDepartments]  = useState([]);
+  const [avatarUri,    setAvatarUri]    = useState(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const set = (key) => (val) => setForm((f) => ({ ...f, [key]: val }));
-  const onFocus = (key) => setFocused((f) => ({ ...f, [key]: true }));
-  const onBlur = (key) => setFocused((f) => ({ ...f, [key]: false }));
+  const onFocus = (k) => setFocused((f) => ({ ...f, [k]: true }));
+  const onBlur  = (k) => setFocused((f) => ({ ...f, [k]: false }));
+  const clearError = (k) => setErrors((e) => ({ ...e, [k]: undefined }));
 
-  const rowStyle = (key) => [
-    s.inputRow,
-    focused[key] && s.inputRowFocused,
-    errors[key] && s.inputRowError,
-  ];
+  // Fetch departments
+  useEffect(() => {
+    supabase.from('departments').select('id, name').order('name')
+      .then(({ data }) => setDepartments(data || []));
+  }, []);
+
+  // Avatar picker
+  const pickAvatar = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') { Alert.alert('Permission needed', 'Allow photo library access.'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true, aspect: [1, 1], quality: 0.75,
+    });
+    if (!result.canceled && result.assets?.[0]) setAvatarUri(result.assets[0].uri);
+  };
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') { Alert.alert('Permission needed', 'Allow camera access.'); return; }
+    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.75 });
+    if (!result.canceled && result.assets?.[0]) setAvatarUri(result.assets[0].uri);
+  };
+
+  const showAvatarOptions = () => Alert.alert('Profile Photo', 'Choose source', [
+    { text: 'Camera', onPress: takePhoto },
+    { text: 'Photo Library', onPress: pickAvatar },
+    { text: 'Remove', style: 'destructive', onPress: () => setAvatarUri(null) },
+    { text: 'Cancel', style: 'cancel' },
+  ]);
+
+  const uploadAvatar = async (uri) => {
+    setUploadingAvatar(true);
+    try {
+      const ext = uri.match(/\.(\w+)(\?|$)/)?.[1] || 'jpg';
+      const contentType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+      const filename = `avatars/${Date.now()}.${ext}`;
+      const file = new File(uri);
+      const { error } = await supabase.storage.from('locations').upload(filename, file, { contentType, upsert: true });
+      if (error) throw error;
+      const { data } = supabase.storage.from('locations').getPublicUrl(filename);
+      return data.publicUrl;
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   const handleRegister = async () => {
     const { values, errors: errs } = validate(registerSchema, form);
@@ -111,7 +163,11 @@ export default function RegisterScreen({ navigation }) {
     setErrors({});
     setLoading(true);
     try {
-      await register(values);
+      // Upload avatar if picked
+      let avatarUrl = null;
+      if (avatarUri) avatarUrl = await uploadAvatar(avatarUri);
+
+      await register({ ...values, avatarUrl });
       navigation.navigate('EmailSent', { email: values.email, type: 'signup' });
     } catch (err) {
       Alert.alert('Registration failed', err.message || 'Please try again.');
@@ -122,248 +178,339 @@ export default function RegisterScreen({ navigation }) {
 
   const goBack = () => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Login');
 
+  const busy = loading || uploadingAvatar;
+
+  const deptOptions = departments.map((d) => ({ label: d.name, value: d.name }));
+
   return (
     <>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+      <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
       <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
+
+        {/* Header */}
         <View style={s.header}>
-          <TouchableOpacity style={s.backBtn} onPress={goBack} activeOpacity={0.7}>
-            <Ionicons name="arrow-back-outline" size={24} color="#FFFFFF" />
+          <TouchableOpacity onPress={goBack} style={s.backBtn} activeOpacity={0.7}>
+            <Ionicons name="arrow-back-outline" size={22} color={WHITE} />
           </TouchableOpacity>
-          <Text style={s.headerTitle}>Create Account</Text>
+          <View style={s.headerText}>
+            <Text style={s.title}>Create Account</Text>
+            <Text style={s.subtitle}>Join RMU Campus today</Text>
+          </View>
         </View>
 
-        <KeyboardAvoidingView
-          style={s.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-            <ScrollView
-              contentContainerStyle={s.scroll}
-              keyboardShouldPersistTaps="always"
-              keyboardDismissMode="on-drag"
-              showsVerticalScrollIndicator={false}
-              bounces={false}
-            >
-              <View style={s.card}>
-                <Text style={s.intro}>Fill in your details to get started.</Text>
+        <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <ScrollView
+            contentContainerStyle={s.scroll}
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
 
-                <Field label="Full Name" error={errors.fullName}>
-                  <View style={rowStyle('fullName')}>
-                    <Ionicons name="person-outline" size={18} color={focused.fullName ? COLORS.primaryLight : COLORS.iconDefault} />
-                    <TextInput
-                      style={s.input}
-                      placeholder="e.g. Kwame Mensah"
-                      placeholderTextColor={COLORS.textPlaceholder}
-                      value={form.fullName}
-                      onChangeText={set('fullName')}
-                      autoCapitalize="words"
-                      onFocus={() => onFocus('fullName')}
-                      onBlur={() => onBlur('fullName')}
-                    />
+            {/* ── Avatar ── */}
+            <View style={s.avatarSection}>
+              <TouchableOpacity onPress={showAvatarOptions} activeOpacity={0.85} style={s.avatarWrap}>
+                {avatarUri ? (
+                  <Image source={{ uri: avatarUri }} style={s.avatar} />
+                ) : (
+                  <View style={s.avatarPlaceholder}>
+                    <Ionicons name="person-outline" size={30} color={WHITE_70} />
                   </View>
-                </Field>
-
-                <Field label="Email Address" error={errors.email}>
-                  <View style={rowStyle('email')}>
-                    <Ionicons name="mail-outline" size={18} color={focused.email ? COLORS.primaryLight : COLORS.iconDefault} />
-                    <TextInput
-                      style={s.input}
-                      placeholder="name@rmu.edu.gh"
-                      placeholderTextColor={COLORS.textPlaceholder}
-                      value={form.email}
-                      onChangeText={set('email')}
-                      autoCapitalize="none"
-                      keyboardType="email-address"
-                      onFocus={() => onFocus('email')}
-                      onBlur={() => onBlur('email')}
-                    />
-                  </View>
-                </Field>
-
-                <Field label="Index Number" error={errors.indexNumber}>
-                  <View style={rowStyle('indexNumber')}>
-                    <Ionicons name="id-card-outline" size={18} color={focused.indexNumber ? COLORS.primaryLight : COLORS.iconDefault} />
-                    <TextInput
-                      style={s.input}
-                      placeholder="e.g. RMU/2024/0001"
-                      placeholderTextColor={COLORS.textPlaceholder}
-                      value={form.indexNumber}
-                      onChangeText={set('indexNumber')}
-                      autoCapitalize="characters"
-                      onFocus={() => onFocus('indexNumber')}
-                      onBlur={() => onBlur('indexNumber')}
-                    />
-                  </View>
-                </Field>
-
-                <Field label="Programme" error={errors.programme}>
-                  <TouchableOpacity
-                    style={[s.inputRow, errors.programme && s.inputRowError]}
-                    onPress={() => setShowPicker(true)}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="school-outline" size={18} color={COLORS.iconDefault} />
-                    <Text style={[s.input, !form.programme && { color: COLORS.textPlaceholder }]} numberOfLines={1}>
-                      {form.programme || 'Select your programme'}
-                    </Text>
-                    <Ionicons name="chevron-down-outline" size={16} color={COLORS.iconDefault} />
-                  </TouchableOpacity>
-                </Field>
-
-                <Field label="Password" error={errors.password}>
-                  <View style={rowStyle('password')}>
-                    <Ionicons name="lock-closed-outline" size={18} color={focused.password ? COLORS.primaryLight : COLORS.iconDefault} />
-                    <TextInput
-                      style={s.input}
-                      placeholder="Min. 8 characters"
-                      placeholderTextColor={COLORS.textPlaceholder}
-                      value={form.password}
-                      onChangeText={set('password')}
-                      secureTextEntry={!showPassword}
-                      autoCapitalize="none"
-                      onFocus={() => onFocus('password')}
-                      onBlur={() => onBlur('password')}
-                    />
-                    <TouchableOpacity onPress={() => setShowPassword((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={COLORS.iconDefault} />
-                    </TouchableOpacity>
-                  </View>
-                </Field>
-
-                <Field label="Confirm Password" error={errors.confirmPassword}>
-                  <View style={rowStyle('confirmPassword')}>
-                    <Ionicons name="lock-closed-outline" size={18} color={focused.confirmPassword ? COLORS.primaryLight : COLORS.iconDefault} />
-                    <TextInput
-                      style={s.input}
-                      placeholder="Re-enter your password"
-                      placeholderTextColor={COLORS.textPlaceholder}
-                      value={form.confirmPassword}
-                      onChangeText={set('confirmPassword')}
-                      secureTextEntry={!showConfirm}
-                      autoCapitalize="none"
-                      onFocus={() => onFocus('confirmPassword')}
-                      onBlur={() => onBlur('confirmPassword')}
-                    />
-                    <TouchableOpacity onPress={() => setShowConfirm((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Ionicons name={showConfirm ? 'eye-off-outline' : 'eye-outline'} size={18} color={COLORS.iconDefault} />
-                    </TouchableOpacity>
-                  </View>
-                </Field>
-
-                <TouchableOpacity
-                  style={[s.btn, loading && s.btnDisabled]}
-                  onPress={handleRegister}
-                  disabled={loading}
-                  activeOpacity={0.85}
-                >
-                  <Text style={s.btnText}>{loading ? 'Creating Account…' : 'Create Account'}</Text>
-                </TouchableOpacity>
-
-                <View style={s.loginRow}>
-                  <Text style={s.loginPrompt}>Already have an account? </Text>
-                  <TouchableOpacity onPress={goBack} activeOpacity={0.7}>
-                    <Text style={s.loginLink}>Sign In</Text>
-                  </TouchableOpacity>
+                )}
+                <View style={s.avatarBadge}>
+                  <Ionicons name="camera" size={11} color={WHITE} />
                 </View>
+              </TouchableOpacity>
+              <View style={s.avatarInfo}>
+                <Text style={s.avatarTitle}>Profile Photo</Text>
+                <Text style={s.avatarSub}>Optional · Tap to upload</Text>
               </View>
-            </ScrollView>
+            </View>
+
+            {/* ── Identity ── */}
+            <Text style={s.sectionHeader}>IDENTITY</Text>
+
+            <Text style={s.label}>Full Name <Text style={s.req}>*</Text></Text>
+            <InputRow focused={focused.fullName} error={errors.fullName}>
+              <Ionicons name="person-outline" size={17} color={focused.fullName ? WHITE : WHITE_70} />
+              <TextInput style={s.input} value={form.fullName} onChangeText={(v) => { set('fullName')(v); clearError('fullName'); }}
+                placeholder="e.g. Kwame Mensah" placeholderTextColor={WHITE_45}
+                autoCapitalize="words" onFocus={() => onFocus('fullName')} onBlur={() => onBlur('fullName')} />
+            </InputRow>
+            {errors.fullName ? <Text style={s.err}>{errors.fullName}</Text> : null}
+
+            <Text style={s.label}>Display Name</Text>
+            <InputRow focused={focused.displayName}>
+              <Ionicons name="at-outline" size={17} color={focused.displayName ? WHITE : WHITE_70} />
+              <TextInput style={s.input} value={form.displayName} onChangeText={set('displayName')}
+                placeholder="Defaults to full name if blank" placeholderTextColor={WHITE_45}
+                autoCapitalize="words" onFocus={() => onFocus('displayName')} onBlur={() => onBlur('displayName')} />
+            </InputRow>
+
+            {/* ── Student IDs (side by side) ── */}
+            <Text style={s.sectionHeader}>STUDENT IDs</Text>
+            <View style={s.rowFields}>
+              <View style={s.halfWrap}>
+                <Text style={s.label}>Student ID <Text style={s.req}>*</Text></Text>
+                <InputRow focused={focused.studentId} error={errors.studentId}>
+                  <TextInput style={s.input} value={form.studentId} onChangeText={(v) => { set('studentId')(v); clearError('studentId'); }}
+                    placeholder="STU-12345" placeholderTextColor={WHITE_45}
+                    autoCapitalize="characters" onFocus={() => onFocus('studentId')} onBlur={() => onBlur('studentId')} />
+                </InputRow>
+                {errors.studentId ? <Text style={s.err}>{errors.studentId}</Text> : null}
+              </View>
+              <View style={s.halfWrap}>
+                <Text style={s.label}>Index Number <Text style={s.req}>*</Text></Text>
+                <InputRow focused={focused.indexNumber} error={errors.indexNumber}>
+                  <TextInput style={s.input} value={form.indexNumber} onChangeText={(v) => { set('indexNumber')(v); clearError('indexNumber'); }}
+                    placeholder="RMU/2024/001" placeholderTextColor={WHITE_45}
+                    autoCapitalize="characters" onFocus={() => onFocus('indexNumber')} onBlur={() => onBlur('indexNumber')} />
+                </InputRow>
+                {errors.indexNumber ? <Text style={s.err}>{errors.indexNumber}</Text> : null}
+              </View>
+            </View>
+
+            {/* ── Academic ── */}
+            <Text style={s.sectionHeader}>ACADEMIC DETAILS</Text>
+
+            <Text style={s.label}>Programme <Text style={s.req}>*</Text></Text>
+            <TouchableOpacity style={[s.inputRow, errors.programme && s.inputRowError]} onPress={() => setShowProg(true)} activeOpacity={0.8}>
+              <Ionicons name="school-outline" size={17} color={WHITE_70} />
+              <Text style={[s.input, !form.programme && { color: WHITE_45 }]} numberOfLines={1}>
+                {form.programme || 'Select your programme'}
+              </Text>
+              <Ionicons name="chevron-down-outline" size={15} color={WHITE_70} />
+            </TouchableOpacity>
+            {errors.programme ? <Text style={s.err}>{errors.programme}</Text> : null}
+
+            <Text style={s.label}>Department</Text>
+            <TouchableOpacity style={s.inputRow} onPress={() => setShowDept(true)} activeOpacity={0.8}>
+              <Ionicons name="layers-outline" size={17} color={WHITE_70} />
+              <Text style={[s.input, !form.department && { color: WHITE_45 }]} numberOfLines={1}>
+                {form.department || 'Select department (optional)'}
+              </Text>
+              <Ionicons name="chevron-down-outline" size={15} color={WHITE_70} />
+            </TouchableOpacity>
+
+            {/* ── Contact ── */}
+            <Text style={s.sectionHeader}>CONTACT</Text>
+
+            <Text style={s.label}>Phone Number</Text>
+            <InputRow focused={focused.phone}>
+              <Ionicons name="call-outline" size={17} color={focused.phone ? WHITE : WHITE_70} />
+              <TextInput style={s.input} value={form.phone} onChangeText={set('phone')}
+                placeholder="+233..." placeholderTextColor={WHITE_45}
+                keyboardType="phone-pad" onFocus={() => onFocus('phone')} onBlur={() => onBlur('phone')} />
+            </InputRow>
+
+            {/* ── Account ── */}
+            <Text style={s.sectionHeader}>ACCOUNT</Text>
+
+            <Text style={s.label}>Email Address <Text style={s.req}>*</Text></Text>
+            <InputRow focused={focused.email} error={errors.email}>
+              <Ionicons name="mail-outline" size={17} color={focused.email ? WHITE : WHITE_70} />
+              <TextInput style={s.input} value={form.email} onChangeText={(v) => { set('email')(v); clearError('email'); }}
+                placeholder="name@rmu.edu.gh" placeholderTextColor={WHITE_45}
+                autoCapitalize="none" keyboardType="email-address"
+                onFocus={() => onFocus('email')} onBlur={() => onBlur('email')} />
+            </InputRow>
+            {errors.email ? <Text style={s.err}>{errors.email}</Text> : null}
+
+            <Text style={s.label}>Password <Text style={s.req}>*</Text></Text>
+            <InputRow focused={focused.password} error={errors.password}>
+              <Ionicons name="lock-closed-outline" size={17} color={focused.password ? WHITE : WHITE_70} />
+              <TextInput style={s.input} value={form.password} onChangeText={(v) => { set('password')(v); clearError('password'); }}
+                placeholder="Min. 8 characters" placeholderTextColor={WHITE_45}
+                secureTextEntry={!showPw} autoCapitalize="none"
+                onFocus={() => onFocus('password')} onBlur={() => onBlur('password')} />
+              <TouchableOpacity onPress={() => setShowPw((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name={showPw ? 'eye-off-outline' : 'eye-outline'} size={17} color={WHITE_70} />
+              </TouchableOpacity>
+            </InputRow>
+            {errors.password ? <Text style={s.err}>{errors.password}</Text> : null}
+
+            <Text style={s.label}>Confirm Password <Text style={s.req}>*</Text></Text>
+            <InputRow focused={focused.confirmPassword} error={errors.confirmPassword}>
+              <Ionicons name="lock-closed-outline" size={17} color={focused.confirmPassword ? WHITE : WHITE_70} />
+              <TextInput style={s.input} value={form.confirmPassword} onChangeText={(v) => { set('confirmPassword')(v); clearError('confirmPassword'); }}
+                placeholder="Re-enter your password" placeholderTextColor={WHITE_45}
+                secureTextEntry={!showCf} autoCapitalize="none"
+                onFocus={() => onFocus('confirmPassword')} onBlur={() => onBlur('confirmPassword')} />
+              <TouchableOpacity onPress={() => setShowCf((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name={showCf ? 'eye-off-outline' : 'eye-outline'} size={17} color={WHITE_70} />
+              </TouchableOpacity>
+            </InputRow>
+            {errors.confirmPassword ? <Text style={s.err}>{errors.confirmPassword}</Text> : null}
+
+            {/* Submit */}
+            <TouchableOpacity style={[s.btn, busy && s.btnDisabled]} onPress={handleRegister} disabled={busy} activeOpacity={0.88}>
+              <View style={s.btnInner}>
+                <Text style={s.btnText}>{busy ? (uploadingAvatar ? 'Uploading photo…' : 'Creating Account…') : 'Create Account'}</Text>
+                {!busy && <Ionicons name="arrow-forward" size={17} color={PRIMARY} style={{ marginLeft: 6 }} />}
+              </View>
+            </TouchableOpacity>
+
+            <View style={s.loginRow}>
+              <Text style={s.loginPrompt}>Already have an account? </Text>
+              <TouchableOpacity onPress={goBack} activeOpacity={0.7}>
+                <Text style={s.loginLink}>Sign In</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* ── Guest access ── */}
+            <View style={s.guestRow}>
+              <View style={s.guestDivider} />
+              <Text style={s.guestDividerText}>or</Text>
+              <View style={s.guestDivider} />
+            </View>
+
+            <TouchableOpacity
+              style={s.guestBtn}
+              onPress={enterGuestMode}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="person-outline" size={15} color={WHITE_70} />
+              <Text style={s.guestBtnText}>Continue as Guest</Text>
+              <Ionicons name="arrow-forward" size={13} color={WHITE_45} />
+            </TouchableOpacity>
+
+            <Text style={s.guestNote}>
+              Browse the campus map, dining, and public info without an account.
+            </Text>
+          </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
 
-      <ProgrammePickerModal
-        visible={showPicker}
-        value={form.programme}
-        onSelect={set('programme')}
-        onClose={() => setShowPicker(false)}
-      />
+      {/* Programme picker */}
+      <PickerModal visible={showProg} title="Select Programme"
+        options={PROGRAMMES} value={form.programme}
+        onSelect={(v) => { set('programme')(v); clearError('programme'); }}
+        onClose={() => setShowProg(false)} />
+
+      {/* Department picker */}
+      <PickerModal visible={showDept} title="Select Department"
+        options={deptOptions} value={form.department}
+        onSelect={set('department')}
+        onClose={() => setShowDept(false)} />
     </>
   );
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.primary },
+  root: { flex: 1, backgroundColor: PRIMARY },
   flex: { flex: 1 },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: 12,
-    paddingBottom: 20,
-    paddingHorizontal: 16,
-    gap: 12,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16, gap: 12,
   },
   backBtn: { padding: 4 },
-  headerTitle: { fontSize: 20, fontFamily: FONTS.bold, color: '#FFFFFF' },
+  headerText: { flex: 1 },
+  title: { fontSize: 24, fontFamily: FONTS.extraBold, color: WHITE, letterSpacing: -0.4 },
+  subtitle: { fontSize: 13, fontFamily: FONTS.regular, color: WHITE_70, marginTop: 2 },
 
-  scroll: { flexGrow: 1, paddingBottom: 32 },
-  card: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 24,
-    paddingTop: 28,
-    paddingBottom: 48,
+  scroll: { flexGrow: 1, paddingHorizontal: 22, paddingBottom: 48 },
+
+  sectionHeader: {
+    fontSize: 11, fontFamily: FONTS.bold, color: 'rgba(255,255,255,0.45)',
+    letterSpacing: 1.2, marginTop: 20, marginBottom: 10,
   },
-  intro: { fontSize: 14, fontFamily: FONTS.regular, color: COLORS.textSecondary, marginBottom: 24 },
+  label: { fontSize: 13, fontFamily: FONTS.semiBold, color: WHITE_70, marginBottom: 6 },
+  req: { color: '#FCA5A5' },
 
-  fieldWrap: { marginBottom: 14 },
-  label: { fontSize: 13, fontFamily: FONTS.semiBold, color: COLORS.label, marginBottom: 6 },
-  required: { color: COLORS.error },
   inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.inputBg,
-    borderRadius: RADIUS.md,
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-    paddingHorizontal: 14,
-    height: 52,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: INPUT_BG, borderRadius: 13,
+    borderWidth: 1.5, borderColor: BORDER,
+    paddingHorizontal: 14, height: 52, gap: 10, marginBottom: 14,
   },
-  inputRowFocused: { borderColor: COLORS.borderFocus, backgroundColor: COLORS.white, ...SHADOW.sm },
-  inputRowError: { borderColor: COLORS.borderError },
-  input: {
-    flex: 1,
-    fontSize: 15,
-    fontFamily: FONTS.regular,
-    color: COLORS.textPrimary,
-    marginHorizontal: 8,
-  },
-  fieldError: { fontSize: 12, fontFamily: FONTS.medium, color: COLORS.error, marginTop: 4 },
+  inputRowFocused: { backgroundColor: INPUT_FOCUS, borderColor: BORDER_FOCUS },
+  inputRowError: { borderColor: BORDER_ERR },
+  input: { flex: 1, fontSize: 15, fontFamily: FONTS.regular, color: WHITE },
+  err: { fontSize: 12, fontFamily: FONTS.medium, color: '#FCA5A5', marginTop: -10, marginBottom: 10 },
 
+  // Side-by-side fields
+  rowFields: { flexDirection: 'row', gap: 10 },
+  halfWrap: { flex: 1 },
+
+  // Avatar
+  avatarSection: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 14,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    padding: 14, marginBottom: 4,
+  },
+  avatarWrap: { position: 'relative' },
+  avatar: { width: 60, height: 60, borderRadius: 30 },
+  avatarPlaceholder: {
+    width: 60, height: 60, borderRadius: 30,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.2)', borderStyle: 'dashed',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  avatarBadge: {
+    position: 'absolute', bottom: 0, right: 0,
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: PRIMARY,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.4)',
+  },
+  avatarInfo: { flex: 1 },
+  avatarTitle: { fontSize: 14, fontFamily: FONTS.semiBold, color: WHITE },
+  avatarSub: { fontSize: 12, fontFamily: FONTS.regular, color: WHITE_70, marginTop: 2 },
+
+  // Submit
   btn: {
-    height: 52,
-    backgroundColor: COLORS.primary,
-    borderRadius: RADIUS.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 8,
-    ...SHADOW.blue,
+    height: 52, backgroundColor: WHITE, borderRadius: 13,
+    justifyContent: 'center', alignItems: 'center', marginTop: 8,
+    shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 }, elevation: 5,
   },
   btnDisabled: { opacity: 0.6 },
-  btnText: { fontSize: 16, fontFamily: FONTS.bold, color: COLORS.white, letterSpacing: 0.3 },
+  btnInner: { flexDirection: 'row', alignItems: 'center' },
+  btnText: { fontSize: 16, fontFamily: FONTS.bold, color: PRIMARY, letterSpacing: 0.3 },
 
-  loginRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 18 },
-  loginPrompt: { fontSize: 14, fontFamily: FONTS.regular, color: COLORS.textSecondary },
-  loginLink: { fontSize: 14, fontFamily: FONTS.bold, color: COLORS.primary },
+  loginRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
+  loginPrompt: { fontSize: 14, fontFamily: FONTS.regular, color: WHITE_70 },
+  loginLink: { fontSize: 14, fontFamily: FONTS.bold, color: WHITE },
+
+  // Guest access
+  guestRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginTop: 20, marginBottom: 14,
+  },
+  guestDivider:     { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.15)' },
+  guestDividerText: { fontSize: 12, fontFamily: FONTS.regular, color: WHITE_45 },
+  guestBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 13,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    marginBottom: 10,
+  },
+  guestBtnText: { fontSize: 14, fontFamily: FONTS.semiBold, color: WHITE_70 },
+  guestNote: {
+    fontSize: 11,
+    fontFamily: FONTS.regular,
+    color: WHITE_45,
+    textAlign: 'center',
+    lineHeight: 16,
+    paddingHorizontal: 10,
+    marginBottom: 10,
+  },
 });
 
 const pm = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
   sheet: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 12,
-    paddingHorizontal: 20,
-    maxHeight: '70%',
+    backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    paddingHorizontal: 20, paddingTop: 12, maxHeight: '72%',
   },
-  handle: {
-    width: 36, height: 4, borderRadius: 2,
-    backgroundColor: COLORS.border,
-    alignSelf: 'center', marginBottom: 16,
-  },
-  sheetTitle: { fontSize: 18, fontFamily: FONTS.bold, color: COLORS.textPrimary, marginBottom: 16 },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#E2E8F0', alignSelf: 'center', marginBottom: 16 },
+  title: { fontSize: 18, fontFamily: FONTS.bold, color: '#0F172A', marginBottom: 12 },
   option: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14 },
-  optionText: { fontSize: 15, fontFamily: FONTS.regular, color: COLORS.textPrimary, flex: 1 },
-  optionTextActive: { fontFamily: FONTS.semiBold, color: COLORS.primaryLight },
-  sep: { height: 1, backgroundColor: COLORS.border },
+  border: { borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  optionText: { fontSize: 15, fontFamily: FONTS.regular, color: '#0F172A', flex: 1 },
+  optionActive: { fontFamily: FONTS.semiBold, color: PRIMARY },
 });
