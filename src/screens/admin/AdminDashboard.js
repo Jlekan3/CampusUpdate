@@ -14,13 +14,10 @@ import { ADMIN_THEME } from '../../utils/constants';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import {
-  subscribeToBuildings,
   subscribeToIssueReports,
-  subscribeToLocations,
   subscribeToUsers,
   subscribeToEvents,
   subscribeToNotifications,
-  subscribeToDepartments,
 } from '../../services/databaseService';
 
 // Animated count-up hook
@@ -65,14 +62,11 @@ const StatCard = ({ item, anim }) => {
 };
 
 const QUICK_ACTIONS = [
-  { label: 'Add Department', icon: 'layers-outline', color: ADMIN_THEME.accent, nav: 'ManageDepartments' },
-  { label: 'Add Building', icon: 'business-outline', color: ADMIN_THEME.primary, nav: 'Buildings' },
-  { label: 'Add Event', icon: 'calendar-outline', color: ADMIN_THEME.success, nav: 'Notifications' },
-  { label: 'Post Announcement', icon: 'megaphone-outline', color: ADMIN_THEME.warning, nav: 'Notifications' },
-  { label: 'Dept. Status', icon: 'toggle-outline', color: ADMIN_THEME.statusAvailable, nav: 'ManageDepartments' },
-  { label: 'View Reports', icon: 'document-text-outline', color: ADMIN_THEME.danger, nav: 'Reports' },
-  { label: 'Manage Users', icon: 'people-outline', color: ADMIN_THEME.info, nav: 'Users' },
-  { label: 'Emergency Alert', icon: 'alert-circle-outline', color: '#E53E3E', nav: 'EmergencyManagement' },
+  { label: 'Campus Structure', icon: 'business-outline',       color: ADMIN_THEME.primary,        nav: 'CampusStructure' },
+  { label: 'Campus Content',   icon: 'location-outline',        color: '#2563EB',                  nav: 'CampusContent' },
+  { label: 'Issues Reported & Analytics', icon: 'bar-chart-outline', color: ADMIN_THEME.success, nav: 'ReportsAnalytics' },
+  { label: 'Control Centre',   icon: 'shield-outline',          color: '#DC2626',                  nav: 'ControlCentre' },
+  { label: 'Emergency Contacts', icon: 'call-outline',          color: '#E53E3E',                  nav: 'EmergencyContacts' },
 ];
 
 const AdminDashboard = ({ navigation }) => {
@@ -80,35 +74,28 @@ const AdminDashboard = ({ navigation }) => {
   const { user } = useAuth();
 
   const [users, setUsers] = useState([]);
-  const [departments, setDepartments] = useState([]);
   const [events, setEvents] = useState([]);
   const [reports, setReports] = useState([]);
   const [notifications, setNotifications] = useState([]);
-  const [buildings, setBuildings] = useState([]);
-  const [locations, setLocations] = useState([]);
 
   // 8 entrance animations
-  const cardAnims = useRef([...Array(8)].map(() => new Animated.Value(0))).current;
+  const cardAnims = useRef([...Array(QUICK_ACTIONS.length)].map(() => new Animated.Value(0))).current;
   const heroAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Reduced durations — hero 220ms, cards 40ms stagger so the
-    // animation finishes before data arrives rather than competing with it
+    // Stagger entrance
     Animated.sequence([
-      Animated.timing(heroAnim, { toValue: 1, duration: 220, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
-      Animated.stagger(40, cardAnims.map((a) => Animated.timing(a, { toValue: 1, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: false }))),
+      Animated.timing(heroAnim, { toValue: 1, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+      Animated.stagger(70, cardAnims.map((a) => Animated.timing(a, { toValue: 1, duration: 380, easing: Easing.out(Easing.back(1.1)), useNativeDriver: false }))),
     ]).start();
   }, []);
 
   useEffect(() => {
     const subs = [
       subscribeToUsers((items) => setUsers(items || [])),
-      subscribeToDepartments((items) => setDepartments(items || [])),
       subscribeToEvents((items) => setEvents(items || [])),
       subscribeToIssueReports((items) => setReports(items || [])),
       subscribeToNotifications((items) => setNotifications(items || [])),
-      subscribeToBuildings((items) => setBuildings(items || [])),
-      subscribeToLocations((items) => setLocations(items || [])),
     ];
     return () => subs.forEach((unsub) => { try { unsub?.(); } catch (e) {} });
   }, []);
@@ -150,15 +137,6 @@ const AdminDashboard = ({ navigation }) => {
       borderColor: '#D6BCFA',
     },
     {
-      id: 'departments',
-      title: 'Departments',
-      value: departments.length,
-      icon: 'layers-outline',
-      color: ADMIN_THEME.accent,
-      bg: '#FFFFF0',
-      borderColor: '#FAF089',
-    },
-    {
       id: 'events',
       title: 'Active Events',
       value: events.length,
@@ -190,6 +168,15 @@ const AdminDashboard = ({ navigation }) => {
       borderColor: '#FDE68A',
     },
     {
+      id: 'inProgress',
+      title: 'Issues In Progress',
+      value: reports.filter((r) => r.status === 'in_progress').length,
+      icon: 'time-outline',
+      color: '#2563EB',
+      bg: '#EFF6FF',
+      borderColor: '#BFDBFE',
+    },
+    {
       id: 'activeToday',
       title: 'Active Today',
       value: users.filter((u) => {
@@ -203,7 +190,7 @@ const AdminDashboard = ({ navigation }) => {
       bg: '#E6FFFA',
       borderColor: '#B2F5EA',
     },
-  ], [users, departments, events, reports, notifications]);
+  ], [users, events, reports, notifications]);
 
   const greeting = () => {
     const h = new Date().getHours();
@@ -248,28 +235,13 @@ const AdminDashboard = ({ navigation }) => {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.heroIconBtn}
-                onPress={() => navigation.navigate('AdminSettings')}
+                onPress={() => navigation.navigate('ControlCentre', { initialTab: 'Settings' })}
               >
                 <Ionicons name="settings-outline" size={20} color="#fff" />
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* Hero pills */}
-          <View style={styles.heroPillRow}>
-            <View style={styles.heroPill}>
-              <Ionicons name="business-outline" size={13} color="rgba(255,255,255,0.85)" />
-              <Text style={styles.heroPillText}>{buildings.length} buildings</Text>
-            </View>
-            <View style={styles.heroPill}>
-              <Ionicons name="location-outline" size={13} color="rgba(255,255,255,0.85)" />
-              <Text style={styles.heroPillText}>{locations.length} locations</Text>
-            </View>
-            <View style={[styles.heroPill, styles.heroPillGold]}>
-              <Ionicons name="people-outline" size={13} color={ADMIN_THEME.primary} />
-              <Text style={[styles.heroPillText, { color: ADMIN_THEME.primary }]}>{users.length} users</Text>
-            </View>
-          </View>
         </Animated.View>
 
         {/* Stats Section */}
@@ -324,7 +296,7 @@ const AdminDashboard = ({ navigation }) => {
           <View style={{ flex: 1 }}>
             <Text style={styles.infoBannerTitle}>Smart Campus Platform</Text>
             <Text style={styles.infoBannerText}>
-              Manage departments, locations, users, events, and emergency alerts from one unified dashboard.
+              Manage campus structure, content, reports, and emergency alerts from four unified modules.
             </Text>
           </View>
         </View>

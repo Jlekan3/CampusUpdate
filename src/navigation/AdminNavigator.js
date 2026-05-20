@@ -7,7 +7,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { ADMIN_THEME, USER_ROLES } from '../utils/constants';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { subscribeToIssueReports } from '../services/databaseService';
 
 // Existing screens
 import AdminDashboard from '../screens/admin/AdminDashboard';
@@ -30,101 +29,126 @@ import CustomButton from '../components/CustomButton';
 import ManageDepartmentsScreen from '../screens/admin/ManageDepartmentsScreen';
 import EmergencyManagementScreen from '../screens/admin/EmergencyManagementScreen';
 import AdminSettingsScreen from '../screens/admin/AdminSettingsScreen';
+import ManageEmergencyContactsScreen from '../screens/admin/ManageEmergencyContactsScreen';
+
+// Merged screens
+import CampusStructureScreen from '../screens/admin/CampusStructureScreen';
+import CampusContentScreen from '../screens/admin/CampusContentScreen';
+import ControlCentreScreen from '../screens/admin/ControlCentreScreen';
+import ReportsAnalyticsScreen from '../screens/admin/ReportsAnalyticsScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 const Drawer = createDrawerNavigator();
 
-const DRAWER_ITEMS = [
-  { label: 'Dashboard', icon: 'speedometer-outline', route: 'Dashboard' },
-  { label: 'Departments', icon: 'layers-outline', route: 'ManageDepartments' },
-  { label: 'Buildings', icon: 'business-outline', route: 'Buildings' },
-  { label: 'Manage People', icon: 'people-outline', route: 'Users' },
-  { label: 'Locations', icon: 'location-outline', route: 'AddLocations' },
-  { label: 'Events & Notices', icon: 'calendar-outline', route: 'Notifications' },
-  { label: 'Dining', icon: 'restaurant-outline', route: 'ManageDining' },
-  { label: 'Reports', icon: 'document-text-outline', route: 'Reports' },
-  { label: 'Emergency', icon: 'alert-circle-outline', route: 'EmergencyManagement' },
-  { label: 'Campus Rules', icon: 'shield-outline', route: 'ManageCampusRules' },
-  { label: 'Amenities', icon: 'fitness-outline', route: 'ManageAmenities' },
-  { label: 'Analytics', icon: 'analytics-outline', route: 'AdminAnalytics' },
-  { label: 'Settings', icon: 'settings-outline', route: 'AdminSettings' },
+const DRAWER_SECTIONS = [
+  {
+    title: 'Overview',
+    items: [
+      { label: 'Dashboard',    icon: 'speedometer-outline', route: 'Dashboard',    color: ADMIN_THEME.primary },
+      { label: 'Manage Users', icon: 'people-outline',      route: 'ManageUsers',  color: '#7C3AED' },
+    ],
+  },
+  {
+    title: 'Campus Management',
+    items: [
+      { label: 'Campus Structure', icon: 'business-outline',  route: 'CampusStructure', color: '#0891B2' },
+      { label: 'Campus Content',   icon: 'calendar-outline',  route: 'CampusContent',   color: '#059669' },
+    ],
+  },
+  {
+    title: 'Reports & Control',
+    items: [
+      { label: 'Issues & Analytics', icon: 'bar-chart-outline', route: 'ReportsAnalytics', color: '#D97706' },
+      { label: 'Control Centre',     icon: 'shield-outline',     route: 'ControlCentre',    color: '#DC2626' },
+    ],
+  },
 ];
 
 const AdminDrawerContent = (props) => {
   const { logout, user } = useAuth();
-  const { colors } = useTheme();
 
-  // Screens that live inside the AdminTabs tab navigator
-  const TAB_SCREENS = new Set(['Dashboard', 'Departments', 'Users', 'Reports']);
+  const TAB_SCREENS = new Set(['Dashboard', 'ManageUsers']);
 
   const navigate = (route) => {
     props.navigation.closeDrawer();
     if (TAB_SCREENS.has(route)) {
-      // Navigate into the nested tab navigator
       props.navigation.navigate('AdminTabs', { screen: route });
     } else {
-      // Stack screens registered on the parent AdminNavigator
       props.navigation.navigate(route);
     }
   };
 
+  const initials = (user?.displayName || user?.email || 'A')
+    .split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
+
   return (
     <DrawerContentScrollView
       {...props}
-      style={{ backgroundColor: colors.surface }}
-      contentContainerStyle={{ paddingTop: 0 }}
+      style={drawerStyles.root}
+      contentContainerStyle={{ paddingTop: 0, paddingBottom: 32 }}
+      showsVerticalScrollIndicator={false}
     >
-      {/* Header */}
+      {/* ── Profile header ── */}
       <View style={drawerStyles.header}>
-        <View style={drawerStyles.goldBar} />
-        <View style={drawerStyles.headerContent}>
-          <View style={drawerStyles.avatar}>
-            <Text style={drawerStyles.avatarText}>
-              {(user?.displayName || user?.email || 'A')[0].toUpperCase()}
-            </Text>
-          </View>
-          <Text style={drawerStyles.adminName} numberOfLines={1}>
-            {user?.displayName || 'Admin'}
-          </Text>
-          <Text style={drawerStyles.adminEmail} numberOfLines={1}>
-            {user?.email || ''}
-          </Text>
-          <View style={drawerStyles.adminBadge}>
-            <Ionicons name="shield-checkmark-outline" size={11} color={ADMIN_THEME.accent} />
-            <Text style={drawerStyles.adminBadgeText}>Administrator</Text>
-          </View>
+        {/* Decorative orb */}
+        <View style={drawerStyles.headerOrb} />
+
+        <View style={drawerStyles.avatar}>
+          <Text style={drawerStyles.avatarText}>{initials}</Text>
+        </View>
+
+        <Text style={drawerStyles.adminName} numberOfLines={1}>
+          {user?.displayName || user?.user_metadata?.full_name || 'Administrator'}
+        </Text>
+        <Text style={drawerStyles.adminEmail} numberOfLines={1}>{user?.email || ''}</Text>
+
+        <View style={drawerStyles.adminBadge}>
+          <Ionicons name="shield-checkmark-outline" size={11} color="#60A5FA" />
+          <Text style={drawerStyles.adminBadgeText}>Administrator</Text>
         </View>
       </View>
 
-      {/* Nav items */}
-      <View style={[drawerStyles.navSection, { borderTopColor: colors.border }]}>
-        {DRAWER_ITEMS.map((item) => (
-          <TouchableOpacity
-            key={item.label}
-            style={[drawerStyles.navItem, { borderBottomColor: colors.border }]}
-            onPress={() => navigate(item.route)}
-            activeOpacity={0.7}
-          >
-            <View style={[drawerStyles.navIconWrap, { backgroundColor: ADMIN_THEME.primary + '14' }]}>
-              <Ionicons name={item.icon} size={18} color={ADMIN_THEME.primary} />
-            </View>
-            <Text style={[drawerStyles.navLabel, { color: colors.textDark }]}>{item.label}</Text>
-            <Ionicons name="chevron-forward" size={14} color={colors.border} />
-          </TouchableOpacity>
-        ))}
-      </View>
+      {/* ── Divider ── */}
+      <View style={drawerStyles.divider} />
 
-      {/* Logout */}
+      {/* ── Grouped nav items ── */}
+      {DRAWER_SECTIONS.map((section) => (
+        <View key={section.title} style={drawerStyles.section}>
+          <Text style={drawerStyles.sectionTitle}>{section.title.toUpperCase()}</Text>
+          {section.items.map((item) => (
+            <TouchableOpacity
+              key={item.route}
+              style={drawerStyles.navItem}
+              onPress={() => navigate(item.route)}
+              activeOpacity={0.75}
+            >
+              <View style={[drawerStyles.navIconWrap, { backgroundColor: item.color + '18' }]}>
+                <Ionicons name={item.icon} size={18} color={item.color} />
+              </View>
+              <Text style={drawerStyles.navLabel}>{item.label}</Text>
+              <Ionicons name="chevron-forward-outline" size={15} color="rgba(255,255,255,0.25)" />
+            </TouchableOpacity>
+          ))}
+        </View>
+      ))}
+
+      {/* ── Divider ── */}
+      <View style={drawerStyles.divider} />
+
+      {/* ── Sign out ── */}
       <TouchableOpacity
-        style={[drawerStyles.logoutBtn, { borderTopColor: colors.border, borderBottomColor: colors.border }]}
-        onPress={() => { props.navigation.closeDrawer(); logout(); }}
-        activeOpacity={0.7}
+        style={drawerStyles.logoutBtn}
+        onPress={() => {
+          props.navigation.closeDrawer();
+          logout();
+        }}
+        activeOpacity={0.75}
       >
-        <View style={[drawerStyles.navIconWrap, { backgroundColor: '#E53E3E18' }]}>
-          <Ionicons name="log-out-outline" size={18} color="#E53E3E" />
+        <View style={[drawerStyles.navIconWrap, { backgroundColor: '#EF444418' }]}>
+          <Ionicons name="log-out-outline" size={18} color="#EF4444" />
         </View>
-        <Text style={drawerStyles.logoutLabel}>Logout</Text>
+        <Text style={drawerStyles.logoutLabel}>Sign Out</Text>
       </TouchableOpacity>
     </DrawerContentScrollView>
   );
@@ -132,21 +156,6 @@ const AdminDrawerContent = (props) => {
 
 const AdminTabs = ({ navigation }) => {
   const { colors } = useTheme();
-  const [reports, setReports] = React.useState([]);
-
-  React.useEffect(() => {
-    const unsub = subscribeToIssueReports((items) => setReports(items || []));
-    return () => { try { unsub?.(); } catch (e) {} };
-  }, []);
-
-  const unreadCount = React.useMemo(() => {
-    return reports.reduce((count, report) => {
-      const role = (report?.reporterRole || '').toString().toLowerCase();
-      const isStudentOrStaff = role.includes('student') || role.includes('staff') || role.includes('faculty');
-      const isUnread = !report?.adminReadAt;
-      return isStudentOrStaff && isUnread ? count + 1 : count;
-    }, 0);
-  }, [reports]);
 
   return (
     <Tab.Navigator
@@ -164,29 +173,16 @@ const AdminTabs = ({ navigation }) => {
         tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
         tabBarIcon: ({ focused, color, size }) => {
           const icons = {
-            Dashboard: focused ? 'speedometer' : 'speedometer-outline',
-            Departments: focused ? 'layers' : 'layers-outline',
-            Users: focused ? 'people' : 'people-outline',
-            Reports: focused ? 'document-text' : 'document-text-outline',
+            Dashboard:    focused ? 'speedometer'  : 'speedometer-outline',
+            ManageUsers:  focused ? 'people'       : 'people-outline',
           };
           const iconName = icons[route.name] || 'ellipse-outline';
-          return (
-            <View style={{ position: 'relative', overflow: 'visible' }}>
-              <Ionicons name={iconName} size={size} color={color} />
-              {route.name === 'Reports' && unreadCount > 0 && (
-                <View style={tabStyles.badge}>
-                  <Text style={tabStyles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
-                </View>
-              )}
-            </View>
-          );
+          return <Ionicons name={iconName} size={size} color={color} />;
         },
       })}
     >
-      <Tab.Screen name="Dashboard" component={AdminDashboard} />
-      <Tab.Screen name="Departments" component={ManageDepartmentsScreen} />
-      <Tab.Screen name="Users" component={ManagePeopleScreen} />
-      <Tab.Screen name="Reports" component={ManageReportsScreen} />
+      <Tab.Screen name="Dashboard"   component={AdminDashboard} />
+      <Tab.Screen name="ManageUsers" component={ManagePeopleScreen} options={{ tabBarLabel: 'Users' }} />
       <Tab.Screen
         name="Menu"
         component={AdminDashboard}
@@ -216,7 +212,7 @@ const AdminDrawer = () => (
       headerShown: false,
       drawerType: 'slide',
       overlayStyle: { backgroundColor: 'rgba(0,0,0,0.4)' },
-      drawerStyle: { width: '78%' },
+      drawerStyle: { width: '78%', backgroundColor: '#0F1C2E' },
       swipeEnabled: true,
     }}
   >
@@ -260,19 +256,13 @@ const AdminNavigator = () => {
         headerBackTitleVisible: false,
       }}
     >
-      <Stack.Screen name="AdminMain" component={AdminDrawer} options={{ headerShown: false }} />
-      <Stack.Screen name="LocationDetails" component={LocationDetailsScreen} options={{ title: 'Location Details' }} />
-      <Stack.Screen name="AddLocations" component={AddLocationsScreen} options={{ title: 'Add Locations', headerShown: true }} />
-      <Stack.Screen name="ManageDining" component={ManageDiningScreen} options={{ title: 'Dining', headerShown: true }} />
-      <Stack.Screen name="Notifications" component={ManageNotificationsScreen} options={{ title: 'Events & Notices', headerShown: true }} />
-      <Stack.Screen name="AdminReportsStack" component={ManageReportsScreen} options={{ title: 'Reports', headerShown: true }} />
-      <Stack.Screen name="AdminAnalytics" component={AdminAnalyticsScreen} options={{ title: 'Analytics', headerShown: true }} />
-      <Stack.Screen name="ManageCampusRules" component={ManageCampusRulesScreen} options={{ title: 'Campus Rules', headerShown: true }} />
-      <Stack.Screen name="ManageAmenities" component={ManageAmenitiesScreen} options={{ title: 'Amenities', headerShown: true }} />
-      <Stack.Screen name="Buildings" component={ManageBuildingsScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="ManageDepartments" component={ManageDepartmentsScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="EmergencyManagement" component={EmergencyManagementScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="AdminSettings" component={AdminSettingsScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="AdminMain"        component={AdminDrawer}            options={{ headerShown: false }} />
+      <Stack.Screen name="CampusStructure"  component={CampusStructureScreen}  options={{ headerShown: false }} />
+      <Stack.Screen name="CampusContent"    component={CampusContentScreen}    options={{ headerShown: false }} />
+      <Stack.Screen name="ControlCentre"    component={ControlCentreScreen}    options={{ headerShown: false }} />
+      <Stack.Screen name="ReportsAnalytics"    component={ReportsAnalyticsScreen}         options={{ headerShown: false }} />
+      <Stack.Screen name="EmergencyContacts"   component={ManageEmergencyContactsScreen}  options={{ headerShown: false }} />
+      <Stack.Screen name="LocationDetails"     component={LocationDetailsScreen}          options={{ title: 'Location Details' }} />
     </Stack.Navigator>
   );
 };
@@ -280,76 +270,109 @@ const AdminNavigator = () => {
 export default AdminNavigator;
 
 const drawerStyles = StyleSheet.create({
+  root: {
+    backgroundColor: '#0F1C2E',   // deep navy — consistent with primary brand
+  },
+
+  // ── Profile header ──────────────────────────────────────────────────────────
   header: {
-    backgroundColor: ADMIN_THEME.primary,
-    paddingBottom: 20,
+    paddingHorizontal: 20,
+    paddingTop: 48,
+    paddingBottom: 24,
+    position: 'relative',
     overflow: 'hidden',
   },
-  goldBar: {
-    height: 4,
-    backgroundColor: ADMIN_THEME.accent,
-  },
-  headerContent: {
-    padding: 20,
-    paddingTop: 32,
-    alignItems: 'flex-start',
+  headerOrb: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: 'rgba(96,165,250,0.08)',
+    top: -60,
+    right: -60,
   },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: ADMIN_THEME.accent,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: ADMIN_THEME.primary,
+    borderWidth: 2.5,
+    borderColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
   },
   avatarText: {
     fontSize: 22,
     fontWeight: '800',
-    color: ADMIN_THEME.primary,
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
   adminName: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '800',
-    color: '#fff',
-    marginBottom: 2,
+    color: '#FFFFFF',
+    marginBottom: 3,
+    letterSpacing: -0.2,
   },
   adminEmail: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.65)',
-    marginBottom: 10,
+    color: 'rgba(255,255,255,0.5)',
+    marginBottom: 12,
   },
   adminBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    gap: 5,
+    backgroundColor: 'rgba(96,165,250,0.15)',
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 20,
+    alignSelf: 'flex-start',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(96,165,250,0.3)',
   },
   adminBadgeText: {
     fontSize: 11,
-    color: ADMIN_THEME.accent,
+    color: '#60A5FA',
     fontWeight: '700',
+    letterSpacing: 0.3,
   },
-  navSection: {
-    borderTopWidth: 1,
-    paddingVertical: 8,
+
+  // ── Divider ─────────────────────────────────────────────────────────────────
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    marginHorizontal: 16,
+    marginVertical: 8,
+  },
+
+  // ── Nav sections ─────────────────────────────────────────────────────────────
+  section: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  sectionTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.3)',
+    letterSpacing: 1.2,
+    paddingHorizontal: 8,
+    marginBottom: 4,
   },
   navItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 11,
+    borderRadius: 12,
     gap: 12,
-    borderBottomWidth: 0.5,
+    marginBottom: 2,
   },
   navIconWrap: {
-    width: 34,
-    height: 34,
+    width: 36,
+    height: 36,
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
@@ -358,21 +381,25 @@ const drawerStyles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontWeight: '600',
+    color: 'rgba(255,255,255,0.85)',
   },
+
+  // ── Sign out ─────────────────────────────────────────────────────────────────
   logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
-    borderTopWidth: 1,
+    marginHorizontal: 12,
     marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 11,
+    borderRadius: 12,
+    gap: 12,
   },
   logoutLabel: {
     flex: 1,
     fontSize: 14,
-    fontWeight: '700',
-    color: '#E53E3E',
+    fontWeight: '600',
+    color: '#EF4444',
   },
 });
 

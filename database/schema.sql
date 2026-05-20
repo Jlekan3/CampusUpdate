@@ -569,6 +569,44 @@ $$;
 
 
 -- ---------------------------------------------------------------------------
+-- 11. Emergency Contacts  (added after initial schema)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.emergency_contacts (
+  id                       uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  title                    text        NOT NULL,
+  description              text,
+  phone_number             text        NOT NULL,
+  alternative_phone_number text,
+  category                 text        NOT NULL DEFAULT 'Emergency'
+                           CHECK (category IN ('Emergency','Medical','Counseling','Security','Maintenance')),
+  is_available_24_7        boolean     DEFAULT true,
+  operating_hours          text,
+  icon_name                text        DEFAULT 'shield-checkmark-outline',
+  is_active                boolean     DEFAULT true,
+  created_at               timestamptz DEFAULT now(),
+  updated_at               timestamptz DEFAULT now()
+);
+
+CREATE OR REPLACE TRIGGER emergency_contacts_updated_at
+  BEFORE UPDATE ON public.emergency_contacts
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_emergency_contacts_category ON public.emergency_contacts(category);
+
+ALTER TABLE public.emergency_contacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.emergency_contacts REPLICA IDENTITY FULL;
+
+CREATE POLICY "ec_select_auth"  ON public.emergency_contacts FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY "ec_insert_admin" ON public.emergency_contacts FOR INSERT WITH CHECK (is_admin());
+CREATE POLICY "ec_update_admin" ON public.emergency_contacts FOR UPDATE USING (is_admin());
+CREATE POLICY "ec_delete_admin" ON public.emergency_contacts FOR DELETE USING (is_admin());
+
+-- Add to realtime publication
+ALTER PUBLICATION supabase_realtime ADD TABLE public.emergency_contacts;
+
+
+-- ---------------------------------------------------------------------------
 -- END OF SCHEMA
 -- ---------------------------------------------------------------------------
 -- After running this SQL:
