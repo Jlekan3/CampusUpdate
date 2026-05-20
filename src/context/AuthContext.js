@@ -228,13 +228,18 @@ export const AuthProvider = ({ children }) => {
   // Verifies the 6-digit code from the email. On success, Supabase creates a
   // session so the user can immediately call resetPassword().
   const verifyOtp = async (email, token, type) => {
+    // Supabase OTP types:
+    //   'signup'   — 6-digit code from the signup confirmation email
+    //   'email'    — 6-digit code from signInWithOtp (used for recovery flow)
+    //   'recovery' — 6-digit code from resetPasswordForEmail (not used here)
     const otpType = type === 'recovery' ? 'email' : 'signup';
-    const { error } = await supabase.auth.verifyOtp({
+    const { data, error } = await supabase.auth.verifyOtp({
       email: email.toLowerCase().trim(),
       token,
       type: otpType,
     });
     if (error) throw error;
+    return data;
   };
 
   // ── resendOtp ───────────────────────────────────────────────────────────────

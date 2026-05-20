@@ -202,7 +202,9 @@ export default function RegisterScreen({ navigation }) {
         }
       }
 
-      navigation.navigate('EmailSent', { email: values.email, type: 'signup' });
+      // Navigate to OTP screen — Supabase sends a 6-digit code to the email.
+      // (Requires OTP template configured in Supabase Dashboard — see README.)
+      navigation.navigate('OTPVerification', { email: values.email, type: 'signup' });
     } catch (err) {
       Alert.alert('Registration failed', err.message || 'Please try again.');
     } finally {

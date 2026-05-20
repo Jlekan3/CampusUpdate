@@ -8,7 +8,9 @@ import {
   Platform,
   ScrollView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { HugeiconsIcon } from '@hugeicons/react-native';
 import { SquareArrowLeft01Icon, Mail01Icon, Shield01Icon } from '@hugeicons/core-free-icons';
 import OTPInputGroup from '../../components/OTPInputGroup';
@@ -20,10 +22,11 @@ export default function OTPVerificationScreen({ navigation, route }) {
   const { email, type } = route.params;
   const { verifyOtp, resendOtp } = useAuth();
 
-  const [otp, setOtp] = useState('');
-  const [otpError, setOtpError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [cooldown, setCooldown] = useState(RESEND_COOLDOWN);
+  const [otp,       setOtp]       = useState('');
+  const [otpError,  setOtpError]  = useState('');
+  const [loading,   setLoading]   = useState(false);
+  const [verified,  setVerified]  = useState(false);   // signup success state
+  const [cooldown,  setCooldown]  = useState(RESEND_COOLDOWN);
   const timer = useRef(null);
 
   useEffect(() => {
@@ -48,8 +51,15 @@ export default function OTPVerificationScreen({ navigation, route }) {
     setLoading(true);
     try {
       await verifyOtp(email, otp, type);
+
       if (type === 'recovery') {
+        // Password reset: navigate to change-password screen
         navigation.replace('ResetPassword', { email });
+      } else {
+        // Signup confirmed: show success state.
+        // AuthContext's onAuthStateChange will fire, resolve the role, and
+        // RootNavigator will switch to StudentNavigator automatically.
+        setVerified(true);
       }
     } catch (err) {
       setOtpError(err.message || 'Invalid or expired code. Please try again.');
@@ -68,6 +78,24 @@ export default function OTPVerificationScreen({ navigation, route }) {
       Alert.alert('Error', err.message || 'Could not resend code');
     }
   };
+
+  // ── Signup success screen ────────────────────────────────────────────────────
+  // Shown after the signup OTP is accepted. AuthContext automatically routes
+  // the user to StudentNavigator — no manual navigation needed.
+  if (verified) {
+    return (
+      <View style={styles.successRoot}>
+        <View style={styles.successIconWrap}>
+          <Ionicons name="checkmark-circle" size={72} color="#10B981" />
+        </View>
+        <Text style={styles.successTitle}>Account Verified!</Text>
+        <Text style={styles.successSub}>
+          Your RMU student account has been confirmed. You're being signed in…
+        </Text>
+        <ActivityIndicator color="#1A365D" size="large" style={{ marginTop: 32 }} />
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -172,4 +200,10 @@ const styles = StyleSheet.create({
   resendLink: { fontSize: 14, color: '#1A365D', fontWeight: '700' },
   resendLinkDisabled: { color: '#94A3B8' },
   spamNote: { fontSize: 13, color: '#94A3B8', textAlign: 'center', marginTop: 20, lineHeight: 19 },
+
+  // Success state (signup confirmed)
+  successRoot:    { flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 },
+  successIconWrap:{ marginBottom: 20 },
+  successTitle:   { fontSize: 28, fontWeight: '800', color: '#0F172A', textAlign: 'center', marginBottom: 12, letterSpacing: -0.3 },
+  successSub:     { fontSize: 15, color: '#475569', textAlign: 'center', lineHeight: 23 },
 });
