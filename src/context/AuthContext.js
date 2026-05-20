@@ -31,6 +31,12 @@ const DEFAULT_ROLE = 'student';
 const resolveRole = async (authUser) => {
   if (!authUser) return 'guest';
 
+  // 0. Anonymous sign-in MUST be caught first — before any DB lookup.
+  //    The handle_new_user trigger inserts an anonymous user into public.users
+  //    with role='student' (no metadata), so the DB query below would
+  //    incorrectly return 'student' if we don't short-circuit here.
+  if (authUser.is_anonymous) return 'guest';
+
   // 1. Known admin email override
   if (isKnownAdminEmail(authUser.email)) return 'admin';
 
@@ -48,7 +54,7 @@ const resolveRole = async (authUser) => {
   );
   if (metaRole) return metaRole;
 
-  // 4. users table (source of truth)
+  // 4. users table (source of truth for registered users)
   try {
     const { data: profile } = await supabase
       .from('users')
@@ -61,9 +67,6 @@ const resolveRole = async (authUser) => {
       if (r) return r;
     }
   } catch (_) {}
-
-  // 5. Anonymous session
-  if (authUser.is_anonymous) return 'guest';
 
   return DEFAULT_ROLE;
 };
