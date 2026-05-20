@@ -36,71 +36,76 @@ const GOLD_SOFT = 'rgba(197,160,71,0.14)';
 
 const THEMES = {
   light: {
-    background:      '#F4F7FB',
+    background:      '#EDEEF0',        // Apple Maps cool-gray base
     surface:         '#FFFFFF',
-    surfaceSoft:     '#EDF1F9',
+    surfaceSoft:     '#F1F5F9',        // slate-100
     heroPanelBg:     '#FFFFFF',
-    heroPanelBorder: 'rgba(26,54,93,0.10)',
-    heroPanelGlow:   GOLD_SOFT,
-    textPrimary:     '#1A2744',
-    textMuted:       '#5C6B8A',
-    border:          'rgba(26,54,93,0.09)',
+    heroPanelBorder: 'rgba(0,0,0,0.00)',
+    heroPanelGlow:   'rgba(0,0,0,0.00)',
+    textPrimary:     '#0F172A',        // slate-900
+    textMuted:       '#64748B',        // slate-500
+    border:          'rgba(0,0,0,0.07)',
     hero:            NAVY,
-    heroSoft:        'rgba(197,160,71,0.22)',
+    heroSoft:        GOLD_SOFT,
     heroText:        '#FFFFFF',
     gold:            GOLD,
-    chipBg:          '#EDF1F9',
-    chipBorder:      'rgba(26,54,93,0.10)',
-    chipActiveBg:    GOLD_SOFT,
-    chipActiveBorder:'rgba(197,160,71,0.32)',
-    chipActiveText:  '#8A6B1A',
-    chipText:        '#1A2744',
-    searchBg:        '#FBF8EE',
-    searchBorder:    'rgba(197,160,71,0.30)',
-    searchIcon:      GOLD,
-    pillBg:          'rgba(255,255,255,0.96)',
-    pillBorder:      'rgba(26,54,93,0.10)',
+    chipBg:          '#F1F5F9',        // slate-100 unselected
+    chipBorder:      'rgba(0,0,0,0.08)',
+    chipActiveBg:    '#0F172A',        // slate-900 selected (dark slate)
+    chipActiveBorder:'#0F172A',
+    chipActiveText:  '#FFFFFF',
+    chipText:        '#334155',        // slate-700
+    searchBg:        '#F1F5F9',        // clean slate input bg
+    searchBorder:    'rgba(0,0,0,0.00)',
+    searchIcon:      '#94A3B8',        // slate-400
+    pillBg:          'rgba(255,255,255,0.97)',
+    pillBorder:      'rgba(0,0,0,0.06)',
     pillText:        NAVY,
-    rowBg:           '#F4F7FB',
-    rowBorder:       'rgba(26,54,93,0.09)',
+    rowBg:           '#F8FAFC',
+    rowBorder:       'rgba(0,0,0,0.06)',
     rowIconBg:       GOLD_SOFT,
     rowIcon:         GOLD,
     bottomSheetBg:   '#FFFFFF',
-    noResultsBg:     '#EDF1F9',
-    webBg:           '#F4F7FB',
+    noResultsBg:     '#F1F5F9',
+    webBg:           '#EDEEF0',
     previewBg:       '#FFFFFF',
-    cardShadow:      '#060F1E',
+    cardShadow:      '#000000',
   },
   dark: {
-    background:      '#080F1E',
-    surface:         '#0D1A30',
-    surfaceSoft:     '#111E33',
-    heroPanelBg:     '#0D1A30',
-    heroPanelBorder: 'rgba(197,160,71,0.14)',
-    heroPanelGlow:   'rgba(197,160,71,0.10)',
-    textPrimary:     '#DDE5F5',
-    textMuted:       '#7E8EAD',
-    border:          'rgba(197,160,71,0.14)',
-    hero:            '#0F2444',
-    heroSoft:        'rgba(197,160,71,0.15)',
+    background:      '#0A0A0A',        // near-black
+    surface:         '#1C1C1E',        // iOS dark surface
+    surfaceSoft:     '#2C2C2E',        // iOS dark secondary
+    heroPanelBg:     '#1C1C1E',
+    heroPanelBorder: 'rgba(255,255,255,0.00)',
+    heroPanelGlow:   'rgba(255,255,255,0.00)',
+    textPrimary:     '#F2F2F7',        // iOS light text
+    textMuted:       '#8E8E93',        // iOS secondary text
+    border:          'rgba(255,255,255,0.10)',
+    hero:            '#1C1C1E',
+    heroSoft:        'rgba(255,255,255,0.08)',
     heroText:        '#FFFFFF',
     gold:            GOLD,
-    chipBg:          'rgba(197,160,71,0.10)',
-    chipBorder:      'rgba(197,160,71,0.20)',
-    chipActiveBg:    'rgba(197,160,71,0.22)',
-    chipActiveBorder:'rgba(197,160,71,0.40)',
-    chipActiveText:  '#E8C96A',
-    chipText:        '#DDE5F5',
-    searchBg:        'rgba(197,160,71,0.08)',
-    searchBorder:    'rgba(197,160,71,0.22)',
-    searchIcon:      '#E8C96A',
-    pillBg:          'rgba(8,15,30,0.95)',
-    pillBorder:      'rgba(197,160,71,0.18)',
-    pillText:        '#E8C96A',
-    rowBg:           '#0D1A30',
-    rowBorder:       'rgba(197,160,71,0.14)',
-    rowIconBg:       'rgba(197,160,71,0.14)',
-    rowIcon:         '#E8C96A',
+    chipBg:          '#2C2C2E',
+    chipBorder:      'rgba(255,255,255,0.10)',
+    chipActiveBg:    '#F2F2F7',
+    chipActiveBorder:'#F2F2F7',
+    chipActiveText:  '#0A0A0A',
+    chipText:        '#AEAEB2',
+    searchBg:        '#2C2C2E',
+    searchBorder:    'rgba(255,255,255,0.00)',
+    searchIcon:      '#8E8E93',
+    pillBg:          'rgba(28,28,30,0.97)',
+    pillBorder:      'rgba(255,255,255,0.10)',
+    pillText:        '#F2F2F7',
+    rowBg:           '#1C1C1E',
+    rowBorder:       'rgba(255,255,255,0.10)',
+    rowIconBg:       GOLD_SOFT,
+    rowIcon:         GOLD,
+    bottomSheetBg:   '#1C1C1E',
+    noResultsBg:     '#2C2C2E',
+    webBg:           '#0A0A0A',
+    previewBg:       '#1C1C1E',
+    cardShadow:      '#000000',
     bottomSheetBg:   '#0D1A30',
     noResultsBg:     '#0D1A30',
     webBg:           '#080F1E',
@@ -988,73 +993,102 @@ const MapScreen = ({ navigation, route }) => {
             />
 
             <View style={styles.mobileTopOverlay} pointerEvents="box-none">
-              <View style={[styles.mobileSearchCard, { backgroundColor: theme.surface, borderColor: theme.border, shadowColor: theme.cardShadow }]}>
+              {/* ── Unified floating search + chip card ── */}
+              <View style={[styles.mobileSearchCard, { backgroundColor: theme.surface, shadowColor: theme.cardShadow }]}>
+                {/* Gold accent bar at top of card */}
+                <View style={styles.mobileSearchCardAccent} />
+
+                {/* Search row */}
                 <View style={styles.mobileSearchRow}>
                   <TouchableOpacity
                     onPress={() => navigation.goBack()}
-                    style={[styles.mobileBackButton, { backgroundColor: theme.surfaceSoft, borderColor: theme.border }]}
-                    activeOpacity={0.85}
+                    style={[styles.mobileBackButton, { backgroundColor: theme.surfaceSoft }]}
+                    activeOpacity={0.8}
                   >
-                    <Ionicons name="arrow-back" size={20} color={theme.textPrimary} />
+                    <Ionicons name="arrow-back" size={18} color={theme.textPrimary} />
                   </TouchableOpacity>
 
-                  <View style={[styles.mobileSearchBar, { backgroundColor: theme.searchBg, borderColor: theme.searchBorder }]}>
-                    <Ionicons name="search" size={18} color={theme.searchIcon} />
+                  <View style={[styles.mobileSearchBar, { backgroundColor: theme.searchBg }]}>
+                    <Ionicons name="search" size={16} color={theme.searchIcon} />
                     <TextInput
                       value={searchQuery}
                       onChangeText={(text) => {
                         setSearchQuery(text);
-                        if (text.length > 0) {
-                          setIsSuggestionsVisible(true);
-                        } else {
-                          setIsSuggestionsVisible(false);
-                        }
+                        setIsSuggestionsVisible(text.length > 0);
                       }}
                       onBlur={() => setIsSuggestionsVisible(false)}
-                      placeholder="Search campus"
+                      placeholder="Search campus places…"
                       placeholderTextColor={theme.textMuted}
                       style={[styles.searchInput, { color: theme.textPrimary }]}
                     />
                     {searchQuery ? (
                       <TouchableOpacity
-                        style={styles.searchAction}
-                        onPress={() => {
-                          setSearchQuery('');
-                          setIsSuggestionsVisible(false);
-                        }}
-                        activeOpacity={0.85}
+                        onPress={() => { setSearchQuery(''); setIsSuggestionsVisible(false); }}
+                        activeOpacity={0.8}
+                        style={styles.searchClearBtn}
                       >
-                        <Ionicons name="close" size={18} color={theme.hero} />
+                        <Ionicons name="close-circle" size={17} color={theme.textMuted} />
                       </TouchableOpacity>
                     ) : (
-                      <TouchableOpacity style={styles.searchAction} onPress={toggleThemeMode} activeOpacity={0.85}>
-                        <Ionicons name={themeMode === 'dark' ? 'sunny-outline' : 'moon-outline'} size={18} color={theme.hero} />
+                      <TouchableOpacity onPress={toggleThemeMode} activeOpacity={0.8} style={styles.searchClearBtn}>
+                        <Ionicons name={themeMode === 'dark' ? 'sunny-outline' : 'moon-outline'} size={17} color={theme.textMuted} />
                       </TouchableOpacity>
                     )}
                   </View>
 
-                  <View style={[styles.livePill, styles.mobileLivePill, { backgroundColor: theme.surfaceSoft, borderColor: theme.border }]}>
+                  {/* Live badge */}
+                  <View style={styles.mobileliveBadge}>
                     <View style={styles.liveDot} />
-                    <Text style={[styles.livePillText, { color: theme.textPrimary }]}>Live</Text>
+                    <Text style={[styles.mobileLiveBadgeText, { color: theme.textPrimary }]}>Live</Text>
                   </View>
                 </View>
 
-                <View style={styles.mobileTopStatusRow}>
-                  <View style={[styles.mobileTopStatusChip, { backgroundColor: theme.pillBg, borderColor: theme.pillBorder }]}>
-                    <Ionicons name="navigate" size={14} color={theme.pillText} />
-                    <Text style={[styles.mobileTopStatusText, { color: theme.pillText }]} numberOfLines={1}>
-                      {navigationMode === 'active' ? 'Live navigation' : routeDestination ? 'Route preview' : 'Navigation ready'}
+                {/* Chip row — rounded-full, dark-slate active */}
+                <View style={styles.mobileChipRow}>
+                  {/* Navigation status chip */}
+                  <View style={[
+                    styles.mobileChip,
+                    { borderColor: theme.chipBorder },
+                    (navigationMode === 'active' || routeDestination)
+                      ? { backgroundColor: theme.chipActiveBg, borderColor: theme.chipActiveBorder }
+                      : { backgroundColor: theme.chipBg },
+                  ]}>
+                    <Ionicons
+                      name="navigate"
+                      size={12}
+                      color={(navigationMode === 'active' || routeDestination) ? theme.chipActiveText : theme.chipText}
+                    />
+                    <Text style={[
+                      styles.mobileChipText,
+                      { color: (navigationMode === 'active' || routeDestination) ? theme.chipActiveText : theme.chipText },
+                    ]} numberOfLines={1}>
+                      {navigationMode === 'active' ? 'Navigating' : routeDestination ? 'Route set' : 'Ready'}
                     </Text>
                   </View>
-                  <View style={[styles.mobileTopStatusChip, { backgroundColor: theme.pillBg, borderColor: theme.pillBorder }]}>
-                    <Ionicons name="location-outline" size={14} color={theme.textMuted} />
-                    <Text style={[styles.mobileTopStatusMutedText, { color: theme.textMuted }]} numberOfLines={1}>
-                      {locationStatus === 'granted' ? 'GPS on' : 'GPS off'}
+
+                  {/* GPS chip */}
+                  <View style={[
+                    styles.mobileChip,
+                    { backgroundColor: locationStatus === 'granted' ? '#DCFCE7' : theme.chipBg,
+                      borderColor: locationStatus === 'granted' ? '#BBF7D0' : theme.chipBorder },
+                  ]}>
+                    <Ionicons
+                      name={locationStatus === 'granted' ? 'location' : 'location-outline'}
+                      size={12}
+                      color={locationStatus === 'granted' ? '#16A34A' : theme.chipText}
+                    />
+                    <Text style={[
+                      styles.mobileChipText,
+                      { color: locationStatus === 'granted' ? '#16A34A' : theme.chipText },
+                    ]}>
+                      {locationStatus === 'granted' ? 'GPS' : 'No GPS'}
                     </Text>
                   </View>
-                  <View style={[styles.mobileTopStatusChip, { backgroundColor: theme.pillBg, borderColor: theme.pillBorder }]}>
-                    <Ionicons name="pin-outline" size={14} color={theme.pillText} />
-                    <Text style={[styles.mobileTopStatusText, { color: theme.pillText }]} numberOfLines={1}>
+
+                  {/* Places count chip */}
+                  <View style={[styles.mobileChip, { backgroundColor: theme.chipBg, borderColor: theme.chipBorder }]}>
+                    <Ionicons name="pin-outline" size={12} color={theme.chipText} />
+                    <Text style={[styles.mobileChipText, { color: theme.chipText }]}>
                       {normalizedLocations.length} places
                     </Text>
                   </View>
@@ -1109,20 +1143,21 @@ const MapScreen = ({ navigation, route }) => {
                 styles.mobileBottomSheet,
                 {
                   backgroundColor: theme.surface,
-                  borderColor: theme.border,
                   shadowColor: theme.cardShadow,
                   height: bottomSheetExpandedHeight,
                   transform: [{ translateY: bottomSheetTranslateY }],
                 },
               ]}
             >
+              {/* ── Drag handle at absolute top center ── */}
               <Pressable
                 style={styles.mobileBottomHandleTouch}
                 onPress={toggleBottomSheet}
                 {...bottomSheetPanResponder.panHandlers}
               >
-                <View style={[styles.mobileBottomHandle, { backgroundColor: theme.border }]} />
+                <View style={styles.mobileBottomHandle} />
               </Pressable>
+
               <ScrollView
                 style={styles.mobileBottomScroll}
                 contentContainerStyle={styles.mobileBottomContent}
@@ -1130,80 +1165,89 @@ const MapScreen = ({ navigation, route }) => {
                 keyboardShouldPersistTaps="handled"
                 scrollEnabled={!isBottomSheetCollapsed}
               >
+                {/* Location name + clear */}
                 <View style={styles.mobileBottomTitleRow}>
-                  <Text style={[styles.mobileBottomTitle, { color: theme.textPrimary }]} numberOfLines={2}>
-                    {activeLocation ? activeLocationLabel : 'Select a campus place'}
-                  </Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.mobileBottomTitle, { color: theme.textPrimary }]} numberOfLines={2}>
+                      {activeLocation ? activeLocationLabel : 'Explore Campus'}
+                    </Text>
+                    <Text style={[styles.mobileBottomSubtitle, { color: theme.textMuted }]} numberOfLines={1}>
+                      {activeLocation
+                        ? 'Tap Directions or Start to navigate'
+                        : 'Tap a map marker to select a place'}
+                    </Text>
+                  </View>
                   {routeDestination && (
                     <TouchableOpacity
-                      style={[styles.mobileClearRouteButton, { backgroundColor: theme.surfaceSoft, borderColor: theme.border }]}
+                      style={[styles.mobileClearRouteButton, { backgroundColor: theme.surfaceSoft }]}
                       onPress={handleClearRoute}
-                      activeOpacity={0.85}
+                      activeOpacity={0.8}
                     >
                       <Ionicons name="close" size={16} color={theme.textPrimary} />
                     </TouchableOpacity>
                   )}
                 </View>
-                <Text style={[styles.mobileBottomSubtitle, { color: theme.textMuted }]} numberOfLines={2}>
-                  {activeLocation ? 'Marker selected. Tap Direction or Start to continue.' : 'Tap any marker to view details and start navigation.'}
-                </Text>
 
+                {/* ── Action row: Directions (bordered) + Start (gold) + Details ── */}
                 <View style={styles.mobileActionRow}>
+                  {/* Directions — transparent neutral bordered */}
                   <TouchableOpacity
-                    style={[styles.actionButton, styles.mobileActionButton, { backgroundColor: theme.surfaceSoft, borderColor: theme.border }]}
+                    style={[styles.mobileActionButton, styles.mobileDirectionBtn]}
                     onPress={handleDirectionPress}
-                    activeOpacity={0.85}
+                    activeOpacity={0.82}
                   >
-                    <Ionicons name="navigate-outline" size={18} color={theme.hero} />
-                    <Text style={[styles.actionButtonText, { color: theme.textPrimary }]}>Direction</Text>
+                    <Ionicons name="navigate-outline" size={18} color={NAVY} />
+                    <Text style={styles.mobileDirectionBtnText}>Directions</Text>
                   </TouchableOpacity>
+
+                  {/* Start — golden-ochre primary */}
                   <TouchableOpacity
-                    style={[styles.actionButton, styles.mobileActionButton, styles.actionButtonPrimary, { backgroundColor: GOLD }]}
+                    style={[styles.mobileActionButton, styles.mobileStartBtn]}
                     onPress={handleStartPress}
                     activeOpacity={0.85}
                   >
-                    <Ionicons name="play-outline" size={18} color="#0F2444" />
-                    <Text style={[styles.actionButtonText, { color: '#0F2444' }]}>Start</Text>
+                    <Ionicons name="play" size={16} color="#0F2444" />
+                    <Text style={styles.mobileStartBtnText}>Start</Text>
                   </TouchableOpacity>
+
+                  {/* Details — secondary icon-only */}
                   {activeLocation?.id ? (
                     <TouchableOpacity
-                      style={[styles.actionButton, styles.mobileActionButton, { backgroundColor: theme.surfaceSoft, borderColor: theme.border }]}
+                      style={[styles.mobileActionButton, styles.mobileDetailBtn, { backgroundColor: theme.surfaceSoft }]}
                       onPress={handleViewDetails}
-                      activeOpacity={0.85}
+                      activeOpacity={0.82}
                     >
-                      <Ionicons name="information-circle-outline" size={18} color={theme.hero} />
-                      <Text style={[styles.actionButtonText, { color: theme.textPrimary }]}>Details</Text>
+                      <Ionicons name="information-circle-outline" size={20} color={NAVY} />
                     </TouchableOpacity>
                   ) : null}
                 </View>
 
+                {/* Route preview card */}
                 {routeDestination && navigationMode === 'preview' && (
-                  <View style={[styles.mobilePreviewCard, { backgroundColor: theme.surfaceSoft, borderColor: theme.border }]}>
+                  <View style={[styles.mobilePreviewCard, { backgroundColor: theme.surfaceSoft }]}>
+                    {/* Travel mode chips */}
                     <View style={styles.previewModeRow}>
-                      <TouchableOpacity
-                        style={[
-                          styles.previewModeChip,
-                          { backgroundColor: theme.surface, borderColor: theme.border },
-                          travelMode === 'driving' ? { backgroundColor: theme.chipActiveBg, borderColor: theme.chipActiveBorder } : null,
-                        ]}
-                        onPress={() => setTravelMode('driving')}
-                        activeOpacity={0.85}
-                      >
-                        <Ionicons name="car-outline" size={14} color={travelMode === 'driving' ? theme.chipActiveText : theme.textMuted} />
-                        <Text style={[styles.previewModeChipText, { color: travelMode === 'driving' ? theme.chipActiveText : theme.textPrimary }]}>Drive</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.previewModeChip,
-                          { backgroundColor: theme.surface, borderColor: theme.border },
-                          travelMode === 'walking' ? { backgroundColor: theme.chipActiveBg, borderColor: theme.chipActiveBorder } : null,
-                        ]}
-                        onPress={() => setTravelMode('walking')}
-                        activeOpacity={0.85}
-                      >
-                        <Ionicons name="walk-outline" size={14} color={travelMode === 'walking' ? theme.chipActiveText : theme.textMuted} />
-                        <Text style={[styles.previewModeChipText, { color: travelMode === 'walking' ? theme.chipActiveText : theme.textPrimary }]}>Walk</Text>
-                      </TouchableOpacity>
+                      {[
+                        { mode: 'driving', icon: 'car-outline',  label: 'Drive' },
+                        { mode: 'walking', icon: 'walk-outline', label: 'Walk'  },
+                      ].map(({ mode, icon, label }) => (
+                        <TouchableOpacity
+                          key={mode}
+                          style={[
+                            styles.previewModeChip,
+                            travelMode === mode
+                              ? { backgroundColor: theme.chipActiveBg, borderColor: theme.chipActiveBorder }
+                              : { backgroundColor: theme.surface, borderColor: theme.chipBorder },
+                          ]}
+                          onPress={() => setTravelMode(mode)}
+                          activeOpacity={0.85}
+                        >
+                          <Ionicons name={icon} size={14} color={travelMode === mode ? theme.chipActiveText : theme.textMuted} />
+                          <Text style={[styles.previewModeChipText, { color: travelMode === mode ? theme.chipActiveText : theme.textPrimary }]}>
+                            {label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
                     </View>
 
                     <View style={styles.mobilePreviewMeta}>
@@ -1219,8 +1263,9 @@ const MapScreen = ({ navigation, route }) => {
                   </View>
                 )}
 
+                {/* Active navigation metrics */}
                 {routeDestination && navigationMode === 'active' && (
-                  <View style={[styles.activeFooterCard, styles.mobileActiveFooterCard, { backgroundColor: theme.surfaceSoft, borderColor: theme.border, shadowColor: theme.cardShadow }]}>
+                  <View style={[styles.activeFooterCard, styles.mobileActiveFooterCard, { backgroundColor: theme.surfaceSoft, shadowColor: theme.cardShadow }]}>
                     <View style={styles.activeFooterMetric}>
                       <Text style={[styles.activeFooterValue, { color: theme.textPrimary }]}>{remainingDurationLabel}</Text>
                       <Text style={[styles.activeFooterLabel, { color: theme.textMuted }]}>{remainingDistanceLabel}</Text>
@@ -1230,11 +1275,11 @@ const MapScreen = ({ navigation, route }) => {
                       <Text style={[styles.activeFooterLabel, { color: theme.textMuted }]}>ETA</Text>
                     </View>
                     <TouchableOpacity
-                      style={[styles.activeEndButton, { backgroundColor: theme.surface, borderColor: theme.border }]}
+                      style={[styles.activeEndButton, { backgroundColor: '#FEE2E2' }]}
                       onPress={handleClearRoute}
                       activeOpacity={0.85}
                     >
-                      <Text style={[styles.activeEndButtonText, { color: theme.textPrimary }]}>End</Text>
+                      <Text style={[styles.activeEndButtonText, { color: '#DC2626' }]}>End</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -1337,80 +1382,104 @@ const styles = StyleSheet.create({
     right: 10,
     gap: 8,
   },
+  // ── TOP FLOATING CARD ────────────────────────────────────────────────────────
   mobileSearchCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 8,
-    borderTopColor: GOLD,
-    borderTopWidth: 3,
+    borderRadius: 24,          // rounded-2xl
+    borderWidth: 0,
+    padding: 16,               // 16px inset padding
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.10,
-    shadowRadius: 12,
-    elevation: 5,
+    shadowOpacity: 0.13,
+    shadowRadius: 28,
+    elevation: 8,
     overflow: 'hidden',
+  },
+  mobileSearchCardAccent: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+    height: 3,
+    backgroundColor: GOLD,
   },
   mobileSearchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+    marginBottom: 12,
   },
   mobileBackButton: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: 0,
   },
   mobileSearchBar: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 16,
+    borderRadius: 14,
     paddingHorizontal: 12,
     minHeight: 42,
-    borderWidth: 1,
-  },
-  mobileLivePill: {
-    minHeight: 40,
-    paddingHorizontal: 9,
-  },
-  mobileTopStatusRow: {
-    marginTop: 8,
-    flexDirection: 'row',
+    borderWidth: 0,
     gap: 8,
   },
-  mobileTopStatusChip: {
-    flex: 1,
-    minHeight: 34,
-    borderRadius: 999,
-    borderWidth: 1,
+  searchClearBtn: {
+    padding: 2,
+  },
+  // Live badge
+  mobileliveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 5,
     paddingHorizontal: 10,
-    gap: 6,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: '#DCFCE7',
   },
-  mobileTopStatusText: {
+  mobileLiveBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#16A34A',
+  },
+  // Chip row — rounded-full chips
+  mobileChipRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  mobileChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 20,           // rounded-full
+    borderWidth: 1,
+  },
+  mobileChipText: {
     fontSize: 12,
     fontWeight: '700',
   },
-  mobileTopStatusMutedText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
+  // Keep old chip names as aliases for web/non-refactored code
+  mobileLivePill:            { minHeight: 38, paddingHorizontal: 10, borderRadius: 12 },
+  mobileTopStatusRow:        { marginTop: 8, flexDirection: 'row', gap: 8 },
+  mobileTopStatusChip:       { flex: 1, minHeight: 34, borderRadius: 999, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, gap: 6 },
+  mobileTopStatusText:       { fontSize: 12, fontWeight: '700' },
+  mobileTopStatusMutedText:  { fontSize: 12, fontWeight: '600' },
+
+  // ── Active navigation instruction banner ────────────────────────────────────
   mobileInstructionCard: {
-    marginTop: 4,
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    marginTop: 6,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     backgroundColor: NAVY,
     borderTopWidth: 3,
     borderTopColor: GOLD,
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.22,
-    shadowRadius: 14,
-    elevation: 5,
+    shadowOpacity: 0.24,
+    shadowRadius: 18,
+    elevation: 6,
   },
   mobileInstructionHeader: {
     flexDirection: 'row',
@@ -1432,37 +1501,35 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: '600',
   },
+  // ── BOTTOM ACTION SHEET ─────────────────────────────────────────────────────
   mobileBottomSheet: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    borderTopLeftRadius: 24,
+    borderTopLeftRadius: 24,    // rounded-t-[24px]
     borderTopRightRadius: 24,
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
-    borderWidth: 1,
-    borderTopColor: GOLD,
-    borderTopWidth: 3,
+    borderWidth: 0,             // no border — shadow only
     borderBottomWidth: 0,
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
-    elevation: 8,
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 32,
+    elevation: 12,
     overflow: 'hidden',
   },
   mobileBottomHandleTouch: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 10,
-    paddingBottom: 6,
+    paddingTop: 12,
+    paddingBottom: 4,
   },
   mobileBottomHandle: {
-    width: 44,
+    width: 36,                  // thin pill, centered
     height: 4,
-    borderRadius: 999,
-    backgroundColor: GOLD,
-    opacity: 0.5,
+    borderRadius: 2,
+    backgroundColor: '#D1D5DB', // light gray
   },
   mobileBottomScroll: {
     flex: 1,
@@ -1472,47 +1539,89 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 14,
   },
+  mobileBottomScroll:  { flex: 1 },
+  mobileBottomContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
+
   mobileBottomTitleRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
+    marginBottom: 4,
   },
   mobileBottomTitle: {
-    flex: 1,
-    fontSize: 28,
-    lineHeight: 32,
+    fontSize: 26,
+    lineHeight: 30,
     fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  mobileClearRouteButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    letterSpacing: -0.4,
   },
   mobileBottomSubtitle: {
-    marginTop: 5,
-    fontSize: 14,
-    lineHeight: 19,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: '500',
+    marginBottom: 16,
   },
+  mobileClearRouteButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 0,
+  },
+
+  // ── ACTION ROW ────────────────────────────────────────────────────────────
   mobileActionRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 12,
+    alignItems: 'center',
   },
   mobileActionButton: {
-    minHeight: 46,
+    height: 50,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  // Directions — transparent + neutral border (spec: "clean transparent neutral bordered")
+  mobileDirectionBtn: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: 'rgba(26,54,93,0.18)',
+  },
+  mobileDirectionBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: NAVY,
+  },
+  // Start — golden-ochre primary (spec: "primary golden-ochre brand color")
+  mobileStartBtn: {
+    flex: 1.4,
+    backgroundColor: GOLD,
+    shadowColor: GOLD,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  mobileStartBtnText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F2444',
+  },
+  // Details — compact icon-only pill
+  mobileDetailBtn: {
+    width: 50,
+    flex: undefined,
     borderRadius: 14,
   },
   mobilePreviewCard: {
-    marginTop: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
+    marginTop: 14,
+    borderRadius: 18,
+    borderWidth: 0,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
   },
   mobilePreviewMeta: {
     flexDirection: 'row',
