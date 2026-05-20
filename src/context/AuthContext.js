@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { Alert } from 'react-native';
 import { supabase } from '../config/supabase';
 import { ENABLE_DEV_ADMIN_EMAIL_OVERRIDE, FORCE_REQUIRE_LOGIN } from '../utils/constants';
 
@@ -176,7 +177,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   // ── register ────────────────────────────────────────────────────────────────
-  const register = async ({ fullName, email, password, indexNumber, programme }) => {
+  const register = async ({ fullName, displayName, email, password, studentId, indexNumber, programme, department, phone, avatarUrl }) => {
     setActionLoading(true);
     try {
       const { error } = await supabase.auth.signUp({
@@ -184,10 +185,15 @@ export const AuthProvider = ({ children }) => {
         password,
         options: {
           data: {
-            full_name: fullName,
-            role: 'student',
-            index_number: indexNumber,
+            full_name:     fullName,
+            display_name:  displayName?.trim() || fullName,
+            role:          'student',
+            student_id:    studentId,
+            index_number:  indexNumber,
             programme,
+            department:    department || null,
+            phone:         phone     || null,
+            avatar_url:    avatarUrl || null,
           },
         },
       });
@@ -209,6 +215,25 @@ export const AuthProvider = ({ children }) => {
     if (error) throw error;
   };
 
+  // ── enterGuestMode — anonymous sign-in → routes to GuestNavigator ──────────
+  const enterGuestMode = async () => {
+    setActionLoading(true);
+    setAuthLoading(true);
+    try {
+      const { error } = await supabase.auth.signInAnonymously();
+      if (error) throw error;
+      // onAuthStateChange fires → resolveRole returns 'guest' because
+      // authUser.is_anonymous is true → RootNavigator shows GuestNavigator
+    } catch (err) {
+      setActionLoading(false);
+      setAuthLoading(false);
+      Alert.alert(
+        'Guest access unavailable',
+        err?.message || 'Could not start a guest session. Please try again.',
+      );
+    }
+  };
+
   // ── userRole alias (backwards compat with old Firebase AuthContext) ─────────
   const userRole = role;
 
@@ -223,6 +248,7 @@ export const AuthProvider = ({ children }) => {
       register,
       forgotPassword,
       resetPassword,
+      enterGuestMode,
     }}>
       {children}
     </AuthContext.Provider>
