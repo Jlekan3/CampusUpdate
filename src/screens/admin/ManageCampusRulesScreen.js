@@ -26,14 +26,73 @@ import {
 } from '../../services/databaseService';
 
 // ── Import helpers ────────────────────────────────────────────────────────────
-const normalise = (s) => String(s ?? '').toLowerCase().replace(/[\s_\-().]/g, '');
+
+// Strip spaces / underscores / hyphens / dots for loose matching
+const normalise = (s) => String(s ?? '').toLowerCase().replace(/[\s_\-.]/g, '');
+
+// Extract candidate names from a header cell.
+// Handles "Display Name (snake_case)" templates by pulling out the
+// canonical name from inside the parentheses first.
+const extractHeaderKeys = (cell) => {
+  const raw = String(cell ?? '');
+  const keys = [];
+  const parenMatches = [...raw.matchAll(/\(([^)]+)\)/g)];
+  parenMatches.forEach((m) => keys.push(m[1].trim()));   // e.g. "title", "phone_number"
+  keys.push(raw);                                         // full string fallback
+  const beforeParen = raw.split('(')[0].trim();
+  if (beforeParen && beforeParen !== raw) keys.push(beforeParen); // "Title"
+  return keys;
+};
+
+// Find the header key in a set of raw header strings (handles paren format)
+const findCol = (headers, keys) => {
+  for (const header of headers) {
+    const candidates = extractHeaderKeys(header);
+    for (const cand of candidates) {
+      for (const k of keys) {
+        if (normalise(cand) === normalise(k)) return header;
+      }
+    }
+  }
+  return null;
+};
+
+// Smart sheet parser: skips title / instruction rows, finds the real header row,
+// then returns objects keyed by those headers.
+const smartParseSheet = (data, knownColMap) => {
+  const workbook  = XLSX.read(data, { type: 'array' });
+  const sheet     = workbook.Sheets[workbook.SheetNames[0]];
+  const raw       = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  if (!raw.length) return [];
+
+  // Collect all normalised aliases from the col map
+  const allKnown = Object.values(knownColMap).flat().map(normalise);
+
+  // The header row is the first row where ≥2 cells match a known alias
+  // (after extracting parenthesised names). Scans up to row 10.
+  let headerIdx = 0;
+  for (let i = 0; i < Math.min(raw.length, 10); i++) {
+    const rowCandidates = (raw[i] || []).flatMap((c) => extractHeaderKeys(String(c))).map(normalise);
+    const hits = allKnown.filter((k) => rowCandidates.includes(k)).length;
+    if (hits >= 2) { headerIdx = i; break; }
+  }
+
+  const headerRow = (raw[headerIdx] || []).map(String);
+  const dataRows  = raw.slice(headerIdx + 1).filter((r) => r.some((c) => String(c).trim() !== ''));
+  const rows      = dataRows.map((row) => {
+    const obj = {};
+    headerRow.forEach((key, i) => { obj[key] = row[i] ?? ''; });
+    return obj;
+  });
+  return { rows, headerIdx };
+};
 
 const RULES_COL_MAP = {
   title:       ['title', 'name', 'rule'],
   description: ['description', 'desc', 'detail', 'content'],
   category:    ['category', 'cat', 'type', 'section'],
   severity:    ['severity', 'level', 'priority', 'importance'],
-  is_active:   ['isactive', 'active', 'live', 'enabled', 'published'],
+  is_active:   ['isactive', 'active', 'live', 'enabled', 'published', 'isactive'],
 };
 
 const VALID_CATEGORIES = ['Academic', 'Residential', 'Traffic & Parking', 'Code of Conduct'];
@@ -44,15 +103,7 @@ const parseBool = (v) => {
   return !['false', '0', 'no', 'off', 'inactive', 'hidden'].includes(String(v).toLowerCase().trim());
 };
 
-const findCol = (headers, keys) => {
-  for (const k of keys) {
-    const found = headers.find((h) => normalise(h) === normalise(k));
-    if (found) return found;
-  }
-  return null;
-};
-
-const parseRulesSheet = (rows) => {
+const parseRulesSheet = (rows, headerIdx = 0) => {
   const valid = []; const errors = [];
   rows.forEach((row, idx) => {
     const headers = Object.keys(row);
@@ -73,7 +124,7 @@ const parseRulesSheet = (rows) => {
     if (severity && !VALID_SEVERITIES.includes(severity))   rowErrors.push(`invalid severity "${severity}"`);
 
     if (rowErrors.length) {
-      errors.push({ row: idx + 2, reason: rowErrors.join(', ') });
+      errors.push({ row: idx + headerIdx + 2, reason: rowErrors.join(', ') });
     } else {
       valid.push({
         title,
@@ -255,12 +306,10 @@ export default function ManageCampusRulesScreen({ navigation }) {
       const response    = await fetch(file.uri);
       const arrayBuffer = await response.arrayBuffer();
       const data        = new Uint8Array(arrayBuffer);
-      const workbook    = XLSX.read(data, { type: 'array' });
-      const sheet       = workbook.Sheets[workbook.SheetNames[0]];
-      const rows        = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      const { rows, headerIdx } = smartParseSheet(data, RULES_COL_MAP);
 
       if (!rows.length) { Alert.alert('Empty file', 'No data rows found in the spreadsheet.'); return; }
-      setImportPreview(parseRulesSheet(rows));
+      setImportPreview(parseRulesSheet(rows, headerIdx));
       setShowImport(true);
     } catch (err) {
       console.error('[Import] parse error:', err);

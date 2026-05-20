@@ -32,16 +32,69 @@ const GOLD = '#C5A047';
 const BG   = '#F8F9FA';
 
 // ── Import helpers ────────────────────────────────────────────────────────────
-const normalise = (s) => String(s ?? '').toLowerCase().replace(/[\s_\-().]/g, '');
+
+const normalise = (s) => String(s ?? '').toLowerCase().replace(/[\s_\-.]/g, '');
+
+// Pull candidate names from a header cell — prioritises the canonical
+// snake_case name written inside parentheses, e.g. "Title (title)" → "title"
+const extractHeaderKeys = (cell) => {
+  const raw = String(cell ?? '');
+  const keys = [];
+  const parenMatches = [...raw.matchAll(/\(([^)]+)\)/g)];
+  parenMatches.forEach((m) => keys.push(m[1].trim()));
+  keys.push(raw);
+  const beforeParen = raw.split('(')[0].trim();
+  if (beforeParen && beforeParen !== raw) keys.push(beforeParen);
+  return keys;
+};
+
+const findCol = (headers, keys) => {
+  for (const header of headers) {
+    const candidates = extractHeaderKeys(header);
+    for (const cand of candidates) {
+      for (const k of keys) {
+        if (normalise(cand) === normalise(k)) return header;
+      }
+    }
+  }
+  return null;
+};
+
+// Reads a Uint8Array, automatically skips title/instruction rows, and
+// returns row objects keyed by the detected column headers.
+const smartParseSheet = (data, knownColMap) => {
+  const workbook = XLSX.read(data, { type: 'array' });
+  const sheet    = workbook.Sheets[workbook.SheetNames[0]];
+  const raw      = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  if (!raw.length) return { rows: [], headerIdx: 0 };
+
+  const allKnown = Object.values(knownColMap).flat().map(normalise);
+
+  let headerIdx = 0;
+  for (let i = 0; i < Math.min(raw.length, 10); i++) {
+    const rowCandidates = (raw[i] || []).flatMap((c) => extractHeaderKeys(String(c))).map(normalise);
+    const hits = allKnown.filter((k) => rowCandidates.includes(k)).length;
+    if (hits >= 2) { headerIdx = i; break; }
+  }
+
+  const headerRow = (raw[headerIdx] || []).map(String);
+  const dataRows  = raw.slice(headerIdx + 1).filter((r) => r.some((c) => String(c).trim() !== ''));
+  const rows      = dataRows.map((row) => {
+    const obj = {};
+    headerRow.forEach((key, i) => { obj[key] = row[i] ?? ''; });
+    return obj;
+  });
+  return { rows, headerIdx };
+};
 
 const EC_COL_MAP = {
   title:                    ['title', 'name', 'service', 'contact'],
   description:              ['description', 'desc', 'detail', 'notes'],
-  phone_number:             ['phonenumber', 'phone', 'number', 'contact', 'primaryphone'],
-  alternative_phone_number: ['alternativephonenumber', 'altphone', 'altphonenumber', 'secondary', 'backup'],
-  category:                 ['category', 'type', 'cat', 'service'],
-  is_available_24_7:        ['isavailable247', 'available247', '247', 'roundtheclock', 'alwaysavailable'],
-  operating_hours:          ['operatinghours', 'hours', 'openinghours', 'schedule', 'workinghours'],
+  phone_number:             ['phonenumber', 'phone', 'number', 'primaryphone'],
+  alternative_phone_number: ['alternativephonenumber', 'altphone', 'alternativephone', 'secondary', 'backup'],
+  category:                 ['category', 'type', 'cat'],
+  is_available_24_7:        ['isavailable247', 'available247', '247', 'roundtheclock'],
+  operating_hours:          ['operatinghours', 'hours', 'openinghours', 'schedule'],
   icon_name:                ['iconname', 'icon', 'iconid'],
 };
 
@@ -52,15 +105,7 @@ const parseBoolEC = (v) => {
   return !['false', '0', 'no', 'off'].includes(String(v).toLowerCase().trim());
 };
 
-const findCol = (headers, keys) => {
-  for (const k of keys) {
-    const found = headers.find((h) => normalise(h) === normalise(k));
-    if (found) return found;
-  }
-  return null;
-};
-
-const parseECSheet = (rows) => {
+const parseECSheet = (rows, headerIdx) => {
   const valid = []; const errors = [];
   rows.forEach((row, idx) => {
     const headers = Object.keys(row);
@@ -84,7 +129,7 @@ const parseECSheet = (rows) => {
     if (category && !VALID_EC_CATEGORIES.includes(category)) rowErrors.push(`invalid category "${category}"`);
 
     if (rowErrors.length) {
-      errors.push({ row: idx + 2, reason: rowErrors.join(', ') });
+      errors.push({ row: headerIdx + idx + 2, reason: rowErrors.join(', ') });
     } else {
       valid.push({
         title,
@@ -279,12 +324,10 @@ export default function ManageEmergencyContactsScreen({ navigation }) {
       const response    = await fetch(file.uri);
       const arrayBuffer = await response.arrayBuffer();
       const data        = new Uint8Array(arrayBuffer);
-      const workbook    = XLSX.read(data, { type: 'array' });
-      const sheet       = workbook.Sheets[workbook.SheetNames[0]];
-      const rows        = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      const { rows, headerIdx } = smartParseSheet(data, EC_COL_MAP);
 
       if (!rows.length) { Alert.alert('Empty file', 'No data rows found in the spreadsheet.'); return; }
-      setImportPreview(parseECSheet(rows));
+      setImportPreview(parseECSheet(rows, headerIdx));
       setShowImport(true);
     } catch (err) {
       console.error('[Import] parse error:', err);
