@@ -569,41 +569,47 @@ $$;
 
 
 -- ---------------------------------------------------------------------------
--- 11. Emergency Contacts  (added after initial schema)
+-- 11. Safety & Support  (table name: safety_and_support)
+--     Previously referred to as emergency_contacts in the codebase.
+--     Run this block if the table does not yet exist in your project.
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS public.emergency_contacts (
-  id                       uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE IF NOT EXISTS public.safety_and_support (
+  id                       uuid        NOT NULL DEFAULT gen_random_uuid(),
   title                    text        NOT NULL,
   description              text,
   phone_number             text        NOT NULL,
   alternative_phone_number text,
-  category                 text        NOT NULL DEFAULT 'Emergency'
-                           CHECK (category IN ('Emergency','Medical','Counseling','Security','Maintenance')),
+  category                 text        DEFAULT 'Emergency'::text
+                           CHECK (category = ANY (ARRAY[
+                             'Emergency'::text, 'Medical'::text,
+                             'Counseling'::text, 'Security'::text,
+                             'Maintenance'::text
+                           ])),
   is_available_24_7        boolean     DEFAULT true,
   operating_hours          text,
-  icon_name                text        DEFAULT 'shield-checkmark-outline',
-  is_active                boolean     DEFAULT true,
+  icon_name                text        DEFAULT 'shield-alert'::text,
   created_at               timestamptz DEFAULT now(),
-  updated_at               timestamptz DEFAULT now()
+  updated_at               timestamptz DEFAULT now(),
+  CONSTRAINT safety_and_support_pkey PRIMARY KEY (id)
 );
 
-CREATE OR REPLACE TRIGGER emergency_contacts_updated_at
-  BEFORE UPDATE ON public.emergency_contacts
+CREATE OR REPLACE TRIGGER safety_and_support_updated_at
+  BEFORE UPDATE ON public.safety_and_support
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
-CREATE INDEX IF NOT EXISTS idx_emergency_contacts_category ON public.emergency_contacts(category);
+CREATE INDEX IF NOT EXISTS idx_safety_support_category ON public.safety_and_support(category);
 
-ALTER TABLE public.emergency_contacts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.emergency_contacts REPLICA IDENTITY FULL;
+ALTER TABLE public.safety_and_support ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.safety_and_support REPLICA IDENTITY FULL;
 
-CREATE POLICY "ec_select_auth"  ON public.emergency_contacts FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "ec_insert_admin" ON public.emergency_contacts FOR INSERT WITH CHECK (is_admin());
-CREATE POLICY "ec_update_admin" ON public.emergency_contacts FOR UPDATE USING (is_admin());
-CREATE POLICY "ec_delete_admin" ON public.emergency_contacts FOR DELETE USING (is_admin());
+CREATE POLICY "ss_select_auth"  ON public.safety_and_support FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY "ss_insert_admin" ON public.safety_and_support FOR INSERT WITH CHECK (is_admin());
+CREATE POLICY "ss_update_admin" ON public.safety_and_support FOR UPDATE USING (is_admin());
+CREATE POLICY "ss_delete_admin" ON public.safety_and_support FOR DELETE USING (is_admin());
 
 -- Add to realtime publication
-ALTER PUBLICATION supabase_realtime ADD TABLE public.emergency_contacts;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.safety_and_support;
 
 
 -- ---------------------------------------------------------------------------

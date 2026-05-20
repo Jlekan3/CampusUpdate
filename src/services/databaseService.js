@@ -435,15 +435,15 @@ export const updateDepartment = async (id, data) => {
 
 export const deleteDepartment = (id) => deleteItem('departments', id);
 
-// ─── Emergency Contacts ───────────────────────────────────────────────────────
+// ─── Safety & Support (table: safety_and_support) ────────────────────────────
 
 export const subscribeToEmergencyContacts = (cb) =>
   createSubscription(
-    'emergency_contacts',
-    () => supabase.from('emergency_contacts').select('*').order('category').order('title'),
+    'safety_and_support',
+    () => supabase.from('safety_and_support').select('*').order('category').order('title'),
     cb,
   );
 
-export const addEmergencyContact    = (data) => addItem('emergency_contacts', data);
-export const updateEmergencyContact = (id, data) => updateItem('emergency_contacts', id, data);
-export const deleteEmergencyContact = (id) => deleteItem('emergency_contacts', id);
+export const addEmergencyContact    = (data) => addItem('safety_and_support', data);
+export const updateEmergencyContact = (id, data) => updateItem('safety_and_support', id, data);
+export const deleteEmergencyContact = (id) => deleteItem('safety_and_support', id);
