@@ -21,7 +21,12 @@ import * as Location from 'expo-location';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import { COLORS } from '../../utils/constants';
 import Map from '../../components/Map';
-import { subscribeToLocations } from '../../services/databaseService';
+import {
+  subscribeToLocations,
+  subscribeToBuildings,
+  subscribeToAmenities,
+  subscribeToDepartments,
+} from '../../services/databaseService';
 import { fetchRouteGuidance, resolveLocationCoordinates } from '../../services/mapService';
 
 const STORAGE_KEY = 'guest-dashboard-mode';
@@ -202,8 +207,11 @@ const getTravelModeLabel = (travelMode) => {
 };
 
 const MapScreen = ({ navigation, route }) => {
-  const [loading, setLoading] = useState(true);
-  const [locations, setLocations] = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [locations,  setLocations]  = useState([]);
+  const [buildings,  setBuildings]  = useState([]);
+  const [amenities,  setAmenities]  = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSuggestionsVisible, setIsSuggestionsVisible] = useState(false);
   const [themeMode, setThemeMode] = useState('light');
@@ -260,14 +268,23 @@ const MapScreen = ({ navigation, route }) => {
     setActiveLocation(selectedLocation || null);
   }, [selectedLocation]);
 
+  // Subscribe to all campus entities that carry GPS coordinates
   useEffect(() => {
     setLoading(true);
-    const unsubscribe = subscribeToLocations((items) => {
-      setLocations(items || []);
-      setLoading(false);
-    });
+    let resolved = 0;
+    const done = () => { resolved += 1; if (resolved >= 4) setLoading(false); };
 
-    return unsubscribe;
+    const unsubLocs  = subscribeToLocations((items)  => { setLocations(items   || []); done(); });
+    const unsubBldgs = subscribeToBuildings((items)   => { setBuildings(items   || []); done(); });
+    const unsubAmen  = subscribeToAmenities((items)   => { setAmenities(items   || []); done(); });
+    const unsubDepts = subscribeToDepartments((items) => { setDepartments(items || []); done(); });
+
+    return () => {
+      try { unsubLocs?.();  } catch (_) {}
+      try { unsubBldgs?.(); } catch (_) {}
+      try { unsubAmen?.();  } catch (_) {}
+      try { unsubDepts?.(); } catch (_) {}
+    };
   }, []);
 
   useEffect(() => {
@@ -334,13 +351,36 @@ const MapScreen = ({ navigation, route }) => {
     };
   }, []);
 
-  const normalizedLocations = locations
-    .map((b) => ({
-      ...b,
-      latitude: b.latitude ?? b.coordinates?.latitude,
-      longitude: b.longitude ?? b.coordinates?.longitude,
-    }))
-    .filter((b) => typeof b.latitude === 'number' && typeof b.longitude === 'number');
+  // Normalise a raw row from any collection into a map-ready object
+  const toMapPoint = (row, _type) => ({
+    ...row,
+    _type,
+    name:      row.name || row.title || row.names || _type,
+    category:  row.category || row.type || _type,
+    latitude:  row.latitude  ?? row.coordinates?.latitude,
+    longitude: row.longitude ?? row.coordinates?.longitude,
+  });
+
+  // Merge locations + buildings + amenities + departments
+  // Only include rows that have valid numeric coordinates
+  const normalizedLocations = useMemo(() => {
+    const allRows = [
+      ...locations.map((r)   => toMapPoint(r, 'Location')),
+      ...buildings.map((r)   => toMapPoint(r, 'Building')),
+      ...amenities.map((r)   => toMapPoint(r, 'Amenity')),
+      ...departments
+        .filter((r) => typeof r.latitude === 'number' && typeof r.longitude === 'number')
+        .map((r)    => toMapPoint(r, 'Department')),
+    ];
+    // Deduplicate by id and filter to valid coords
+    const seen = new Set();
+    return allRows.filter((p) => {
+      if (typeof p.latitude !== 'number' || typeof p.longitude !== 'number') return false;
+      if (seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
+  }, [locations, buildings, amenities, departments]);
 
   const mapLocations = useMemo(() => {
     if (!activeLocation) {
