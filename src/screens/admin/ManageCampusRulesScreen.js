@@ -14,6 +14,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as XLSX from 'xlsx';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import {
@@ -22,6 +24,68 @@ import {
   updateCampusRule,
   deleteCampusRule,
 } from '../../services/databaseService';
+
+// ── Import helpers ────────────────────────────────────────────────────────────
+const normalise = (s) => String(s ?? '').toLowerCase().replace(/[\s_\-().]/g, '');
+
+const RULES_COL_MAP = {
+  title:       ['title', 'name', 'rule'],
+  description: ['description', 'desc', 'detail', 'content'],
+  category:    ['category', 'cat', 'type', 'section'],
+  severity:    ['severity', 'level', 'priority', 'importance'],
+  is_active:   ['isactive', 'active', 'live', 'enabled', 'published'],
+};
+
+const VALID_CATEGORIES = ['Academic', 'Residential', 'Traffic & Parking', 'Code of Conduct'];
+const VALID_SEVERITIES = ['info', 'warning', 'critical'];
+
+const parseBool = (v) => {
+  if (typeof v === 'boolean') return v;
+  return !['false', '0', 'no', 'off', 'inactive', 'hidden'].includes(String(v).toLowerCase().trim());
+};
+
+const findCol = (headers, keys) => {
+  for (const k of keys) {
+    const found = headers.find((h) => normalise(h) === normalise(k));
+    if (found) return found;
+  }
+  return null;
+};
+
+const parseRulesSheet = (rows) => {
+  const valid = []; const errors = [];
+  rows.forEach((row, idx) => {
+    const headers = Object.keys(row);
+    const get = (keys) => {
+      const col = findCol(headers, keys);
+      return col ? String(row[col] ?? '').trim() : '';
+    };
+    const title       = get(RULES_COL_MAP.title);
+    const description = get(RULES_COL_MAP.description);
+    const category    = get(RULES_COL_MAP.category);
+    const severity    = get(RULES_COL_MAP.severity).toLowerCase();
+    const is_active   = parseBool(get(RULES_COL_MAP.is_active) || 'true');
+
+    const rowErrors = [];
+    if (!title)                                              rowErrors.push('title required');
+    if (!description)                                        rowErrors.push('description required');
+    if (category && !VALID_CATEGORIES.includes(category))   rowErrors.push(`invalid category "${category}"`);
+    if (severity && !VALID_SEVERITIES.includes(severity))   rowErrors.push(`invalid severity "${severity}"`);
+
+    if (rowErrors.length) {
+      errors.push({ row: idx + 2, reason: rowErrors.join(', ') });
+    } else {
+      valid.push({
+        title,
+        description,
+        category:  VALID_CATEGORIES.includes(category) ? category : 'Academic',
+        severity:  VALID_SEVERITIES.includes(severity) ? severity : 'info',
+        is_active,
+      });
+    }
+  });
+  return { valid, errors };
+};
 
 // ── Brand tokens ─────────────────────────────────────────────────────────────
 const NAVY = '#1A365D';
@@ -57,6 +121,12 @@ export default function ManageCampusRulesScreen({ navigation }) {
   const [filterCat, setFilterCat] = useState('All');
   const [search,    setSearch]    = useState('');
   const [errors,    setErrors]    = useState({});
+
+  // Import state
+  const [showImport,     setShowImport]     = useState(false);
+  const [importPreview,  setImportPreview]  = useState({ valid: [], errors: [] });
+  const [importing,      setImporting]      = useState(false);
+  const [importFileName, setImportFileName] = useState('');
 
   // Shake animation refs for invalid fields
   const shakeTitle = useRef(new Animated.Value(0)).current;
@@ -169,6 +239,49 @@ export default function ManageCampusRulesScreen({ navigation }) {
     );
   };
 
+  // ── Pick & parse file ──────────────────────────────────────────────────────
+  const handlePickFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/vnd.ms-excel',
+               'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+               'text/csv', 'text/comma-separated-values', '*/*'],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+      const file = result.assets[0];
+      setImportFileName(file.name || 'file');
+
+      const response    = await fetch(file.uri);
+      const arrayBuffer = await response.arrayBuffer();
+      const data        = new Uint8Array(arrayBuffer);
+      const workbook    = XLSX.read(data, { type: 'array' });
+      const sheet       = workbook.Sheets[workbook.SheetNames[0]];
+      const rows        = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+      if (!rows.length) { Alert.alert('Empty file', 'No data rows found in the spreadsheet.'); return; }
+      setImportPreview(parseRulesSheet(rows));
+      setShowImport(true);
+    } catch (err) {
+      console.error('[Import] parse error:', err);
+      Alert.alert('Import error', err?.message || 'Could not read file.');
+    }
+  };
+
+  // ── Bulk insert confirmed rows ──────────────────────────────────────────────
+  const handleConfirmImport = async () => {
+    if (!importPreview.valid.length) return;
+    setImporting(true);
+    let ok = 0; let fail = 0;
+    for (const row of importPreview.valid) {
+      try { await addCampusRule(row); ok++; }
+      catch { fail++; }
+    }
+    setImporting(false);
+    setShowImport(false);
+    Alert.alert('Import complete', `${ok} rule${ok !== 1 ? 's' : ''} imported${fail ? `, ${fail} failed` : ''}.`);
+  };
+
   const canGoBack = navigation?.canGoBack?.();
 
   // ── Rule card ───────────────────────────────────────────────────────────────
@@ -235,6 +348,10 @@ export default function ManageCampusRulesScreen({ navigation }) {
             <Text style={styles.headerEyebrow}>ADMIN</Text>
             <Text style={styles.headerTitle}>Campus Rules</Text>
           </View>
+          <TouchableOpacity style={styles.importBtn} onPress={handlePickFile} activeOpacity={0.85}>
+            <Ionicons name="cloud-upload-outline" size={16} color="rgba(255,255,255,0.85)" />
+            <Text style={styles.importBtnText}>Import</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.addBtn} onPress={openAdd} activeOpacity={0.85}>
             <Ionicons name="add" size={20} color={NAVY} />
             <Text style={styles.addBtnText}>Add Rule</Text>
@@ -291,6 +408,99 @@ export default function ManageCampusRulesScreen({ navigation }) {
           </View>
         }
       />
+
+      {/* ════════════════════════════════════════════════════════════════════════
+          IMPORT PREVIEW MODAL
+      ════════════════════════════════════════════════════════════════════════ */}
+      <Modal visible={showImport} transparent animationType="slide" onRequestClose={() => setShowImport(false)}>
+        <View style={styles.importBackdrop}>
+          <View style={styles.importSheet}>
+            <View style={[styles.importGoldBar, { backgroundColor: GOLD }]} />
+            <View style={styles.importHandle} />
+
+            {/* Header */}
+            <View style={styles.importSheetHeader}>
+              <View>
+                <Text style={styles.importSheetTitle}>Import Preview</Text>
+                <Text style={styles.importSheetFile} numberOfLines={1}>{importFileName}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowImport(false)} style={styles.importCloseBtn}>
+                <Ionicons name="close" size={20} color="#718096" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Stats row */}
+            <View style={styles.importStats}>
+              <View style={[styles.importStatChip, { backgroundColor: '#D1FAE5' }]}>
+                <Ionicons name="checkmark-circle-outline" size={15} color="#059669" />
+                <Text style={[styles.importStatText, { color: '#059669' }]}>{importPreview.valid.length} valid</Text>
+              </View>
+              {importPreview.errors.length > 0 && (
+                <View style={[styles.importStatChip, { backgroundColor: '#FEE2E2' }]}>
+                  <Ionicons name="alert-circle-outline" size={15} color="#DC2626" />
+                  <Text style={[styles.importStatText, { color: '#DC2626' }]}>{importPreview.errors.length} skipped</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Template hint */}
+            <View style={styles.importHint}>
+              <Ionicons name="information-circle-outline" size={14} color={GOLD} />
+              <Text style={styles.importHintText}>
+                Expected columns: <Text style={{ fontWeight: '700' }}>title*,  description*,  category,  severity,  is_active</Text>
+              </Text>
+            </View>
+
+            {/* Preview rows */}
+            <ScrollView style={styles.importPreviewScroll} showsVerticalScrollIndicator={false}>
+              {/* Column headers */}
+              <View style={[styles.importRow, styles.importRowHeader]}>
+                {['Title', 'Category', 'Severity', 'Active'].map((h) => (
+                  <Text key={h} style={[styles.importCell, styles.importCellHeader]}>{h}</Text>
+                ))}
+              </View>
+              {importPreview.valid.slice(0, 10).map((row, i) => (
+                <View key={i} style={[styles.importRow, i % 2 === 0 && styles.importRowAlt]}>
+                  <Text style={styles.importCell} numberOfLines={1}>{row.title}</Text>
+                  <Text style={styles.importCell} numberOfLines={1}>{row.category || '—'}</Text>
+                  <View style={[styles.importSevBadge, { backgroundColor: SEV[row.severity]?.bg || '#DBEAFE' }]}>
+                    <Text style={[styles.importSevText, { color: SEV[row.severity]?.color || '#2563EB' }]}>{row.severity}</Text>
+                  </View>
+                  <Text style={[styles.importCell, { color: row.is_active ? '#059669' : '#9CA3AF' }]}>
+                    {row.is_active ? 'Yes' : 'No'}
+                  </Text>
+                </View>
+              ))}
+              {importPreview.valid.length > 10 && (
+                <Text style={styles.importMore}>+{importPreview.valid.length - 10} more rows…</Text>
+              )}
+
+              {/* Skipped rows */}
+              {importPreview.errors.length > 0 && (
+                <View style={styles.importErrorsWrap}>
+                  <Text style={styles.importErrorsTitle}>Skipped rows:</Text>
+                  {importPreview.errors.map((e, i) => (
+                    <Text key={i} style={styles.importErrorRow}>Row {e.row}: {e.reason}</Text>
+                  ))}
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Confirm button */}
+            <TouchableOpacity
+              style={[styles.importConfirmBtn, (!importPreview.valid.length || importing) && { opacity: 0.5 }]}
+              onPress={handleConfirmImport}
+              disabled={!importPreview.valid.length || importing}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="cloud-upload-outline" size={18} color={NAVY} />
+              <Text style={styles.importConfirmText}>
+                {importing ? 'Importing…' : `Import ${importPreview.valid.length} Rule${importPreview.valid.length !== 1 ? 's' : ''}`}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* ════════════════════════════════════════════════════════════════════════
           FORM MODAL
@@ -617,4 +827,37 @@ const styles = StyleSheet.create({
   saveBtn:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 56, borderRadius: 16, backgroundColor: GOLD, marginTop: 22 },
   saveBtnDisabled: { opacity: 0.5 },
   saveBtnText:     { fontSize: 16, fontWeight: '800', color: NAVY },
+
+  // ── Import button (header)
+  importBtn:      { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)' },
+  importBtnText:  { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.85)' },
+
+  // ── Import preview modal
+  importBackdrop:      { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  importSheet:         { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 20, paddingBottom: 36, maxHeight: '88%', overflow: 'hidden' },
+  importGoldBar:       { height: 3, marginHorizontal: -20 },
+  importHandle:        { width: 44, height: 4, borderRadius: 2, backgroundColor: '#CBD5E0', alignSelf: 'center', marginTop: 10, marginBottom: 16 },
+  importSheetHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
+  importSheetTitle:    { fontSize: 18, fontWeight: '800', color: '#2D3748' },
+  importSheetFile:     { fontSize: 12, color: '#718096', marginTop: 3, maxWidth: 260 },
+  importCloseBtn:      { width: 32, height: 32, borderRadius: 10, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
+  importStats:         { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  importStatChip:      { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
+  importStatText:      { fontSize: 13, fontWeight: '700' },
+  importHint:          { flexDirection: 'row', alignItems: 'flex-start', gap: 7, backgroundColor: 'rgba(197,160,71,0.10)', borderRadius: 12, padding: 10, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(197,160,71,0.25)' },
+  importHintText:      { flex: 1, fontSize: 12, color: '#4A5568', lineHeight: 17 },
+  importPreviewScroll: { maxHeight: 300, marginBottom: 16 },
+  importRow:           { flexDirection: 'row', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  importRowHeader:     { borderBottomWidth: 2, borderBottomColor: '#E2E8F0', backgroundColor: '#F8F9FA' },
+  importRowAlt:        { backgroundColor: '#FAFBFC' },
+  importCell:          { flex: 1, fontSize: 12, color: '#2D3748', paddingHorizontal: 4 },
+  importCellHeader:    { fontWeight: '800', fontSize: 11, color: '#718096', textTransform: 'uppercase', letterSpacing: 0.4 },
+  importSevBadge:      { flex: 1, alignSelf: 'center', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginHorizontal: 4 },
+  importSevText:       { fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+  importMore:          { fontSize: 12, color: '#718096', textAlign: 'center', paddingVertical: 8, fontStyle: 'italic' },
+  importErrorsWrap:    { marginTop: 12, backgroundColor: '#FFF5F5', borderRadius: 12, padding: 12 },
+  importErrorsTitle:   { fontSize: 12, fontWeight: '700', color: '#DC2626', marginBottom: 6 },
+  importErrorRow:      { fontSize: 12, color: '#9B2335', marginBottom: 3 },
+  importConfirmBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 54, borderRadius: 16, backgroundColor: GOLD },
+  importConfirmText:   { fontSize: 15, fontWeight: '800', color: NAVY },
 });
