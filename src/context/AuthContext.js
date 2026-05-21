@@ -243,19 +243,16 @@ export const AuthProvider = ({ children }) => {
   };
 
   // ── resendOtp ───────────────────────────────────────────────────────────────
+  // Both signup and recovery resend use signInWithOtp — it reliably
+  // triggers the same SMTP path (Brevo) that delivered the original code.
+  // supabase.auth.resend({ type:'signup' }) can fail silently in some
+  // project configurations, so we avoid it here.
   const resendOtp = async (email, type) => {
-    if (type === 'recovery') {
-      // Re-send password recovery OTP
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email.toLowerCase().trim(),
-        options: { shouldCreateUser: false },
-      });
-      if (error) throw error;
-    } else {
-      // Re-send signup confirmation
-      const { error } = await supabase.auth.resend({ type: 'signup', email: email.toLowerCase().trim() });
-      if (error) throw error;
-    }
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.toLowerCase().trim(),
+      options: { shouldCreateUser: false },
+    });
+    if (error) throw error;
   };
 
   // ── resetPassword ───────────────────────────────────────────────────────────

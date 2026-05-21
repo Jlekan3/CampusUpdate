@@ -22,11 +22,13 @@ export default function OTPVerificationScreen({ navigation, route }) {
   const { email, type } = route.params;
   const { verifyOtp, resendOtp } = useAuth();
 
-  const [otp,       setOtp]       = useState('');
-  const [otpError,  setOtpError]  = useState('');
-  const [loading,   setLoading]   = useState(false);
-  const [verified,  setVerified]  = useState(false);   // signup success state
-  const [cooldown,  setCooldown]  = useState(RESEND_COOLDOWN);
+  const [otp,        setOtp]        = useState('');
+  const [otpError,   setOtpError]   = useState('');
+  const [loading,    setLoading]    = useState(false);
+  const [verified,   setVerified]   = useState(false);
+  const [resending,  setResending]  = useState(false);
+  const [resendMsg,  setResendMsg]  = useState('');
+  const [cooldown,   setCooldown]   = useState(RESEND_COOLDOWN);
   const timer = useRef(null);
 
   useEffect(() => {
@@ -69,13 +71,19 @@ export default function OTPVerificationScreen({ navigation, route }) {
   };
 
   const handleResend = async () => {
-    if (cooldown > 0) return;
+    if (cooldown > 0 || resending) return;
+    setResending(true);
+    setResendMsg('');
+    setOtpError('');
+    setOtp('');
     try {
       await resendOtp(email, type);
       startCooldown();
-      Alert.alert('Code sent', `A new code was sent to ${email}`);
+      setResendMsg(`A new code was sent to ${email}`);
     } catch (err) {
-      Alert.alert('Error', err.message || 'Could not resend code');
+      setResendMsg(err.message || 'Could not resend code. Please try again.');
+    } finally {
+      setResending(false);
     }
   };
 
@@ -144,12 +152,33 @@ export default function OTPVerificationScreen({ navigation, route }) {
 
           <View style={styles.resendRow}>
             <Text style={styles.resendPrompt}>Didn't receive a code? </Text>
-            <TouchableOpacity onPress={handleResend} disabled={cooldown > 0} activeOpacity={0.7}>
-              <Text style={[styles.resendLink, cooldown > 0 && styles.resendLinkDisabled]}>
-                {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend'}
+            <TouchableOpacity
+              onPress={handleResend}
+              disabled={cooldown > 0 || resending}
+              activeOpacity={0.7}
+            >
+              <Text style={[
+                styles.resendLink,
+                (cooldown > 0 || resending) && styles.resendLinkDisabled,
+              ]}>
+                {resending
+                  ? 'Sending…'
+                  : cooldown > 0
+                    ? `Resend in ${cooldown}s`
+                    : 'Resend Code'}
               </Text>
             </TouchableOpacity>
           </View>
+
+          {/* Inline resend feedback */}
+          {resendMsg ? (
+            <Text style={[
+              styles.resendFeedback,
+              resendMsg.includes('sent') ? styles.resendSuccess : styles.resendError,
+            ]}>
+              {resendMsg}
+            </Text>
+          ) : null}
         </View>
 
         <Text style={styles.spamNote}>
@@ -199,7 +228,10 @@ const styles = StyleSheet.create({
   resendPrompt: { fontSize: 14, color: '#64748B' },
   resendLink: { fontSize: 14, color: '#1A365D', fontWeight: '700' },
   resendLinkDisabled: { color: '#94A3B8' },
-  spamNote: { fontSize: 13, color: '#94A3B8', textAlign: 'center', marginTop: 20, lineHeight: 19 },
+  spamNote:       { fontSize: 13, color: '#94A3B8', textAlign: 'center', marginTop: 20, lineHeight: 19 },
+  resendFeedback: { fontSize: 12, textAlign: 'center', marginTop: 10, lineHeight: 17 },
+  resendSuccess:  { color: '#059669' },
+  resendError:    { color: '#DC2626' },
 
   // Success state (signup confirmed)
   successRoot:    { flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 },
