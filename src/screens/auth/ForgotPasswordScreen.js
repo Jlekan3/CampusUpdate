@@ -18,14 +18,15 @@ import { forgotPasswordSchema, validate } from '../../utils/validationSchemas';
 import { FONTS } from '../../utils/theme';
 
 const PRIMARY      = '#1A365D';
-const INPUT_BG     = 'rgba(255,255,255,0.12)';
-const INPUT_FOCUS  = 'rgba(255,255,255,0.20)';
-const BORDER       = 'rgba(255,255,255,0.25)';
-const BORDER_FOCUS = 'rgba(255,255,255,0.70)';
+const BLUE         = '#2563EB';
+const DARK         = '#0F172A';
+const MUTED        = '#64748B';
+const INPUT_BG     = '#F8FAFC';
+const INPUT_FOCUS  = '#FFFFFF';
+const BORDER       = '#E2E8F0';
+const BORDER_FOCUS = '#2563EB';
 const BORDER_ERR   = '#FCA5A5';
 const WHITE        = '#FFFFFF';
-const WHITE_70     = 'rgba(255,255,255,0.70)';
-const WHITE_45     = 'rgba(255,255,255,0.45)';
 
 export default function ForgotPasswordScreen({ navigation }) {
   const { forgotPassword } = useAuth();
@@ -56,7 +57,7 @@ export default function ForgotPasswordScreen({ navigation }) {
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
-      <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
+      <StatusBar barStyle="dark-content" backgroundColor={WHITE} />
 
       <KeyboardAvoidingView
         style={s.flex}
@@ -71,13 +72,13 @@ export default function ForgotPasswordScreen({ navigation }) {
         >
           {/* ── Back button ── */}
           <TouchableOpacity onPress={goBack} activeOpacity={0.7} style={s.backBtn}>
-            <Ionicons name="arrow-back-outline" size={22} color={WHITE} />
+            <Ionicons name="arrow-back-outline" size={22} color={DARK} />
           </TouchableOpacity>
 
           {/* ── Icon + title ── */}
           <View style={s.topSection}>
             <View style={s.iconCircle}>
-              <Ionicons name="key-outline" size={32} color={WHITE} />
+              <Ionicons name="key-outline" size={32} color={BLUE} />
             </View>
             <Text style={s.title}>Forgot Password?</Text>
             <Text style={s.subtitle}>
@@ -90,11 +91,11 @@ export default function ForgotPasswordScreen({ navigation }) {
             <View style={s.fieldWrap}>
               <Text style={s.label}>Email Address</Text>
               <View style={[s.inputRow, focused && s.inputRowFocused, errors.email && s.inputRowError]}>
-                <Ionicons name="mail-outline" size={18} color={focused ? WHITE : WHITE_70} />
+                <Ionicons name="mail-outline" size={18} color={focused ? BLUE : MUTED} />
                 <TextInput
                   style={s.input}
                   placeholder="name@rmu.edu.gh"
-                  placeholderTextColor={WHITE_45}
+                  placeholderTextColor="#94A3B8"
                   autoCapitalize="none"
                   keyboardType="email-address"
                   value={email}
@@ -117,7 +118,7 @@ export default function ForgotPasswordScreen({ navigation }) {
               ) : (
                 <View style={s.btnInner}>
                   <Text style={s.btnText}>Send Verification Code</Text>
-                  <Ionicons name="arrow-forward" size={18} color={PRIMARY} style={{ marginLeft: 6 }} />
+                  <Ionicons name="arrow-forward" size={18} color={WHITE} style={{ marginLeft: 6 }} />
                 </View>
               )}
             </TouchableOpacity>
@@ -136,7 +137,7 @@ export default function ForgotPasswordScreen({ navigation }) {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: PRIMARY },
+  root: { flex: 1, backgroundColor: WHITE },
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingHorizontal: 24, paddingBottom: 48 },
 
@@ -147,82 +148,55 @@ const s = StyleSheet.create({
     alignSelf: 'flex-start',
   },
 
-  topSection: {
-    marginBottom: 44,
-  },
+  topSection: { marginBottom: 44 },
   iconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 2, borderColor: '#BFDBFE',
+    justifyContent: 'center', alignItems: 'center',
     marginBottom: 24,
   },
   title: {
-    fontSize: 32,
-    fontFamily: FONTS.extraBold,
-    color: WHITE,
-    letterSpacing: -0.5,
-    marginBottom: 12,
+    fontSize: 32, fontFamily: FONTS.extraBold,
+    color: DARK, letterSpacing: -0.5, marginBottom: 12,
   },
   subtitle: {
-    fontSize: 15,
-    fontFamily: FONTS.regular,
-    color: WHITE_70,
-    lineHeight: 23,
+    fontSize: 15, fontFamily: FONTS.regular,
+    color: MUTED, lineHeight: 23,
   },
 
   form: { flex: 1 },
 
   fieldWrap: { marginBottom: 24 },
   label: {
-    fontSize: 13,
-    fontFamily: FONTS.semiBold,
-    color: WHITE_70,
-    marginBottom: 8,
-    letterSpacing: 0.3,
+    fontSize: 13, fontFamily: FONTS.semiBold,
+    color: '#374151', marginBottom: 8, letterSpacing: 0.3,
   },
   inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: INPUT_BG,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: BORDER,
-    paddingHorizontal: 16,
-    height: 54,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: INPUT_BG, borderRadius: 14,
+    borderWidth: 1.5, borderColor: BORDER,
+    paddingHorizontal: 16, height: 54,
   },
   inputRowFocused: { backgroundColor: INPUT_FOCUS, borderColor: BORDER_FOCUS },
-  inputRowError: { borderColor: BORDER_ERR },
+  inputRowError:   { borderColor: BORDER_ERR },
   input: {
-    flex: 1,
-    fontSize: 15,
-    fontFamily: FONTS.regular,
-    color: WHITE,
-    marginHorizontal: 10,
+    flex: 1, fontSize: 15, fontFamily: FONTS.regular,
+    color: DARK, marginHorizontal: 10,
   },
-  fieldError: { fontSize: 12, fontFamily: FONTS.medium, color: '#FCA5A5', marginTop: 6 },
+  fieldError: { fontSize: 12, fontFamily: FONTS.medium, color: '#DC2626', marginTop: 6 },
 
   btn: {
-    height: 54,
-    backgroundColor: WHITE,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    height: 54, backgroundColor: BLUE, borderRadius: 14,
+    justifyContent: 'center', alignItems: 'center',
+    shadowColor: BLUE, shadowOpacity: 0.3, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 }, elevation: 6,
   },
   btnDisabled: { opacity: 0.6 },
-  btnInner: { flexDirection: 'row', alignItems: 'center' },
-  btnText: { fontSize: 16, fontFamily: FONTS.bold, color: PRIMARY, letterSpacing: 0.3 },
+  btnInner:    { flexDirection: 'row', alignItems: 'center' },
+  btnText:     { fontSize: 16, fontFamily: FONTS.bold, color: WHITE, letterSpacing: 0.3 },
 
-  loginRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
-  loginPrompt: { fontSize: 14, fontFamily: FONTS.regular, color: WHITE_70 },
-  loginLink: { fontSize: 14, fontFamily: FONTS.bold, color: WHITE },
+  loginRow:    { flexDirection: 'row', justifyContent: 'center', marginTop: 24 },
+  loginPrompt: { fontSize: 14, fontFamily: FONTS.regular, color: DARK },
+  loginLink:   { fontSize: 14, fontFamily: FONTS.bold,    color: DARK },
 });
