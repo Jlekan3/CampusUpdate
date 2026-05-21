@@ -848,8 +848,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
   },
   filterChipActive: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A',
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
   },
   filterChipText: {
     fontSize: 13,
@@ -1147,8 +1147,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
   },
   locationChipActive: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A',
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
   },
   locationChipText: {
     fontSize: 13,
@@ -1179,8 +1179,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   eventCategoryButtonActive: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A',
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
   },
   eventCategoryButtonText: {
     fontSize: 13,
@@ -1207,8 +1207,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   audienceButtonActive: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A',
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
   },
   audienceButtonText: {
     fontSize: 14,
@@ -1236,8 +1236,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   typeButtonActive: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A',
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
   },
   typeButtonDisabled: {
     opacity: 0.5,
@@ -1257,7 +1257,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 12,
     borderLeftWidth: 4,
-    borderLeftColor: '#0F172A',
+    borderLeftColor: '#2563EB',
   },
   previewLabel: {
     fontSize: 12,

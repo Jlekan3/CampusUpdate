@@ -93,8 +93,8 @@ const AdminSettingsScreen = ({ navigation }) => {
 
   const SectionHeader = ({ icon, title }) => (
     <View style={styles.sectionHeader}>
-      <View style={[styles.sectionIcon, { backgroundColor: '#1A365D' }]}>
-        <Ionicons name={icon} size={16} color="#C5A047" />
+      <View style={[styles.sectionIcon, { backgroundColor: '#2563EB' }]}>
+        <Ionicons name={icon} size={16} color="#FFFFFF" />
       </View>
       <Text style={[styles.sectionTitle, { color: colors.textDark }]}>{title}</Text>
     </View>
@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
   inputReadonlyText: { fontSize: 14 },
   pwdRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   eyeBtn: { padding: 12 },
-  saveBtn: { backgroundColor: '#1A365D', borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 16 },
+  saveBtn: { backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 16 },
   saveBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14 },
   settingRowLeft: { flexDirection: 'row', alignItems: 'center' },

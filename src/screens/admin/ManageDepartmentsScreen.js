@@ -248,7 +248,7 @@ const ManageDepartmentsScreen = ({ navigation }) => {
             <TouchableOpacity
               key={f}
               onPress={() => setStatusFilter(f)}
-              style={[styles.filterPill, { backgroundColor: statusFilter === f ? '#1A365D' : colors.surface, borderColor: statusFilter === f ? '#1A365D' : colors.border }]}
+              style={[styles.filterPill, { backgroundColor: statusFilter === f ? '#2563EB' : colors.surface, borderColor: statusFilter === f ? '#2563EB' : colors.border }]}
             >
               <Text style={[styles.filterPillText, { color: statusFilter === f ? '#fff' : colors.textMuted }]}>{f}</Text>
             </TouchableOpacity>
@@ -317,7 +317,7 @@ const ManageDepartmentsScreen = ({ navigation }) => {
               <Text style={[styles.label, { color: colors.textDark }]}>Category</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow}>
                 {CATEGORY_OPTIONS.map((c) => (
-                  <TouchableOpacity key={c} onPress={() => setForm((f) => ({ ...f, category: c }))} style={[styles.chip, { backgroundColor: form.category === c ? '#1A365D' : colors.background, borderColor: form.category === c ? '#1A365D' : colors.border }]}>
+                  <TouchableOpacity key={c} onPress={() => setForm((f) => ({ ...f, category: c }))} style={[styles.chip, { backgroundColor: form.category === c ? '#2563EB' : colors.background, borderColor: form.category === c ? '#2563EB' : colors.border }]}>
                     <Text style={[styles.chipText, { color: form.category === c ? '#fff' : colors.textMuted }]}>{c}</Text>
                   </TouchableOpacity>
                 ))}
@@ -508,7 +508,7 @@ const styles = StyleSheet.create({
   btn: { flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   btnCancel: { borderWidth: 1 },
   btnDanger: { backgroundColor: '#E53E3E' },
-  btnPrimary: { backgroundColor: '#1A365D' },
+  btnPrimary: { backgroundColor: '#2563EB' },
   btnText: { fontSize: 14, fontWeight: '700' },
 });
 

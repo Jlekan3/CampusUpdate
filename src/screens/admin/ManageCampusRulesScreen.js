@@ -608,7 +608,7 @@ const s = StyleSheet.create({
   emptyGlow:    { position: 'absolute', width: 90, height: 90, borderRadius: 45, backgroundColor: '#F3F4F6', shadowColor: '#9CA3AF', shadowOpacity: 0.35, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
   emptyTitle:   { fontSize: 20, fontWeight: '700', color: DARK, textAlign: 'center' },
   emptySub:     { fontSize: 13, color: MUTED, textAlign: 'center', lineHeight: 20 },
-  emptyBtn:     { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: CHARCOAL, paddingHorizontal: 20, paddingVertical: 11, borderRadius: 12, marginTop: 4 },
+  emptyBtn:     { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#2563EB', paddingHorizontal: 20, paddingVertical: 11, borderRadius: 12, marginTop: 4 },
   emptyBtnTxt:  { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
 
   // Action sheet
@@ -640,8 +640,8 @@ const s = StyleSheet.create({
   errWrap:      { marginTop: 12, backgroundColor: '#FEF2F2', borderRadius: 10, padding: 12 },
   errTitle:     { fontSize: 12, fontWeight: '700', color: '#DC2626', marginBottom: 6 },
   errRow:       { fontSize: 12, color: '#991B1B', marginBottom: 2 },
-  importBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 52, borderRadius: 14, backgroundColor: GOLD, marginTop: 16 },
-  importBtnTxt: { fontSize: 15, fontWeight: '800', color: CHARCOAL },
+  importBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 52, borderRadius: 14, backgroundColor: '#2563EB', marginTop: 16 },
+  importBtnTxt: { fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
 
   // Form modal
   formHeader:     { backgroundColor: CHARCOAL, paddingTop: 52, paddingBottom: 20, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 14 },
@@ -675,6 +675,6 @@ const s = StyleSheet.create({
   toggleLabel:   { fontSize: 14, fontWeight: '600', color: DARK },
   toggleSub:     { fontSize: 12, color: MUTED, marginTop: 2 },
 
-  saveBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 54, borderRadius: 14, backgroundColor: GOLD, marginTop: 24 },
-  saveBtnTxt: { fontSize: 15, fontWeight: '800', color: CHARCOAL },
+  saveBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 54, borderRadius: 14, backgroundColor: '#2563EB', marginTop: 24 },
+  saveBtnTxt: { fontSize: 15, fontWeight: '800', color: '#FFFFFF' },
 });

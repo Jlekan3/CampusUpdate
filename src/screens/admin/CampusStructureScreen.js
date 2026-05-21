@@ -21,6 +21,7 @@ import {
 } from '../../services/databaseService';
 
 const PRIMARY = ADMIN_THEME.primary;
+const BLUE    = '#2563EB';
 
 // ── Category config ──────────────────────────────────────────────────────────
 const CATEGORIES = ['Building', 'Department', 'Dining', 'Hostel', 'Gate', 'Other'];
@@ -1302,7 +1303,7 @@ const s = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   empty: { flex: 1, alignItems: 'center', paddingTop: 80 },
   emptyText: { fontSize: 16, fontWeight: '600', color: '#94A3B8', marginTop: 12, marginBottom: 20 },
-  emptyBtn: { backgroundColor: PRIMARY, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
+  emptyBtn: { backgroundColor: BLUE, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12 },
   emptyBtnText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
 
   // ── Card ──
@@ -1472,9 +1473,9 @@ const f = StyleSheet.create({
 
   // Save
   saveBtn: {
-    height: 52, backgroundColor: PRIMARY, borderRadius: 14,
+    height: 52, backgroundColor: BLUE, borderRadius: 14,
     justifyContent: 'center', alignItems: 'center', marginTop: 8,
-    shadowColor: PRIMARY, shadowOpacity: 0.3, shadowRadius: 8,
+    shadowColor: BLUE, shadowOpacity: 0.3, shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 }, elevation: 4,
   },
   saveBtnDisabled: { opacity: 0.6 },
@@ -1574,7 +1575,7 @@ const mi = StyleSheet.create({
     borderWidth: 1.5, borderColor: '#E2E8F0',
   },
   uploadBtn: {
-    backgroundColor: PRIMARY, borderColor: PRIMARY,
+    backgroundColor: BLUE, borderColor: BLUE,
   },
   actionBtnText: {
     fontSize: 13, fontWeight: '600', color: PRIMARY,

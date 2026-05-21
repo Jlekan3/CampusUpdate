@@ -937,8 +937,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   iconChipActive: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A',
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
   },
   coordinateHint: {
     fontSize: 12,

@@ -822,8 +822,8 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   chipActive: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A',
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
   },
   chipText: {
     fontSize: 13,
@@ -845,8 +845,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   iconChipActive: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A',
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
   },
   buttonRow: {
     flexDirection: 'row',

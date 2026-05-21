@@ -563,8 +563,8 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   filterChipActive: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A',
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
   },
   filterChipText: {
     fontSize: 13,
@@ -603,7 +603,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#0F172A',
+    backgroundColor: '#2563EB',
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,

@@ -407,7 +407,7 @@ const styles = StyleSheet.create({
   btnRow: { flexDirection: 'row', gap: 10 },
   btn: { flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
   btnCancel: { borderWidth: 1 },
-  btnPrimary: { backgroundColor: '#1A365D' },
+  btnPrimary: { backgroundColor: '#2563EB' },
   btnText: { fontSize: 14, fontWeight: '700' },
   alertSheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 12, paddingBottom: 8 },
   alertSheetHeader: { alignItems: 'center', padding: 20, paddingBottom: 16 },

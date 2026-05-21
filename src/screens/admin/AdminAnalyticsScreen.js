@@ -771,9 +771,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: '#1E293B',
+    backgroundColor: '#2563EB',
     borderWidth: 1,
-    borderColor: '#0F172A',
+    borderColor: '#1D4ED8',
   },
   exportButtonDisabled: {
     opacity: 0.6,
