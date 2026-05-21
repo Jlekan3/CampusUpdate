@@ -18,16 +18,15 @@ import { useAuth } from '../../context/AuthContext';
 import { loginSchema, validate } from '../../utils/validationSchemas';
 import { FONTS } from '../../utils/theme';
 
-const PRIMARY = '#1A365D';
-const PRIMARY_DARK = '#0F2240';
-const INPUT_BG = 'rgba(255,255,255,0.12)';
-const INPUT_BG_FOCUSED = 'rgba(255,255,255,0.2)';
-const INPUT_BORDER = 'rgba(255,255,255,0.25)';
-const INPUT_BORDER_FOCUSED = 'rgba(255,255,255,0.7)';
-const INPUT_BORDER_ERROR = '#FCA5A5';
+const PRIMARY      = '#1A365D';
+const BLUE         = '#2563EB';
+const DARK         = '#0F172A';
+const MUTED        = '#64748B';
+const INPUT_BG     = '#F8FAFC';
+const INPUT_BORDER = '#E2E8F0';
+const INPUT_BORDER_FOCUSED = '#2563EB';
+const INPUT_BORDER_ERROR   = '#FCA5A5';
 const WHITE = '#FFFFFF';
-const WHITE_70 = 'rgba(255,255,255,0.7)';
-const WHITE_45 = 'rgba(255,255,255,0.45)';
 
 export default function LoginScreen({ navigation }) {
   const { login, loading } = useAuth();
@@ -51,7 +50,7 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
-      <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
+      <StatusBar barStyle="dark-content" backgroundColor={WHITE} />
       <KeyboardAvoidingView
         style={s.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -88,11 +87,11 @@ export default function LoginScreen({ navigation }) {
                 emailFocused && s.inputRowFocused,
                 errors.email && s.inputRowError,
               ]}>
-                <Ionicons name="mail-outline" size={18} color={emailFocused ? WHITE : WHITE_70} />
+                <Ionicons name="mail-outline" size={18} color={emailFocused ? BLUE : MUTED} />
                 <TextInput
                   style={s.input}
                   placeholder="name@rmu.edu.gh"
-                  placeholderTextColor={WHITE_45}
+                  placeholderTextColor="#94A3B8"
                   autoCapitalize="none"
                   keyboardType="email-address"
                   value={email}
@@ -112,11 +111,11 @@ export default function LoginScreen({ navigation }) {
                 passwordFocused && s.inputRowFocused,
                 errors.password && s.inputRowError,
               ]}>
-                <Ionicons name="lock-closed-outline" size={18} color={passwordFocused ? WHITE : WHITE_70} />
+                <Ionicons name="lock-closed-outline" size={18} color={passwordFocused ? BLUE : MUTED} />
                 <TextInput
                   style={s.input}
                   placeholder="Your password"
-                  placeholderTextColor={WHITE_45}
+                  placeholderTextColor="#94A3B8"
                   secureTextEntry={!showPw}
                   value={password}
                   onChangeText={setPassword}
@@ -124,7 +123,7 @@ export default function LoginScreen({ navigation }) {
                   onBlur={() => setPasswordFocused(false)}
                 />
                 <TouchableOpacity onPress={() => setShowPw((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Ionicons name={showPw ? 'eye-off-outline' : 'eye-outline'} size={18} color={WHITE_70} />
+                  <Ionicons name={showPw ? 'eye-off-outline' : 'eye-outline'} size={18} color={MUTED} />
                 </TouchableOpacity>
               </View>
               {errors.password ? <Text style={s.fieldError}>{errors.password}</Text> : null}
@@ -146,7 +145,7 @@ export default function LoginScreen({ navigation }) {
               ) : (
                 <View style={s.btnInner}>
                   <Text style={s.btnText}>Sign In</Text>
-                  <Ionicons name="arrow-forward" size={18} color={PRIMARY} style={{ marginLeft: 6 }} />
+                  <Ionicons name="arrow-forward" size={18} color={WHITE} style={{ marginLeft: 6 }} />
                 </View>
               )}
             </TouchableOpacity>
@@ -173,7 +172,7 @@ export default function LoginScreen({ navigation }) {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: PRIMARY },
+  root: { flex: 1, backgroundColor: WHITE },
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingHorizontal: 28 },
 
@@ -193,14 +192,14 @@ const s = StyleSheet.create({
   title: {
     fontSize: 36,
     fontFamily: FONTS.extraBold,
-    color: WHITE,
+    color: DARK,
     letterSpacing: -0.5,
     marginBottom: 6,
   },
   subtitle: {
     fontSize: 15,
     fontFamily: FONTS.regular,
-    color: WHITE_70,
+    color: MUTED,
   },
 
   form: {
@@ -212,7 +211,7 @@ const s = StyleSheet.create({
   label: {
     fontSize: 13,
     fontFamily: FONTS.semiBold,
-    color: WHITE_70,
+    color: '#374151',
     marginBottom: 8,
     letterSpacing: 0.3,
   },
@@ -227,7 +226,7 @@ const s = StyleSheet.create({
     height: 54,
   },
   inputRowFocused: {
-    backgroundColor: INPUT_BG_FOCUSED,
+    backgroundColor: WHITE,
     borderColor: INPUT_BORDER_FOCUSED,
   },
   inputRowError: {
@@ -237,27 +236,27 @@ const s = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontFamily: FONTS.regular,
-    color: WHITE,
+    color: DARK,
     marginHorizontal: 10,
   },
   fieldError: {
     fontSize: 12,
     fontFamily: FONTS.medium,
-    color: '#FCA5A5',
+    color: '#DC2626',
     marginTop: 6,
   },
 
   forgotWrap: { alignSelf: 'flex-end', marginTop: -8, marginBottom: 28 },
-  forgot: { fontSize: 13, fontFamily: FONTS.semiBold, color: WHITE_70 },
+  forgot: { fontSize: 13, fontFamily: FONTS.semiBold, color: MUTED },
 
   btn: {
     height: 54,
-    backgroundColor: WHITE,
+    backgroundColor: BLUE,
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
+    shadowColor: BLUE,
+    shadowOpacity: 0.3,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
     elevation: 6,
@@ -267,20 +266,20 @@ const s = StyleSheet.create({
   btnText: {
     fontSize: 16,
     fontFamily: FONTS.bold,
-    color: PRIMARY,
+    color: WHITE,
     letterSpacing: 0.3,
   },
 
   divRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 28 },
-  divLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.15)' },
+  divLine: { flex: 1, height: 1, backgroundColor: '#E2E8F0' },
   divText: {
     marginHorizontal: 14,
     fontSize: 13,
     fontFamily: FONTS.regular,
-    color: WHITE_45,
+    color: '#94A3B8',
   },
 
   signupRow: { flexDirection: 'row', justifyContent: 'center' },
-  signupPrompt: { fontSize: 14, fontFamily: FONTS.regular, color: WHITE_70 },
-  signupLink: { fontSize: 14, fontFamily: FONTS.bold, color: WHITE },
+  signupPrompt: { fontSize: 14, fontFamily: FONTS.regular, color: DARK },
+  signupLink: { fontSize: 14, fontFamily: FONTS.bold, color: DARK },
 });
