@@ -17,12 +17,12 @@ import { supabase } from '../../config/supabase';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const NAVY   = '#1A365D';
-const GOLD   = '#C5A047';
+const BLUE   = '#2563EB';
 const SLATE  = '#1E293B';
-const DARK   = '#334155';
+const DARK   = '#0F172A';
 const MUTED  = '#64748B';
 const LIGHT  = '#94A3B8';
-const BG     = '#F8F9FA';
+const BG     = '#FFFFFF';
 const SURFACE= '#FFFFFF';
 const BORDER = '#E2E8F0';
 
@@ -253,16 +253,6 @@ export default function GuestHomeScreen({ navigation }) {
       route:    'GuestCampusRules',
     },
     {
-      id:       'emergency',
-      title:    'Emergency & Support',
-      sub:      contacts.length ? `${contacts.length} support line${contacts.length === 1 ? '' : 's'}` : 'Campus safety contacts',
-      icon:     'call-outline',
-      accent:   '#DC2626',
-      accentBg: '#FEF2F2',
-      preview:  <EmergencyPreview contacts={contacts} loading={loadingContacts} />,
-      route:    'GuestEmergency',
-    },
-    {
       id:       'dining',
       title:    'Dining & Cafeterias',
       sub:      dining.length ? `${dining.length} campus hub${dining.length === 1 ? '' : 's'}` : 'Campus food outlets',
@@ -271,6 +261,16 @@ export default function GuestHomeScreen({ navigation }) {
       accentBg: '#FFFBEB',
       preview:  <DiningPreview dining={dining} loading={loadingDining} />,
       route:    'GuestDining',
+    },
+    {
+      id:       'emergency',
+      title:    'Emergency & Support',
+      sub:      contacts.length ? `${contacts.length} support line${contacts.length === 1 ? '' : 's'}` : 'Campus safety contacts',
+      icon:     'call-outline',
+      accent:   '#DC2626',
+      accentBg: '#FEF2F2',
+      preview:  <EmergencyPreview contacts={contacts} loading={loadingContacts} />,
+      route:    'GuestEmergency',
     },
   ];
 
@@ -299,20 +299,13 @@ export default function GuestHomeScreen({ navigation }) {
             </View>
           </View>
           <View style={styles.greetingBlock}>
-            <Text style={styles.greetingTitle}>Welcome to{'\n'}Campus Network</Text>
+            <Text style={styles.greetingTitle}>Welcome to{'\n'}RMU Campus Network</Text>
             <Text style={styles.greetingSubtitle}>
               Explore our campus structure, dining, and maps.{' '}
               <Text style={styles.greetingSubtitleAccent}>
                 Sign in to access personal academic portals.
               </Text>
             </Text>
-          </View>
-          <View style={styles.pillRow}>
-            {['🗺 Interactive Map', '🏛 Departments', '🍽 Dining', '🏠 Hostels'].map((tag) => (
-              <View key={tag} style={styles.pill}>
-                <Text style={styles.pillText}>{tag}</Text>
-              </View>
-            ))}
           </View>
         </Animated.View>
 
@@ -321,11 +314,11 @@ export default function GuestHomeScreen({ navigation }) {
           <View style={styles.authBanner}>
             <View style={styles.authLeft}>
               <View style={styles.authIconWrap}>
-                <Ionicons name="lock-open-outline" size={20} color={NAVY} />
+                <Ionicons name="lock-open-outline" size={20} color={BLUE} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.authBannerTitle}>Unlock full student features</Text>
-                <Text style={styles.authBannerSub}>Events · Grades · Notifications</Text>
+                <Text style={styles.authBannerSub}>Sign in or create an account</Text>
               </View>
             </View>
             <TouchableOpacity style={styles.authBtn} onPress={logout} activeOpacity={0.85}>
@@ -405,7 +398,7 @@ const styles = StyleSheet.create({
   headerIconBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
 
   greetingBlock:          { marginBottom: 18 },
-  greetingTitle:          { fontSize: 30, fontWeight: '800', color: SLATE, lineHeight: 36, letterSpacing: -0.5, marginBottom: 10 },
+  greetingTitle:          { fontSize: 30, fontWeight: '800', color: DARK, lineHeight: 36, letterSpacing: -0.5, marginBottom: 10 },
   greetingSubtitle:       { fontSize: 14, color: MUTED, lineHeight: 21 },
   greetingSubtitleAccent: { color: NAVY, fontWeight: '600' },
 
@@ -413,16 +406,16 @@ const styles = StyleSheet.create({
   pill:     { paddingHorizontal: 11, paddingVertical: 5, borderRadius: 20, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: BORDER },
   pillText: { fontSize: 11, fontWeight: '600', color: DARK },
 
-  authBanner:      { flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 16, marginTop: 16, marginBottom: 4, backgroundColor: 'rgba(26,54,93,0.04)', borderWidth: 1, borderColor: `${GOLD}60`, borderRadius: 18, padding: 14 },
+  authBanner:      { flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 16, marginTop: 16, marginBottom: 4, backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE', borderRadius: 18, padding: 14 },
   authLeft:        { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  authIconWrap:    { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(26,54,93,0.08)', justifyContent: 'center', alignItems: 'center' },
-  authBannerTitle: { fontSize: 13, fontWeight: '700', color: NAVY, marginBottom: 2 },
+  authIconWrap:    { width: 36, height: 36, borderRadius: 10, backgroundColor: '#DBEAFE', justifyContent: 'center', alignItems: 'center' },
+  authBannerTitle: { fontSize: 13, fontWeight: '700', color: DARK, marginBottom: 2 },
   authBannerSub:   { fontSize: 11, color: MUTED },
-  authBtn:         { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: NAVY, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12 },
+  authBtn:         { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: BLUE, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 12 },
   authBtnText:     { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
 
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: 16, paddingTop: 24, paddingBottom: 14 },
-  sectionTitle:  { fontSize: 18, fontWeight: '800', color: SLATE, letterSpacing: -0.2 },
+  sectionTitle:  { fontSize: 18, fontWeight: '800', color: DARK, letterSpacing: -0.2 },
   sectionSub:    { fontSize: 12, color: LIGHT, fontWeight: '600' },
 
   cardGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 16 },
@@ -442,7 +435,7 @@ const styles = StyleSheet.create({
   cardPreview:     { marginHorizontal: 14, marginBottom: 10, borderRadius: 12, overflow: 'hidden' },
   cardPreviewFill: { marginHorizontal: 14, marginBottom: 10, borderRadius: 12, overflow: 'hidden' },
   cardFooter:      { paddingHorizontal: 14, paddingBottom: 14 },
-  cardTitle:       { fontSize: 13, fontWeight: '700', color: SLATE, marginBottom: 2 },
+  cardTitle:       { fontSize: 13, fontWeight: '700', color: DARK, marginBottom: 2 },
   cardSub:         { fontSize: 11, color: MUTED, lineHeight: 15 },
   cardArrow:       { position: 'absolute', top: 14, right: 14, width: 24, height: 24, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
 
