@@ -15,11 +15,46 @@ import { HugeiconsIcon } from '@hugeicons/react-native';
 import { SquareArrowLeft01Icon, Mail01Icon, Shield01Icon } from '@hugeicons/core-free-icons';
 import OTPInputGroup from '../../components/OTPInputGroup';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../config/supabase';
 
 const RESEND_COOLDOWN = 60;
 
+// Upload profile photo to the 'profiles' bucket using the confirmed session.
+// Called only after verifyOtp() so auth.uid() is guaranteed to be set.
+async function uploadAvatarAfterVerify(uri) {
+  try {
+    const ext         = (uri.match(/\.(\w+)(\?|$)/)?.[1] || 'jpg').toLowerCase();
+    const contentType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const filename = `${user.id}/${Date.now()}.${ext}`;
+    const response = await fetch(uri);
+    const blob     = await response.blob();
+
+    const { error } = await supabase.storage
+      .from('profiles')
+      .upload(filename, blob, { contentType, upsert: true });
+    if (error) throw error;
+
+    const { data } = supabase.storage.from('profiles').getPublicUrl(filename);
+    const publicUrl = data.publicUrl;
+
+    // Update auth user metadata so the dashboard can read it immediately
+    await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
+
+    // Also update the public.users row so the DB stays in sync
+    await supabase.from('users').update({ avatar_url: publicUrl }).eq('id', user.id);
+
+    return publicUrl;
+  } catch (err) {
+    console.warn('[OTPVerification] avatar upload failed:', err.message);
+    return null;
+  }
+}
+
 export default function OTPVerificationScreen({ navigation, route }) {
-  const { email, type } = route.params;
+  const { email, type, avatarUri } = route.params;
   const { verifyOtp, resendOtp, logout } = useAuth();
 
   const [otp,        setOtp]        = useState('');
@@ -58,13 +93,16 @@ export default function OTPVerificationScreen({ navigation, route }) {
         // Password reset: navigate to change-password screen
         navigation.replace('ResetPassword', { email });
       } else {
-        // Signup confirmed: show success screen briefly, then sign out
-        // so the student is redirected to the Login page to sign in properly.
+        // Upload profile photo NOW — the confirmed session from verifyOtp()
+        // means auth.uid() is set and the profiles bucket policy is satisfied.
+        if (avatarUri) {
+          await uploadAvatarAfterVerify(avatarUri);
+        }
+
+        // Show success screen, then sign out → RootNavigator shows Login.
         setVerified(true);
         setTimeout(async () => {
           await logout();
-          // After logout, onAuthStateChange clears the session and
-          // RootNavigator automatically shows the Auth (Login) screen.
         }, 3000);
       }
     } catch (err) {

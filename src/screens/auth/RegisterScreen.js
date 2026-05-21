@@ -203,26 +203,19 @@ export default function RegisterScreen({ navigation }) {
     setErrors({});
     setLoading(true);
     try {
-      // 1. Create account first (no avatar URL yet — avoids RLS issues)
+      // Create the auth account — avatar upload is deferred to after OTP
+      // verification because persistSession:false means there is no active
+      // session between signUp() and verifyOtp(), so getUser() returns null
+      // and any upload attempted here silently fails.
       await register({ ...values, avatarUrl: null });
 
-      // 2. After signup Supabase creates a session (even pre-email-confirmation).
-      //    Use that session to upload avatar to 'profiles' bucket.
-      let avatarUrl = null;
-      if (avatarUri) {
-        try {
-          avatarUrl = await uploadAvatar(avatarUri);
-          // Attach avatar URL to the auth user metadata
-          await supabase.auth.updateUser({ data: { avatar_url: avatarUrl } });
-        } catch (uploadErr) {
-          // Avatar failure must not block account creation
-          console.warn('[RegisterScreen] avatar upload skipped:', uploadErr.message);
-        }
-      }
-
-      // Navigate to OTP screen — Supabase sends a 6-digit code to the email.
-      // (Requires OTP template configured in Supabase Dashboard — see README.)
-      navigation.navigate('OTPVerification', { email: values.email, type: 'signup' });
+      // Pass the local avatar URI to the OTP screen so it can upload
+      // using the confirmed session that exists after verifyOtp().
+      navigation.navigate('OTPVerification', {
+        email:     values.email,
+        type:      'signup',
+        avatarUri: avatarUri || null,
+      });
     } catch (err) {
       Alert.alert('Registration failed', err.message || 'Please try again.');
     } finally {
@@ -232,7 +225,7 @@ export default function RegisterScreen({ navigation }) {
 
   const goBack = () => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Login');
 
-  const busy = loading || uploadingAvatar;
+  const busy = loading;
 
   // Use department ID as the picker value so we can fetch programmes by dept ID.
   const deptOptions = departments.map((d) => ({ label: d.name, value: d.id }));
