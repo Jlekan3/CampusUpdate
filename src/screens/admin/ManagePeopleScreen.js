@@ -57,7 +57,7 @@ function PickerSheet({ visible, title, items, value, onSelect, onClose, disabled
 }
 
 // ── Programme picker (dynamic — receives list from parent) ────────────────────
-function ProgrammeDropdown({ value, onChange, programmes, loading, locked }) {
+function ProgrammeDropdown({ value, onChange, programmes = [], loading, locked }) {
   const [open, setOpen] = useState(false);
   const label = locked
     ? 'Select a department first'

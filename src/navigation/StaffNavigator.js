@@ -98,6 +98,7 @@ const StaffNavigator = () => (
     }}
   >
     <Stack.Screen name="StaffTabs"      component={StaffTabs}            options={{ headerShown: false }} />
+    <Stack.Screen name="Map"            component={MapScreen}            options={{ headerShown: false }} />
     <Stack.Screen name="Search"         component={SearchLocationsScreen} options={{ title: 'Search Locations', headerShown: true }} />
     <Stack.Screen name="LocationDetails"component={LocationDetailsScreen} options={{ title: 'Location Details' }} />
     <Stack.Screen name="CampusEvents"   component={CampusEventsScreen}   options={{ title: 'Campus Events',   headerShown: true }} />

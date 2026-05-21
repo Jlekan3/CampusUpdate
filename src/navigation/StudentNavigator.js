@@ -148,6 +148,7 @@ const StudentNavigator = () => (
     }}
   >
     <Stack.Screen name="StudentDrawer"   component={StudentDrawer}          options={{ headerShown: false }} />
+    <Stack.Screen name="Map"             component={MapScreen}              options={{ headerShown: false }} />
     <Stack.Screen name="Search"          component={SearchLocationsScreen}  options={{ title: 'Search Locations', headerShown: true }} />
     <Stack.Screen name="LocationDetails" component={LocationDetailsScreen}  options={{ title: 'Location Details' }} />
   </Stack.Navigator>
