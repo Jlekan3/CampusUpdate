@@ -26,14 +26,16 @@ import { FONTS } from '../../utils/theme';
 // expo-file-system File class removed — avatar upload now uses fetch()+blob
 
 const PRIMARY      = '#1A365D';
-const INPUT_BG     = 'rgba(255,255,255,0.12)';
-const INPUT_FOCUS  = 'rgba(255,255,255,0.20)';
-const BORDER       = 'rgba(255,255,255,0.25)';
-const BORDER_FOCUS = 'rgba(255,255,255,0.70)';
+const BLUE         = '#2563EB';
+const DARK         = '#0F172A';
+const MUTED        = '#64748B';
+const INPUT_BG     = '#F8FAFC';
+const INPUT_FOCUS  = '#FFFFFF';
+const BORDER       = '#E2E8F0';
+const BORDER_FOCUS = '#2563EB';
 const BORDER_ERR   = '#FCA5A5';
 const WHITE        = '#FFFFFF';
-const WHITE_70     = 'rgba(255,255,255,0.70)';
-const WHITE_45     = 'rgba(255,255,255,0.45)';
+const PH           = '#94A3B8'; // placeholder colour
 
 // Programmes are now fetched from the DB based on selected department.
 // The static fallback is intentionally removed.
@@ -233,13 +235,13 @@ export default function RegisterScreen({ navigation }) {
 
   return (
     <>
-      <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
+      <StatusBar barStyle="dark-content" backgroundColor={WHITE} />
       <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
 
         {/* Header */}
         <View style={s.header}>
           <TouchableOpacity onPress={goBack} style={s.backBtn} activeOpacity={0.7}>
-            <Ionicons name="arrow-back-outline" size={22} color={WHITE} />
+            <Ionicons name="arrow-back-outline" size={22} color={DARK} />
           </TouchableOpacity>
           <View style={s.headerText}>
             <Text style={s.title}>Create Account</Text>
@@ -263,7 +265,7 @@ export default function RegisterScreen({ navigation }) {
                   <Image source={{ uri: avatarUri }} style={s.avatar} />
                 ) : (
                   <View style={s.avatarPlaceholder}>
-                    <Ionicons name="person-outline" size={30} color={WHITE_70} />
+                    <Ionicons name="person-outline" size={30} color={MUTED} />
                   </View>
                 )}
                 <View style={s.avatarBadge}>
@@ -281,18 +283,18 @@ export default function RegisterScreen({ navigation }) {
 
             <Text style={s.label}>Full Name <Text style={s.req}>*</Text></Text>
             <InputRow focused={focused.fullName} error={errors.fullName}>
-              <Ionicons name="person-outline" size={17} color={focused.fullName ? WHITE : WHITE_70} />
+              <Ionicons name="person-outline" size={17} color={focused.fullName ? BLUE : MUTED} />
               <TextInput style={s.input} value={form.fullName} onChangeText={(v) => { set('fullName')(v); clearError('fullName'); }}
-                placeholder="e.g. Kwame Mensah" placeholderTextColor={WHITE_45}
+                placeholder="e.g. Kwame Mensah" placeholderTextColor={PH}
                 autoCapitalize="words" onFocus={() => onFocus('fullName')} onBlur={() => onBlur('fullName')} />
             </InputRow>
             {errors.fullName ? <Text style={s.err}>{errors.fullName}</Text> : null}
 
             <Text style={s.label}>Display Name</Text>
             <InputRow focused={focused.displayName}>
-              <Ionicons name="at-outline" size={17} color={focused.displayName ? WHITE : WHITE_70} />
+              <Ionicons name="at-outline" size={17} color={focused.displayName ? BLUE : MUTED} />
               <TextInput style={s.input} value={form.displayName} onChangeText={set('displayName')}
-                placeholder="Defaults to full name if blank" placeholderTextColor={WHITE_45}
+                placeholder="Defaults to full name if blank" placeholderTextColor={PH}
                 autoCapitalize="words" onFocus={() => onFocus('displayName')} onBlur={() => onBlur('displayName')} />
             </InputRow>
 
@@ -303,7 +305,7 @@ export default function RegisterScreen({ navigation }) {
                 <Text style={s.label}>Student ID <Text style={s.req}>*</Text></Text>
                 <InputRow focused={focused.studentId} error={errors.studentId}>
                   <TextInput style={s.input} value={form.studentId} onChangeText={(v) => { set('studentId')(v); clearError('studentId'); }}
-                    placeholder="STU-12345" placeholderTextColor={WHITE_45}
+                    placeholder="STU-12345" placeholderTextColor={PH}
                     autoCapitalize="characters" onFocus={() => onFocus('studentId')} onBlur={() => onBlur('studentId')} />
                 </InputRow>
                 {errors.studentId ? <Text style={s.err}>{errors.studentId}</Text> : null}
@@ -312,7 +314,7 @@ export default function RegisterScreen({ navigation }) {
                 <Text style={s.label}>Index Number <Text style={s.req}>*</Text></Text>
                 <InputRow focused={focused.indexNumber} error={errors.indexNumber}>
                   <TextInput style={s.input} value={form.indexNumber} onChangeText={(v) => { set('indexNumber')(v); clearError('indexNumber'); }}
-                    placeholder="RMU/2024/001" placeholderTextColor={WHITE_45}
+                    placeholder="RMU/2024/001" placeholderTextColor={PH}
                     autoCapitalize="characters" onFocus={() => onFocus('indexNumber')} onBlur={() => onBlur('indexNumber')} />
                 </InputRow>
                 {errors.indexNumber ? <Text style={s.err}>{errors.indexNumber}</Text> : null}
@@ -341,8 +343,8 @@ export default function RegisterScreen({ navigation }) {
               activeOpacity={0.8}
               disabled={loadingDepts || departments.length === 0}
             >
-              <Ionicons name="layers-outline" size={17} color={WHITE_70} />
-              <Text style={[s.input, !form.department && { color: WHITE_45 }]} numberOfLines={1}>
+              <Ionicons name="layers-outline" size={17} color={MUTED} />
+              <Text style={[s.input, !form.department && { color: PH }]} numberOfLines={1}>
                 {loadingDepts
                   ? 'Loading departments…'
                   : departments.length === 0
@@ -350,8 +352,8 @@ export default function RegisterScreen({ navigation }) {
                     : form.department || 'Select your department'}
               </Text>
               {loadingDepts
-                ? <ActivityIndicator size="small" color={WHITE_70} />
-                : <Ionicons name="chevron-down-outline" size={15} color={WHITE_70} />}
+                ? <ActivityIndicator size="small" color={MUTED} />
+                : <Ionicons name="chevron-down-outline" size={15} color={MUTED} />}
             </TouchableOpacity>
             {errors.department ? <Text style={s.err}>{errors.department}</Text> : null}
 
@@ -378,12 +380,12 @@ export default function RegisterScreen({ navigation }) {
               <Ionicons
                 name={form.department ? 'school-outline' : 'lock-closed-outline'}
                 size={17}
-                color={form.department ? WHITE_70 : 'rgba(255,255,255,0.30)'}
+                color={form.department ? MUTED : '#CBD5E0'}
               />
               <Text style={[
                 s.input,
-                !form.programme && { color: WHITE_45 },
-                !form.department && { color: 'rgba(255,255,255,0.25)' },
+                !form.programme && { color: PH },
+                !form.department && { color: '#CBD5E0' },
               ]} numberOfLines={1}>
                 {!form.department
                   ? 'Select a department first'
@@ -394,11 +396,11 @@ export default function RegisterScreen({ navigation }) {
                       : form.programme || 'Select your programme'}
               </Text>
               {loadingProgs && form.department
-                ? <ActivityIndicator size="small" color={WHITE_70} />
+                ? <ActivityIndicator size="small" color={MUTED} />
                 : <Ionicons
                     name="chevron-down-outline"
                     size={15}
-                    color={form.department ? WHITE_70 : 'rgba(255,255,255,0.25)'}
+                    color={form.department ? MUTED : '#CBD5E0'}
                   />
               }
             </TouchableOpacity>
@@ -415,9 +417,9 @@ export default function RegisterScreen({ navigation }) {
 
             <Text style={s.label}>Phone Number</Text>
             <InputRow focused={focused.phone}>
-              <Ionicons name="call-outline" size={17} color={focused.phone ? WHITE : WHITE_70} />
+              <Ionicons name="call-outline" size={17} color={focused.phone ? BLUE : MUTED} />
               <TextInput style={s.input} value={form.phone} onChangeText={set('phone')}
-                placeholder="+233..." placeholderTextColor={WHITE_45}
+                placeholder="+233..." placeholderTextColor={PH}
                 keyboardType="phone-pad" onFocus={() => onFocus('phone')} onBlur={() => onBlur('phone')} />
             </InputRow>
 
@@ -426,9 +428,9 @@ export default function RegisterScreen({ navigation }) {
 
             <Text style={s.label}>Email Address <Text style={s.req}>*</Text></Text>
             <InputRow focused={focused.email} error={errors.email}>
-              <Ionicons name="mail-outline" size={17} color={focused.email ? WHITE : WHITE_70} />
+              <Ionicons name="mail-outline" size={17} color={focused.email ? BLUE : MUTED} />
               <TextInput style={s.input} value={form.email} onChangeText={(v) => { set('email')(v); clearError('email'); }}
-                placeholder="name@st.rmu.edu.gh" placeholderTextColor={WHITE_45}
+                placeholder="name@st.rmu.edu.gh" placeholderTextColor={PH}
                 autoCapitalize="none" keyboardType="email-address"
                 onFocus={() => onFocus('email')} onBlur={() => onBlur('email')} />
             </InputRow>
@@ -436,26 +438,26 @@ export default function RegisterScreen({ navigation }) {
 
             <Text style={s.label}>Password <Text style={s.req}>*</Text></Text>
             <InputRow focused={focused.password} error={errors.password}>
-              <Ionicons name="lock-closed-outline" size={17} color={focused.password ? WHITE : WHITE_70} />
+              <Ionicons name="lock-closed-outline" size={17} color={focused.password ? BLUE : MUTED} />
               <TextInput style={s.input} value={form.password} onChangeText={(v) => { set('password')(v); clearError('password'); }}
-                placeholder="Min. 8 characters" placeholderTextColor={WHITE_45}
+                placeholder="Min. 8 characters" placeholderTextColor={PH}
                 secureTextEntry={!showPw} autoCapitalize="none"
                 onFocus={() => onFocus('password')} onBlur={() => onBlur('password')} />
               <TouchableOpacity onPress={() => setShowPw((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name={showPw ? 'eye-off-outline' : 'eye-outline'} size={17} color={WHITE_70} />
+                <Ionicons name={showPw ? 'eye-off-outline' : 'eye-outline'} size={17} color={MUTED} />
               </TouchableOpacity>
             </InputRow>
             {errors.password ? <Text style={s.err}>{errors.password}</Text> : null}
 
             <Text style={s.label}>Confirm Password <Text style={s.req}>*</Text></Text>
             <InputRow focused={focused.confirmPassword} error={errors.confirmPassword}>
-              <Ionicons name="lock-closed-outline" size={17} color={focused.confirmPassword ? WHITE : WHITE_70} />
+              <Ionicons name="lock-closed-outline" size={17} color={focused.confirmPassword ? BLUE : MUTED} />
               <TextInput style={s.input} value={form.confirmPassword} onChangeText={(v) => { set('confirmPassword')(v); clearError('confirmPassword'); }}
-                placeholder="Re-enter your password" placeholderTextColor={WHITE_45}
+                placeholder="Re-enter your password" placeholderTextColor={PH}
                 secureTextEntry={!showCf} autoCapitalize="none"
                 onFocus={() => onFocus('confirmPassword')} onBlur={() => onBlur('confirmPassword')} />
               <TouchableOpacity onPress={() => setShowCf((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name={showCf ? 'eye-off-outline' : 'eye-outline'} size={17} color={WHITE_70} />
+                <Ionicons name={showCf ? 'eye-off-outline' : 'eye-outline'} size={17} color={MUTED} />
               </TouchableOpacity>
             </InputRow>
             {errors.confirmPassword ? <Text style={s.err}>{errors.confirmPassword}</Text> : null}
@@ -464,7 +466,7 @@ export default function RegisterScreen({ navigation }) {
             <TouchableOpacity style={[s.btn, busy && s.btnDisabled]} onPress={handleRegister} disabled={busy} activeOpacity={0.88}>
               <View style={s.btnInner}>
                 <Text style={s.btnText}>{busy ? (uploadingAvatar ? 'Uploading photo…' : 'Creating Account…') : 'Create Account'}</Text>
-                {!busy && <Ionicons name="arrow-forward" size={17} color={PRIMARY} style={{ marginLeft: 6 }} />}
+                {!busy && <Ionicons name="arrow-forward" size={17} color={WHITE} style={{ marginLeft: 6 }} />}
               </View>
             </TouchableOpacity>
 
@@ -487,9 +489,9 @@ export default function RegisterScreen({ navigation }) {
               onPress={enterGuestMode}
               activeOpacity={0.85}
             >
-              <Ionicons name="person-outline" size={15} color={WHITE_70} />
+              <Ionicons name="person-outline" size={15} color={MUTED} />
               <Text style={s.guestBtnText}>Continue as Guest</Text>
-              <Ionicons name="arrow-forward" size={13} color={WHITE_45} />
+              <Ionicons name="arrow-forward" size={13} color={MUTED} />
             </TouchableOpacity>
 
             <Text style={s.guestNote}>
@@ -521,7 +523,7 @@ export default function RegisterScreen({ navigation }) {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: PRIMARY },
+  root: { flex: 1, backgroundColor: WHITE },
   flex: { flex: 1 },
   header: {
     flexDirection: 'row', alignItems: 'center',
@@ -529,17 +531,17 @@ const s = StyleSheet.create({
   },
   backBtn: { padding: 4 },
   headerText: { flex: 1 },
-  title: { fontSize: 24, fontFamily: FONTS.extraBold, color: WHITE, letterSpacing: -0.4 },
-  subtitle: { fontSize: 13, fontFamily: FONTS.regular, color: WHITE_70, marginTop: 2 },
+  title:    { fontSize: 24, fontFamily: FONTS.extraBold, color: DARK, letterSpacing: -0.4 },
+  subtitle: { fontSize: 13, fontFamily: FONTS.regular,   color: MUTED, marginTop: 2 },
 
   scroll: { flexGrow: 1, paddingHorizontal: 22, paddingBottom: 48 },
 
   sectionHeader: {
-    fontSize: 11, fontFamily: FONTS.bold, color: 'rgba(255,255,255,0.45)',
+    fontSize: 11, fontFamily: FONTS.bold, color: '#94A3B8',
     letterSpacing: 1.2, marginTop: 20, marginBottom: 10, flex: 1,
   },
-  label: { fontSize: 13, fontFamily: FONTS.semiBold, color: WHITE_70, marginBottom: 6 },
-  req: { color: '#FCA5A5' },
+  label: { fontSize: 13, fontFamily: FONTS.semiBold, color: '#374151', marginBottom: 6 },
+  req:   { color: '#EF4444' },
 
   inputRow: {
     flexDirection: 'row', alignItems: 'center',
@@ -548,91 +550,76 @@ const s = StyleSheet.create({
     paddingHorizontal: 14, height: 52, gap: 10, marginBottom: 14,
   },
   inputRowFocused: { backgroundColor: INPUT_FOCUS, borderColor: BORDER_FOCUS },
-  inputRowError: { borderColor: BORDER_ERR },
-  input: { flex: 1, fontSize: 15, fontFamily: FONTS.regular, color: WHITE },
-  err: { fontSize: 12, fontFamily: FONTS.medium, color: '#FCA5A5', marginTop: -10, marginBottom: 10 },
+  inputRowError:   { borderColor: '#FCA5A5' },
+  input: { flex: 1, fontSize: 15, fontFamily: FONTS.regular, color: DARK },
+  err:   { fontSize: 12, fontFamily: FONTS.medium, color: '#DC2626', marginTop: -10, marginBottom: 10 },
 
-  // Side-by-side fields
   rowFields: { flexDirection: 'row', gap: 10 },
-  halfWrap: { flex: 1 },
+  halfWrap:  { flex: 1 },
 
-  // Section header with inline count badge
   sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 20, marginBottom: 10 },
-  deptCountBadge:   { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
-  deptCountText:    { fontSize: 10, fontFamily: FONTS.medium, color: 'rgba(255,255,255,0.55)' },
+  deptCountBadge:   { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F1F5F9', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+  deptCountText:    { fontSize: 10, fontFamily: FONTS.medium, color: MUTED },
 
-  // Locked input state (programme locked until department chosen)
-  inputRowLocked: { opacity: 0.45, borderColor: 'rgba(255,255,255,0.12)' },
+  inputRowLocked: { opacity: 0.5, borderColor: '#E2E8F0' },
+  fieldHint:      { fontSize: 11, fontFamily: FONTS.regular, color: '#94A3B8', marginTop: -10, marginBottom: 10, paddingLeft: 2 },
 
-  // Hint text under locked fields
-  fieldHint: { fontSize: 11, fontFamily: FONTS.regular, color: 'rgba(255,255,255,0.35)', marginTop: -10, marginBottom: 10, paddingLeft: 2 },
-
-  // Avatar
   avatarSection: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
-    backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 14,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: '#F8FAFC', borderRadius: 14,
+    borderWidth: 1.5, borderColor: '#E2E8F0',
     padding: 14, marginBottom: 4,
   },
   avatarWrap: { position: 'relative' },
-  avatar: { width: 60, height: 60, borderRadius: 30 },
+  avatar:     { width: 60, height: 60, borderRadius: 30 },
   avatarPlaceholder: {
     width: 60, height: 60, borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.2)', borderStyle: 'dashed',
+    backgroundColor: '#F1F5F9',
+    borderWidth: 2, borderColor: '#CBD5E0', borderStyle: 'dashed',
     justifyContent: 'center', alignItems: 'center',
   },
   avatarBadge: {
     position: 'absolute', bottom: 0, right: 0,
     width: 20, height: 20, borderRadius: 10,
-    backgroundColor: PRIMARY,
+    backgroundColor: BLUE,
     justifyContent: 'center', alignItems: 'center',
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.4)',
+    borderWidth: 2, borderColor: WHITE,
   },
-  avatarInfo: { flex: 1 },
-  avatarTitle: { fontSize: 14, fontFamily: FONTS.semiBold, color: WHITE },
-  avatarSub: { fontSize: 12, fontFamily: FONTS.regular, color: WHITE_70, marginTop: 2 },
+  avatarInfo:  { flex: 1 },
+  avatarTitle: { fontSize: 14, fontFamily: FONTS.semiBold, color: DARK },
+  avatarSub:   { fontSize: 12, fontFamily: FONTS.regular,  color: MUTED, marginTop: 2 },
 
-  // Submit
   btn: {
-    height: 52, backgroundColor: WHITE, borderRadius: 13,
+    height: 52, backgroundColor: BLUE, borderRadius: 13,
     justifyContent: 'center', alignItems: 'center', marginTop: 8,
-    shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 10,
+    shadowColor: BLUE, shadowOpacity: 0.3, shadowRadius: 10,
     shadowOffset: { width: 0, height: 5 }, elevation: 5,
   },
   btnDisabled: { opacity: 0.6 },
-  btnInner: { flexDirection: 'row', alignItems: 'center' },
-  btnText: { fontSize: 16, fontFamily: FONTS.bold, color: PRIMARY, letterSpacing: 0.3 },
+  btnInner:    { flexDirection: 'row', alignItems: 'center' },
+  btnText:     { fontSize: 16, fontFamily: FONTS.bold, color: WHITE, letterSpacing: 0.3 },
 
-  loginRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
-  loginPrompt: { fontSize: 14, fontFamily: FONTS.regular, color: WHITE_70 },
-  loginLink: { fontSize: 14, fontFamily: FONTS.bold, color: WHITE },
+  loginRow:    { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
+  loginPrompt: { fontSize: 14, fontFamily: FONTS.regular, color: DARK },
+  loginLink:   { fontSize: 14, fontFamily: FONTS.bold,    color: DARK },
 
-  // Guest access
   guestRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     marginTop: 20, marginBottom: 14,
   },
-  guestDivider:     { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.15)' },
-  guestDividerText: { fontSize: 12, fontFamily: FONTS.regular, color: WHITE_45 },
+  guestDivider:     { flex: 1, height: 1, backgroundColor: '#E2E8F0' },
+  guestDividerText: { fontSize: 12, fontFamily: FONTS.regular, color: '#94A3B8' },
   guestBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    paddingVertical: 13,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    marginBottom: 10,
+    paddingVertical: 13, borderRadius: 14,
+    borderWidth: 1.5, borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC', marginBottom: 10,
   },
-  guestBtnText: { fontSize: 14, fontFamily: FONTS.semiBold, color: WHITE_70 },
+  guestBtnText: { fontSize: 14, fontFamily: FONTS.semiBold, color: MUTED },
   guestNote: {
-    fontSize: 11,
-    fontFamily: FONTS.regular,
-    color: WHITE_45,
-    textAlign: 'center',
-    lineHeight: 16,
-    paddingHorizontal: 10,
-    marginBottom: 10,
+    fontSize: 11, fontFamily: FONTS.regular, color: '#94A3B8',
+    textAlign: 'center', lineHeight: 16,
+    paddingHorizontal: 10, marginBottom: 10,
   },
 });
 
