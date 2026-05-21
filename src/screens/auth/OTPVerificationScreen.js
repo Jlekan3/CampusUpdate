@@ -46,7 +46,7 @@ export default function OTPVerificationScreen({ navigation, route }) {
   };
 
   const handleVerify = async () => {
-    if (otp.length < 6) { setOtpError('Please enter the 6-digit code'); return; }
+    if (otp.length < 8) { setOtpError('Please enter the 8-digit code'); return; }
     setOtpError('');
     setLoading(true);
     try {
@@ -118,8 +118,8 @@ export default function OTPVerificationScreen({ navigation, route }) {
           <Text style={styles.title}>Verify Your Email</Text>
           <Text style={styles.subtitle}>
             {type === 'signup'
-              ? 'We sent a 6-digit code to confirm your account.'
-              : 'Enter the code we sent to reset your password.'}
+              ? 'We sent an 8-digit code to confirm your account.'
+              : 'Enter the 8-digit code we sent to reset your password.'}
           </Text>
           <View style={styles.emailBadge}>
             <HugeiconsIcon icon={Mail01Icon} size={16} color="#1A365D" variant="stroke" />
@@ -128,15 +128,15 @@ export default function OTPVerificationScreen({ navigation, route }) {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.codeLabel}>Enter 6-digit code</Text>
+          <Text style={styles.codeLabel}>Enter 8-digit code</Text>
           <View style={styles.otpWrap}>
             <OTPInputGroup value={otp} onChange={setOtp} error={otpError} />
           </View>
 
           <TouchableOpacity
-            style={[styles.verifyBtn, (loading || otp.length < 6) && styles.verifyBtnDisabled]}
+            style={[styles.verifyBtn, (loading || otp.length < 8) && styles.verifyBtnDisabled]}
             onPress={handleVerify}
-            disabled={loading || otp.length < 6}
+            disabled={loading || otp.length < 8}
             activeOpacity={0.85}
           >
             <Text style={styles.verifyText}>{loading ? 'Verifying…' : 'Verify Code'}</Text>

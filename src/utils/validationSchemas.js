@@ -45,7 +45,7 @@ export const resetPasswordSchema = z
 export const otpSchema = z.object({
   otp: z
     .string()
-    .length(6, 'OTP must be exactly 6 digits')
+    .length(8, 'OTP must be exactly 8 digits')
     .regex(/^\d+$/, 'OTP must contain only numbers'),
 });
 

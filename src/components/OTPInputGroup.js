@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { View, TextInput, StyleSheet, Text } from 'react-native';
 
-const BOX_COUNT = 6;
+const BOX_COUNT = 8;
 
 export default function OTPInputGroup({ value = '', onChange, error }) {
   const inputs = useRef([]);
