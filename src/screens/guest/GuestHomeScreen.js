@@ -27,7 +27,6 @@ const SURFACE= '#FFFFFF';
 const BORDER = '#E2E8F0';
 
 const { width: W } = Dimensions.get('window');
-const CARD_W = (W - 48) / 2;
 
 // ── Severity colors for campus rules ─────────────────────────────────────────
 const SEV_COLOR = {
@@ -339,7 +338,7 @@ export default function GuestHomeScreen({ navigation }) {
             {CARDS.map((card) => (
               <TouchableOpacity
                 key={card.id}
-                style={[styles.card, { width: CARD_W }]}
+                style={styles.card}
                 onPress={() => goTo(card.route)}
                 activeOpacity={0.88}
               >
@@ -418,8 +417,9 @@ const styles = StyleSheet.create({
   sectionTitle:  { fontSize: 18, fontWeight: '800', color: DARK, letterSpacing: -0.2 },
   sectionSub:    { fontSize: 12, color: LIGHT, fontWeight: '600' },
 
-  cardGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 16 },
+  cardGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, justifyContent: 'space-between', rowGap: 14 },
   card: {
+    width: '48.5%',
     backgroundColor: SURFACE,
     borderRadius: 20,
     borderWidth: 1,
