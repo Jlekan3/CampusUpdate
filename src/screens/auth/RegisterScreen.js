@@ -23,7 +23,7 @@ import { useAuth } from '../../context/AuthContext';
 import { registerSchema, validate } from '../../utils/validationSchemas';
 import { supabase } from '../../config/supabase';
 import { FONTS } from '../../utils/theme';
-import { File } from 'expo-file-system';
+// expo-file-system File class removed — avatar upload now uses fetch()+blob
 
 const PRIMARY      = '#1A365D';
 const INPUT_BG     = 'rgba(255,255,255,0.12)';
@@ -307,24 +307,26 @@ export default function RegisterScreen({ navigation }) {
             </View>
 
             {/* ── Academic ── */}
-            <Text style={s.sectionHeader}>ACADEMIC DETAILS</Text>
+            {/* Section header with live department count */}
+            <View style={s.sectionHeaderRow}>
+              <Text style={s.sectionHeader}>ACADEMIC DETAILS</Text>
+              {!loadingDepts && departments.length > 0 && (
+                <View style={s.deptCountBadge}>
+                  <Ionicons name="layers-outline" size={10} color="rgba(255,255,255,0.55)" />
+                  <Text style={s.deptCountText}>{departments.length} depts</Text>
+                </View>
+              )}
+            </View>
 
-            <Text style={s.label}>Programme <Text style={s.req}>*</Text></Text>
-            <TouchableOpacity style={[s.inputRow, errors.programme && s.inputRowError]} onPress={() => setShowProg(true)} activeOpacity={0.8}>
-              <Ionicons name="school-outline" size={17} color={WHITE_70} />
-              <Text style={[s.input, !form.programme && { color: WHITE_45 }]} numberOfLines={1}>
-                {form.programme || 'Select your programme'}
-              </Text>
-              <Ionicons name="chevron-down-outline" size={15} color={WHITE_70} />
-            </TouchableOpacity>
-            {errors.programme ? <Text style={s.err}>{errors.programme}</Text> : null}
-
-            <Text style={s.label}>Department</Text>
+            {/* ── Department (MUST come first — unlocks Programme) ── */}
+            <Text style={s.label}>
+              Department <Text style={s.req}>*</Text>
+            </Text>
             <TouchableOpacity
-              style={s.inputRow}
-              onPress={() => !loadingDepts && setShowDept(true)}
+              style={[s.inputRow, errors.department && s.inputRowError]}
+              onPress={() => !loadingDepts && departments.length > 0 && setShowDept(true)}
               activeOpacity={0.8}
-              disabled={loadingDepts}
+              disabled={loadingDepts || departments.length === 0}
             >
               <Ionicons name="layers-outline" size={17} color={WHITE_70} />
               <Text style={[s.input, !form.department && { color: WHITE_45 }]} numberOfLines={1}>
@@ -332,12 +334,60 @@ export default function RegisterScreen({ navigation }) {
                   ? 'Loading departments…'
                   : departments.length === 0
                     ? 'No departments available'
-                    : form.department || 'Select department (optional)'}
+                    : form.department || 'Select your department'}
               </Text>
               {loadingDepts
                 ? <ActivityIndicator size="small" color={WHITE_70} />
                 : <Ionicons name="chevron-down-outline" size={15} color={WHITE_70} />}
             </TouchableOpacity>
+            {errors.department ? <Text style={s.err}>{errors.department}</Text> : null}
+
+            {/* ── Programme (locked until a department is chosen) ── */}
+            <Text style={[s.label, !form.department && { opacity: 0.45 }]}>
+              Programme <Text style={s.req}>*</Text>
+            </Text>
+            <TouchableOpacity
+              style={[
+                s.inputRow,
+                !form.department && s.inputRowLocked,
+                errors.programme && s.inputRowError,
+              ]}
+              onPress={() => {
+                if (!form.department) {
+                  Alert.alert('Select Department First', 'Please choose your department before selecting a programme.');
+                  return;
+                }
+                setShowProg(true);
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name={form.department ? 'school-outline' : 'lock-closed-outline'}
+                size={17}
+                color={form.department ? WHITE_70 : 'rgba(255,255,255,0.30)'}
+              />
+              <Text style={[
+                s.input,
+                !form.programme && { color: WHITE_45 },
+                !form.department && { color: 'rgba(255,255,255,0.25)' },
+              ]} numberOfLines={1}>
+                {!form.department
+                  ? 'Select a department first'
+                  : form.programme || 'Select your programme'}
+              </Text>
+              <Ionicons
+                name="chevron-down-outline"
+                size={15}
+                color={form.department ? WHITE_70 : 'rgba(255,255,255,0.25)'}
+              />
+            </TouchableOpacity>
+            {!form.department && !errors.programme && (
+              <Text style={s.fieldHint}>
+                <Ionicons name="information-circle-outline" size={11} color="rgba(255,255,255,0.35)" />
+                {' '}Choose a department to unlock programme selection
+              </Text>
+            )}
+            {errors.programme ? <Text style={s.err}>{errors.programme}</Text> : null}
 
             {/* ── Contact ── */}
             <Text style={s.sectionHeader}>CONTACT</Text>
@@ -434,10 +484,14 @@ export default function RegisterScreen({ navigation }) {
         onSelect={(v) => { set('programme')(v); clearError('programme'); }}
         onClose={() => setShowProg(false)} />
 
-      {/* Department picker */}
+      {/* Department picker — clears programme when department changes */}
       <PickerModal visible={showDept} title="Select Department"
         options={deptOptions} value={form.department}
-        onSelect={set('department')}
+        onSelect={(v) => {
+          setForm((f) => ({ ...f, department: v, programme: '' }));
+          clearError('department');
+          clearError('programme');
+        }}
         onClose={() => setShowDept(false)} />
     </>
   );
@@ -459,7 +513,7 @@ const s = StyleSheet.create({
 
   sectionHeader: {
     fontSize: 11, fontFamily: FONTS.bold, color: 'rgba(255,255,255,0.45)',
-    letterSpacing: 1.2, marginTop: 20, marginBottom: 10,
+    letterSpacing: 1.2, marginTop: 20, marginBottom: 10, flex: 1,
   },
   label: { fontSize: 13, fontFamily: FONTS.semiBold, color: WHITE_70, marginBottom: 6 },
   req: { color: '#FCA5A5' },
@@ -478,6 +532,17 @@ const s = StyleSheet.create({
   // Side-by-side fields
   rowFields: { flexDirection: 'row', gap: 10 },
   halfWrap: { flex: 1 },
+
+  // Section header with inline count badge
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 20, marginBottom: 10 },
+  deptCountBadge:   { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+  deptCountText:    { fontSize: 10, fontFamily: FONTS.medium, color: 'rgba(255,255,255,0.55)' },
+
+  // Locked input state (programme locked until department chosen)
+  inputRowLocked: { opacity: 0.45, borderColor: 'rgba(255,255,255,0.12)' },
+
+  // Hint text under locked fields
+  fieldHint: { fontSize: 11, fontFamily: FONTS.regular, color: 'rgba(255,255,255,0.35)', marginTop: -10, marginBottom: 10, paddingLeft: 2 },
 
   // Avatar
   avatarSection: {

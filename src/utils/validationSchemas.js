@@ -13,7 +13,7 @@ export const registerSchema = z
     studentId:       z.string().min(2, 'Student ID is required'),
     indexNumber:     z.string().min(2, 'Index number is required'),
     programme:       z.string().min(2, 'Please select a programme'),
-    department:      z.string().optional(),
+    department:      z.string().min(1, 'Please select your department'),
     phone:           z.string().optional(),
     password:        z.string().min(8, 'Password must be at least 8 characters'),
     confirmPassword: z.string(),
