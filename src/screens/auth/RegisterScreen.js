@@ -35,13 +35,8 @@ const WHITE        = '#FFFFFF';
 const WHITE_70     = 'rgba(255,255,255,0.70)';
 const WHITE_45     = 'rgba(255,255,255,0.45)';
 
-const PROGRAMMES = [
-  'BSc Nautical Science', 'BSc Marine Engineering', 'BSc Maritime Science',
-  'BSc Logistics & Supply Chain Management', 'BSc Port & Shipping Administration',
-  'BSc Maritime Business Management', 'BSc Information Technology',
-  'BSc Mechanical Engineering', 'MSc Maritime Affairs', 'MSc Port Management',
-  'MBA (Maritime Focus)', 'Other',
-];
+// Programmes are now fetched from the DB based on selected department.
+// The static fallback is intentionally removed.
 
 // ── Picker modal ─────────────────────────────────────────────────────────────
 function PickerModal({ visible, title, options, value, onSelect, onClose }) {
@@ -102,9 +97,12 @@ export default function RegisterScreen({ navigation }) {
   const [showProg,     setShowProg]     = useState(false);
   const [showDept,     setShowDept]     = useState(false);
   const [loading,      setLoading]      = useState(false);
-  const [departments,  setDepartments]  = useState([]);
-  const [loadingDepts, setLoadingDepts] = useState(true);
-  const [avatarUri,    setAvatarUri]    = useState(null);
+  const [departments,   setDepartments]  = useState([]);
+  const [loadingDepts,  setLoadingDepts] = useState(true);
+  const [programmes,    setProgrammes]   = useState([]);
+  const [loadingProgs,  setLoadingProgs] = useState(false);
+  const [selectedDeptId,setSelectedDeptId] = useState(null); // dept ID for programme fetch
+  const [avatarUri,     setAvatarUri]    = useState(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const set = (key) => (val) => setForm((f) => ({ ...f, [key]: val }));
@@ -114,17 +112,37 @@ export default function RegisterScreen({ navigation }) {
 
   // Fetch departments — runs without an auth session (registration page).
   // Requires the departments RLS policy to allow auth.role() = 'anon'.
-  // Run the PATCH block in database/schema.sql if this returns empty.
+  // Run the PATCH in database/schema.sql if this returns empty.
   useEffect(() => {
     supabase
       .from('departments')
-      .select('id, name')
+      .select('id, name, faculty')
+      .order('faculty')
       .order('name')
       .then(({ data, error }) => {
         if (!error && data?.length) setDepartments(data);
       })
       .finally(() => setLoadingDepts(false));
   }, []);
+
+  // Fetch programmes for the selected department.
+  // Only runs after the student picks a department.
+  useEffect(() => {
+    if (!selectedDeptId) { setProgrammes([]); return; }
+    setLoadingProgs(true);
+    supabase
+      .from('programmes')
+      .select('id, name, level')
+      .eq('department_id', selectedDeptId)
+      .eq('is_active', true)
+      .order('level')
+      .order('name')
+      .then(({ data, error }) => {
+        if (!error && data?.length) setProgrammes(data);
+        else setProgrammes([]);
+      })
+      .finally(() => setLoadingProgs(false));
+  }, [selectedDeptId]);
 
   // Avatar picker
   const pickAvatar = async () => {
@@ -216,7 +234,9 @@ export default function RegisterScreen({ navigation }) {
 
   const busy = loading || uploadingAvatar;
 
-  const deptOptions = departments.map((d) => ({ label: d.name, value: d.name }));
+  // Use department ID as the picker value so we can fetch programmes by dept ID.
+  const deptOptions = departments.map((d) => ({ label: d.name, value: d.id }));
+  const progOptions = programmes.map((p) => ({ label: p.name, value: p.name }));
 
   return (
     <>
@@ -357,6 +377,7 @@ export default function RegisterScreen({ navigation }) {
                   Alert.alert('Select Department First', 'Please choose your department before selecting a programme.');
                   return;
                 }
+                if (loadingProgs) return; // wait for fetch
                 setShowProg(true);
               }}
               activeOpacity={0.8}
@@ -373,13 +394,20 @@ export default function RegisterScreen({ navigation }) {
               ]} numberOfLines={1}>
                 {!form.department
                   ? 'Select a department first'
-                  : form.programme || 'Select your programme'}
+                  : loadingProgs
+                    ? 'Loading programmes…'
+                    : programmes.length === 0
+                      ? 'No programmes found for this department'
+                      : form.programme || 'Select your programme'}
               </Text>
-              <Ionicons
-                name="chevron-down-outline"
-                size={15}
-                color={form.department ? WHITE_70 : 'rgba(255,255,255,0.25)'}
-              />
+              {loadingProgs && form.department
+                ? <ActivityIndicator size="small" color={WHITE_70} />
+                : <Ionicons
+                    name="chevron-down-outline"
+                    size={15}
+                    color={form.department ? WHITE_70 : 'rgba(255,255,255,0.25)'}
+                  />
+              }
             </TouchableOpacity>
             {!form.department && !errors.programme && (
               <Text style={s.fieldHint}>
@@ -478,17 +506,19 @@ export default function RegisterScreen({ navigation }) {
         </KeyboardAvoidingView>
       </SafeAreaView>
 
-      {/* Programme picker */}
+      {/* Programme picker — populated from DB based on selected department */}
       <PickerModal visible={showProg} title="Select Programme"
-        options={PROGRAMMES} value={form.programme}
+        options={progOptions} value={form.programme}
         onSelect={(v) => { set('programme')(v); clearError('programme'); }}
         onClose={() => setShowProg(false)} />
 
-      {/* Department picker — clears programme when department changes */}
+      {/* Department picker — stores dept ID for programme fetch, name in form */}
       <PickerModal visible={showDept} title="Select Department"
-        options={deptOptions} value={form.department}
-        onSelect={(v) => {
-          setForm((f) => ({ ...f, department: v, programme: '' }));
+        options={deptOptions} value={selectedDeptId}
+        onSelect={(deptId) => {
+          const dept = departments.find((d) => d.id === deptId);
+          setSelectedDeptId(deptId);
+          setForm((f) => ({ ...f, department: dept?.name || '', programme: '' }));
           clearError('department');
           clearError('programme');
         }}
