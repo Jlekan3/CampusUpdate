@@ -20,7 +20,7 @@ const RESEND_COOLDOWN = 60;
 
 export default function OTPVerificationScreen({ navigation, route }) {
   const { email, type } = route.params;
-  const { verifyOtp, resendOtp } = useAuth();
+  const { verifyOtp, resendOtp, logout } = useAuth();
 
   const [otp,        setOtp]        = useState('');
   const [otpError,   setOtpError]   = useState('');
@@ -58,10 +58,14 @@ export default function OTPVerificationScreen({ navigation, route }) {
         // Password reset: navigate to change-password screen
         navigation.replace('ResetPassword', { email });
       } else {
-        // Signup confirmed: show success state.
-        // AuthContext's onAuthStateChange will fire, resolve the role, and
-        // RootNavigator will switch to StudentNavigator automatically.
+        // Signup confirmed: show success screen briefly, then sign out
+        // so the student is redirected to the Login page to sign in properly.
         setVerified(true);
+        setTimeout(async () => {
+          await logout();
+          // After logout, onAuthStateChange clears the session and
+          // RootNavigator automatically shows the Auth (Login) screen.
+        }, 3000);
       }
     } catch (err) {
       setOtpError(err.message || 'Invalid or expired code. Please try again.');
@@ -96,9 +100,10 @@ export default function OTPVerificationScreen({ navigation, route }) {
         <View style={styles.successIconWrap}>
           <Ionicons name="checkmark-circle" size={72} color="#10B981" />
         </View>
-        <Text style={styles.successTitle}>Account Verified!</Text>
+        <Text style={styles.successTitle}>Account Created!</Text>
         <Text style={styles.successSub}>
-          Your RMU student account has been confirmed. You're being signed in…
+          Your RMU student account has been verified successfully.{'\n'}
+          Redirecting you to sign in…
         </Text>
         <ActivityIndicator color="#1A365D" size="large" style={{ marginTop: 32 }} />
       </View>

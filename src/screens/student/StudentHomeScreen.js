@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useContext, useCallback, useMemo } from 'react';
 import {
+  Image,
   View,
   Text,
   TouchableOpacity,
@@ -66,6 +67,7 @@ export default function StudentHomeScreen() {
   const fullName    = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Student';
   const initials    = fullName.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
   const indexNumber = user?.user_metadata?.index_number;
+  const avatarUrl   = user?.user_metadata?.avatar_url || null;
 
   const unreadCount    = useMemo(() => notifications.filter((n) => !n.readAt).length, [notifications]);
   const upcomingEvents = useMemo(() =>
@@ -158,7 +160,15 @@ export default function StudentHomeScreen() {
           {/* ── Identity row ── */}
           <View style={s.identityRow}>
             <View style={s.avatar}>
-              <Text style={s.avatarText}>{initials}</Text>
+              {avatarUrl ? (
+                <Image
+                  source={{ uri: avatarUrl }}
+                  style={s.avatarImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text style={s.avatarText}>{initials}</Text>
+              )}
             </View>
             <View style={s.identityMeta}>
               <Text style={s.greetingLabel}>{GREETING()},</Text>
@@ -354,7 +364,9 @@ const s = StyleSheet.create({
     borderWidth: 2, borderColor: 'rgba(255,255,255,0.35)',
     justifyContent: 'center', alignItems: 'center',
     marginRight: 14,
+    overflow: 'hidden',
   },
+  avatarImage:    { width: 50, height: 50, borderRadius: 25 },
   avatarText:     { color: '#FFFFFF', fontSize: 17, fontFamily: FONTS.bold },
   identityMeta:   { flex: 1 },
   greetingLabel:  { color: 'rgba(255,255,255,0.60)', fontSize: 12, fontFamily: FONTS.regular },
