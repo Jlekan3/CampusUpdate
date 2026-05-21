@@ -25,6 +25,27 @@ import { deleteItem, subscribeToUsers, createUserWithAuthAndFirestore, updateIte
 // Static PROGRAMMES removed — programmes are now fetched from the DB
 // based on the selected department (same logic as RegisterScreen).
 
+// Generates a 10-char temp password: guaranteed upper + lower + digit + special, no ambiguous chars
+const generateTempPassword = () => {
+  const upper   = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower   = 'abcdefghjkmnpqrstuvwxyz';
+  const digits  = '23456789';
+  const special = '@#!';
+  const all     = upper + lower + digits + special;
+  const pw = [
+    upper[Math.floor(Math.random()   * upper.length)],
+    lower[Math.floor(Math.random()   * lower.length)],
+    digits[Math.floor(Math.random()  * digits.length)],
+    special[Math.floor(Math.random() * special.length)],
+    ...Array.from({ length: 6 }, () => all[Math.floor(Math.random() * all.length)]),
+  ];
+  for (let i = pw.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pw[i], pw[j]] = [pw[j], pw[i]];
+  }
+  return pw.join('');
+};
+
 // ── Reusable bottom-sheet picker (fixes nested-modal tap issues) ──────────────
 function PickerSheet({ visible, title, items, value, onSelect, onClose, disabled, placeholder }) {
   return (
@@ -200,7 +221,7 @@ const Field = ({ label, required, half, children }) => (
 
 // ── Staff registration form ───────────────────────────────────────────────────
 function StaffFormSection({ form, onChange, departments, avatarUri, onAvatarChange, isEdit }) {
-  const set = (key, val) => onChange({ ...form, [key]: val });
+  const set = (key, val) => onChange(prev => ({ ...prev, [key]: val }));
   const isOthers = form.staff_position === 'Others';
 
   const pickAvatar = async () => {
@@ -310,10 +331,12 @@ function StaffFormSection({ form, onChange, departments, avatarUri, onAvatarChan
         {isEdit && <Text style={sf.helperText}>Email cannot be changed after account creation</Text>}
       </Field>
       {!isEdit && (
-        <Field label="Password" required>
-          <TextInput style={sf.input} value={form.password || ''} onChangeText={(v) => set('password', v)}
-            placeholder="Min. 6 characters" placeholderTextColor="#94A3B8" secureTextEntry />
-        </Field>
+        <View style={sf.tempPwNote}>
+          <Ionicons name="key-outline" size={14} color="#059669" />
+          <Text style={sf.tempPwText}>
+            A secure temporary password will be auto-generated and emailed to them.
+          </Text>
+        </View>
       )}
     </View>
   );
@@ -321,7 +344,7 @@ function StaffFormSection({ form, onChange, departments, avatarUri, onAvatarChan
 
 // ── Student registration form ──────────────────────────────────────────────────
 function StudentFormSection({ form, onChange, departments, avatarUri, onAvatarChange, isEdit }) {
-  const set = (key, val) => onChange({ ...form, [key]: val });
+  const set = (key, val) => onChange(prev => ({ ...prev, [key]: val }));
 
   const [selectedDeptId, setSelectedDeptId] = useState('');
   const [programmes,     setProgs]           = useState([]);
@@ -410,7 +433,7 @@ function StudentFormSection({ form, onChange, departments, avatarUri, onAvatarCh
       <Field label="Department">
         <DepartmentDropdown
           value={form.department}
-          onChange={(v) => { set('department', v); set('programme', ''); }}
+          onChange={(v) => set('department', v)}
           departments={departments}
           onDeptIdChange={(id) => { setSelectedDeptId(id); set('programme', ''); }}
         />
@@ -436,16 +459,18 @@ function StudentFormSection({ form, onChange, departments, avatarUri, onAvatarCh
       <Text style={sf.sectionHeader}>ACCOUNT</Text>
       <Field label="Email Address" required>
         <TextInput style={[sf.input, isEdit && sf.inputDisabled]} value={form.email || ''}
-          onChangeText={(v) => set('email', v)} placeholder="name@rmu.edu.gh"
+          onChangeText={(v) => set('email', v)} placeholder="name@st.rmu.edu.gh"
           placeholderTextColor="#94A3B8" autoCapitalize="none" keyboardType="email-address"
           editable={!isEdit} />
         {isEdit && <Text style={sf.helperText}>Email cannot be changed after account creation</Text>}
       </Field>
       {!isEdit && (
-        <Field label="Password" required>
-          <TextInput style={sf.input} value={form.password || ''} onChangeText={(v) => set('password', v)}
-            placeholder="Min. 6 characters" placeholderTextColor="#94A3B8" secureTextEntry />
-        </Field>
+        <View style={sf.tempPwNote}>
+          <Ionicons name="key-outline" size={14} color="#059669" />
+          <Text style={sf.tempPwText}>
+            A secure temporary password will be auto-generated and emailed to them.
+          </Text>
+        </View>
       )}
     </View>
   );
@@ -581,9 +606,6 @@ const ManagePeopleScreen = ({ navigation }) => {
     if (!formData.email.trim()) {
       return Alert.alert('Validation Error', 'Email is required');
     }
-    if (!isEditingPerson && (!formData.password?.trim() || formData.password.length < 6)) {
-      return Alert.alert('Validation Error', 'Password must be at least 6 characters');
-    }
 
     // Student-specific validation
     if (userType === 'student') {
@@ -648,13 +670,20 @@ const ManagePeopleScreen = ({ navigation }) => {
 
       if (isEditingPerson) {
         await updateItem('users', editingPersonId, payload);
+        setShowModal(false);
+        setAvatarUri(null);
+        Alert.alert('Success', 'Record updated successfully');
       } else {
-        await createUserWithAuthAndFirestore(formData.email, formData.password, payload);
+        const tempPassword = generateTempPassword();
+        await createUserWithAuthAndFirestore(formData.email, tempPassword, payload);
+        setShowModal(false);
+        setAvatarUri(null);
+        Alert.alert(
+          'Account Created',
+          `✓ Account created for ${formData.email}\n\nTemporary password:\n${tempPassword}\n\nThis password has been emailed to them. They will be required to change it on first login.`,
+          [{ text: 'OK' }]
+        );
       }
-
-      setShowModal(false);
-      setAvatarUri(null);
-      Alert.alert('Success', isEditingPerson ? 'Record updated successfully' : 'Account created successfully');
     } catch (error) {
       const msg = (error.message || '').toLowerCase();
       let errorMessage = error.message || (isEditingPerson ? 'Unable to update' : 'Unable to create user');
@@ -1471,6 +1500,12 @@ const sf = StyleSheet.create({
   dropdownText: { fontSize: 14, fontWeight: '500', color: '#0F172A', flex: 1 },
   dropdownPlaceholder: { color: '#94A3B8', fontWeight: '400' },
   sheetWrap: { flex: 1, justifyContent: 'flex-end' },
+  tempPwNote: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: '#ECFDF5', borderRadius: 10, padding: 12,
+    borderWidth: 1, borderColor: '#6EE7B7', marginBottom: 14,
+  },
+  tempPwText: { flex: 1, fontSize: 12, color: '#065F46', lineHeight: 18 },
   pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
   pickerSheet: {
     backgroundColor: '#FFFFFF',

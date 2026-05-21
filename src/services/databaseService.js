@@ -122,6 +122,8 @@ export const upsertUserProfile = async (id, data) => {
 /** Admin creates a new auth + profile row without disturbing the admin's session.
  *  Uses a throw-away Supabase client backed by in-memory storage so the signUp
  *  never writes to AsyncStorage and never replaces the admin's stored session.
+ *  Sets must_change_password:true so the user is forced to change the temp password
+ *  on first login. Also calls the send-welcome-email Edge Function.
  */
 export const createUserWithAuthAndFirestore = async (email, password, userData) => {
   const supabaseUrl  = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -141,8 +143,10 @@ export const createUserWithAuthAndFirestore = async (email, password, userData) 
     password,
     options: {
       data: {
-        full_name: userData.fullName || userData.name || '',
-        role:      userData.role     || 'student',
+        full_name:            userData.full_name || userData.fullName || userData.name || '',
+        display_name:         userData.display_name || userData.full_name || '',
+        role:                 userData.role || 'student',
+        must_change_password: true,
       },
     },
   });
@@ -152,15 +156,36 @@ export const createUserWithAuthAndFirestore = async (email, password, userData) 
   const userId = data.user?.id;
   if (userId) {
     await supabase.from('users').upsert({
-      id:         userId,
+      id:           userId,
       email,
-      full_name:  userData.fullName  || userData.name || '',
-      role:       userData.role      || 'student',
-      department: userData.department || null,
-      programme:  userData.programme  || null,
-      student_id: userData.studentID  || null,
+      full_name:    userData.full_name    || userData.fullName || userData.name || '',
+      display_name: userData.display_name || userData.full_name || '',
+      role:         userData.role         || 'student',
+      department:   userData.department   || null,
+      programme:    userData.programme    || null,
+      student_id:   userData.student_id   || userData.studentID || null,
+      index_number: userData.index_number || null,
+      staff_id:     userData.staff_id     || null,
+      position:     userData.position     || null,
+      phone:        userData.phone        || null,
+      avatar_url:   userData.avatar_url   || null,
     }, { onConflict: 'id' });
   }
+
+  // Send welcome email with temp credentials (graceful — don't block on failure)
+  try {
+    await supabase.functions.invoke('send-welcome-email', {
+      body: {
+        email,
+        full_name: userData.full_name || userData.fullName || userData.name || '',
+        password,
+        role: userData.role || 'student',
+      },
+    });
+  } catch (emailErr) {
+    console.warn('[createUser] welcome email failed:', emailErr?.message);
+  }
+
   return data.user;
 };
 

@@ -6,16 +6,17 @@ import { useAuth } from '../context/AuthContext';
 import { USER_ROLES, COLORS } from '../utils/constants';
 
 // Import navigators
-import AuthNavigator    from './AuthNavigator';
-import GuestNavigator   from './GuestNavigator';
-import StudentNavigator from './StudentNavigator';
-import StaffNavigator   from './StaffNavigator';
-import AdminNavigator   from './AdminNavigator';
+import AuthNavigator              from './AuthNavigator';
+import GuestNavigator             from './GuestNavigator';
+import StudentNavigator           from './StudentNavigator';
+import StaffNavigator             from './StaffNavigator';
+import AdminNavigator             from './AdminNavigator';
+import ForceChangePasswordScreen  from '../screens/auth/ForceChangePasswordScreen';
 
 const Stack = createStackNavigator();
 
 const RootNavigator = () => {
-  const { user, userRole, authLoading } = useAuth();
+  const { user, userRole, authLoading, mustChangePassword } = useAuth();
   console.log('RootNavigator', { authLoading, user: user?.id, userRole });
 
   if (authLoading) {
@@ -58,12 +59,19 @@ const RootNavigator = () => {
       >
         {!user ? (
           // Not authenticated - show Auth stack
-          <Stack.Screen 
-            name="Auth" 
+          <Stack.Screen
+            name="Auth"
             component={AuthNavigator}
             options={{
               animationTypeForReplace: user ? 'pop' : 'push',
             }}
+          />
+        ) : mustChangePassword ? (
+          // Admin-created account: user must change temp password before proceeding
+          <Stack.Screen
+            name="ForceChangePassword"
+            component={ForceChangePasswordScreen}
+            options={{ animationTypeForReplace: 'push' }}
           />
         ) : userRole === USER_ROLES.ADMIN ? (
           // Admin user

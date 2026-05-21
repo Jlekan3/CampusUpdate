@@ -51,6 +51,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/react": "~19.1.10",
+    "typescript": "~5.9.2",
     "ws": "^8.20.1"
   }
 }

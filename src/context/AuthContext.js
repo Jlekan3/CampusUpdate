@@ -280,6 +280,15 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // ── mustChangePassword — set by admin when creating accounts ─────────────────
+  const mustChangePassword = user?.user_metadata?.must_change_password === true;
+
+  const clearMustChangePassword = async () => {
+    try {
+      await supabase.auth.updateUser({ data: { must_change_password: false } });
+    } catch (_) {}
+  };
+
   // ── userRole alias (backwards compat with old Firebase AuthContext) ─────────
   const userRole = role;
 
@@ -289,6 +298,8 @@ export const AuthProvider = ({ children }) => {
       userRole,
       loading:       actionLoading,
       authLoading,
+      mustChangePassword,
+      clearMustChangePassword,
       login,
       logout,
       register,
