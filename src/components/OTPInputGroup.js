@@ -1,5 +1,7 @@
-import React, { useRef, useState } from 'react';
-import { View, TextInput, StyleSheet, Text } from 'react-native';
+import React, { useRef } from 'react';
+import { Dimensions, View, TextInput, StyleSheet, Text } from 'react-native';
+
+const SCREEN_W = Dimensions.get('window').width;
 
 const BOX_COUNT = 8;
 
@@ -62,23 +64,27 @@ export default function OTPInputGroup({ value = '', onChange, error }) {
   );
 }
 
+// Box size: (screenWidth - card padding 48px - total gap 42px) / 8 boxes
+// = (SCREEN_W - 90) / 8  — clamped between 32 and 42px for readability
+const BOX_SIZE = Math.min(42, Math.max(32, Math.floor((SCREEN_W - 90) / BOX_COUNT)));
+
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 10,
+    gap: 6,
   },
   box: {
-    width: 48,
-    height: 56,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
+    width:        BOX_SIZE,
+    height:       BOX_SIZE + 8,
+    borderRadius: 10,
+    borderWidth:  1.5,
+    borderColor:  '#E2E8F0',
     backgroundColor: '#F8FAFC',
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#0F172A',
-    textAlign: 'center',
+    fontSize:     Math.floor(BOX_SIZE * 0.5),
+    fontWeight:   '700',
+    color:        '#0F172A',
+    textAlign:    'center',
   },
   boxFilled: {
     borderColor: '#2563EB',
