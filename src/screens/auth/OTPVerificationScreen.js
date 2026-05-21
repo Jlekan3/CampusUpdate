@@ -93,17 +93,18 @@ export default function OTPVerificationScreen({ navigation, route }) {
         // Password reset: navigate to change-password screen
         navigation.replace('ResetPassword', { email });
       } else {
-        // Upload profile photo NOW — the confirmed session from verifyOtp()
-        // means auth.uid() is set and the profiles bucket policy is satisfied.
-        if (avatarUri) {
-          await uploadAvatarAfterVerify(avatarUri);
-        }
+        // 1. Upload avatar while the confirmed session is still active
+        if (avatarUri) await uploadAvatarAfterVerify(avatarUri);
 
-        // Show success screen, then sign out → RootNavigator shows Login.
+        // 2. Sign out IMMEDIATELY — clears the session before onAuthStateChange
+        //    can route to the student dashboard. The user stays in the Auth stack.
+        await logout();
+
+        // 3. Show the success modal (we are still on the OTP screen in Auth stack)
         setVerified(true);
-        setTimeout(async () => {
-          await logout();
-        }, 3000);
+
+        // 4. Navigate to Login after 3 seconds
+        setTimeout(() => navigation.replace('Login'), 3000);
       }
     } catch (err) {
       setOtpError(err.message || 'Invalid or expired code. Please try again.');
@@ -135,15 +136,45 @@ export default function OTPVerificationScreen({ navigation, route }) {
   if (verified) {
     return (
       <View style={styles.successRoot}>
-        <View style={styles.successIconWrap}>
-          <Ionicons name="checkmark-circle" size={72} color="#10B981" />
+        {/* Blurred overlay backdrop */}
+        <View style={styles.successBackdrop} />
+
+        {/* Success modal card */}
+        <View style={styles.successCard}>
+          {/* Icon */}
+          <View style={styles.successIconCircle}>
+            <Ionicons name="checkmark-circle" size={56} color="#10B981" />
+          </View>
+
+          {/* Copy */}
+          <Text style={styles.successTitle}>Account Created!</Text>
+          <Text style={styles.successSub}>
+            Your RMU student account has been verified successfully.
+          </Text>
+
+          {/* Divider */}
+          <View style={styles.successDivider} />
+
+          {/* Email badge */}
+          <View style={styles.successEmailRow}>
+            <Ionicons name="mail-outline" size={15} color="#1A365D" />
+            <Text style={styles.successEmail}>{email}</Text>
+          </View>
+
+          <Text style={styles.successRedirect}>
+            Redirecting to Sign In in 3 seconds…
+          </Text>
+
+          {/* Manual button */}
+          <TouchableOpacity
+            style={styles.successBtn}
+            onPress={() => navigation.replace('Login')}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.successBtnText}>Go to Sign In</Text>
+            <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+          </TouchableOpacity>
         </View>
-        <Text style={styles.successTitle}>Account Created!</Text>
-        <Text style={styles.successSub}>
-          Your RMU student account has been verified successfully.{'\n'}
-          Redirecting you to sign in…
-        </Text>
-        <ActivityIndicator color="#1A365D" size="large" style={{ marginTop: 32 }} />
       </View>
     );
   }
@@ -276,9 +307,30 @@ const styles = StyleSheet.create({
   resendSuccess:  { color: '#059669' },
   resendError:    { color: '#DC2626' },
 
-  // Success state (signup confirmed)
-  successRoot:    { flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 },
-  successIconWrap:{ marginBottom: 20 },
-  successTitle:   { fontSize: 28, fontWeight: '800', color: '#0F172A', textAlign: 'center', marginBottom: 12, letterSpacing: -0.3 },
-  successSub:     { fontSize: 15, color: '#475569', textAlign: 'center', lineHeight: 23 },
+  // ── Success modal (signup confirmed) ──────────────────────────────────────
+  successRoot:       { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
+  successBackdrop:   { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,23,42,0.65)' },
+  successCard: {
+    width: '100%', backgroundColor: '#FFFFFF', borderRadius: 28,
+    padding: 28, alignItems: 'center',
+    shadowColor: '#000', shadowOpacity: 0.24, shadowRadius: 32,
+    shadowOffset: { width: 0, height: 16 }, elevation: 16,
+  },
+  successIconCircle: {
+    width: 88, height: 88, borderRadius: 44,
+    backgroundColor: '#ECFDF5', justifyContent: 'center', alignItems: 'center',
+    marginBottom: 20,
+    shadowColor: '#10B981', shadowOpacity: 0.2, shadowRadius: 14, elevation: 4,
+  },
+  successTitle:    { fontSize: 24, fontWeight: '800', color: '#0F172A', textAlign: 'center', marginBottom: 8, letterSpacing: -0.3 },
+  successSub:      { fontSize: 14, color: '#475569', textAlign: 'center', lineHeight: 21, marginBottom: 20 },
+  successDivider:  { width: '100%', height: 1, backgroundColor: '#E2E8F0', marginBottom: 16 },
+  successEmailRow: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#EFF6FF', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 16 },
+  successEmail:    { fontSize: 13, fontWeight: '600', color: '#1A365D' },
+  successRedirect: { fontSize: 12, color: '#94A3B8', marginBottom: 20, textAlign: 'center' },
+  successBtn: {
+    width: '100%', height: 50, backgroundColor: '#1A365D', borderRadius: 14,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+  },
+  successBtnText:  { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
 });

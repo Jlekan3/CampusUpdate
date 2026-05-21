@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,34 +9,477 @@ import {
   Alert,
   ScrollView,
   Modal,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import { File } from 'expo-file-system';
 import ScreenWrapper from '../../components/ScreenWrapper';
-import CustomButton from '../../components/CustomButton';
 import { COLORS } from '../../utils/constants';
 import { useAuth } from '../../context/AuthContext';
 import { USER_ROLES } from '../../utils/constants';
+import { supabase } from '../../config/supabase';
 import { deleteItem, subscribeToUsers, createUserWithAuthAndFirestore, updateItem } from '../../services/databaseService';
 
+// Static PROGRAMMES removed — programmes are now fetched from the DB
+// based on the selected department (same logic as RegisterScreen).
+
+// ── Reusable bottom-sheet picker (fixes nested-modal tap issues) ──────────────
+function PickerSheet({ visible, title, items, value, onSelect, onClose, disabled, placeholder }) {
+  return (
+    <Modal visible={visible} animationType="slide" transparent presentationStyle="overFullScreen">
+      {/* Wrapper with flex-end so sheet sits at bottom regardless of content */}
+      <View style={sf.sheetWrap}>
+        <TouchableOpacity style={sf.pickerOverlay} activeOpacity={1} onPress={onClose} />
+        <View style={sf.pickerSheet}>
+          <View style={sf.pickerHandle} />
+          <Text style={sf.pickerTitle}>{title}</Text>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 28 }}>
+            {items.map((item, i) => {
+              const label = typeof item === 'string' ? item : item.label;
+              const key   = typeof item === 'string' ? item : item.value;
+              const isActive = value === key;
+              return (
+                <TouchableOpacity key={key}
+                  style={[sf.pickerOption, i < items.length - 1 && sf.pickerBorder]}
+                  onPress={() => { onSelect(key); onClose(); }} activeOpacity={0.7}>
+                  <Text style={[sf.pickerOptionText, isActive && sf.pickerOptionActive]}>{label}</Text>
+                  {isActive && <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} />}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ── Programme picker (dynamic — receives list from parent) ────────────────────
+function ProgrammeDropdown({ value, onChange, programmes, loading, locked }) {
+  const [open, setOpen] = useState(false);
+  const label = locked
+    ? 'Select a department first'
+    : loading
+      ? 'Loading programmes…'
+      : value || 'Select programme';
+
+  return (
+    <>
+      <TouchableOpacity
+        style={[sf.dropdownBtn, locked && { opacity: 0.45 }]}
+        onPress={() => { if (!locked && !loading) setOpen(true); }}
+        activeOpacity={locked ? 1 : 0.8}
+      >
+        <Ionicons
+          name={locked ? 'lock-closed-outline' : 'school-outline'}
+          size={14}
+          color={locked ? '#CBD5E0' : '#64748B'}
+        />
+        <Text style={[sf.dropdownText, !value && sf.dropdownPlaceholder, locked && { color: '#CBD5E0' }]}>
+          {label}
+        </Text>
+        {loading ? <ActivityIndicator size="small" color="#94A3B8" /> : <Ionicons name="chevron-down-outline" size={14} color={locked ? '#CBD5E0' : '#64748B'} />}
+      </TouchableOpacity>
+      <PickerSheet
+        visible={open}
+        title="Select Programme"
+        items={programmes.map((p) => ({ label: p.name, value: p.name }))}
+        value={value}
+        onSelect={onChange}
+        onClose={() => setOpen(false)}
+      />
+    </>
+  );
+}
+
+// ── Department picker dropdown ────────────────────────────────────────────────
+function DepartmentDropdown({ value, onChange, departments, onDeptIdChange }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <TouchableOpacity style={sf.dropdownBtn} onPress={() => setOpen(true)} activeOpacity={0.8}>
+        <Text style={[sf.dropdownText, !value && sf.dropdownPlaceholder]}>{value || 'Select department'}</Text>
+        <Ionicons name="chevron-down-outline" size={14} color="#64748B" />
+      </TouchableOpacity>
+      <PickerSheet
+        visible={open}
+        title="Select Department"
+        items={departments.map((d) => ({ label: d.name, value: d.id }))}
+        value={departments.find((d) => d.name === value)?.id || ''}
+        onSelect={(deptId) => {
+          const dept = departments.find((d) => d.id === deptId);
+          onChange(dept?.name || '');
+          if (onDeptIdChange) onDeptIdChange(deptId);
+        }}
+        onClose={() => setOpen(false)}
+      />
+    </>
+  );
+}
+
+const POSITIONS = [
+  'Lecturer',
+  'Senior Lecturer',
+  'Associate Professor',
+  'Professor',
+  'Teaching Assistant',
+  'Research Fellow',
+  'Part-Time Instructor',
+  'Head of Department',
+  'Dean',
+  'Administrative Officer',
+  'Administrative Staff',
+  'Lab Technician',
+  'IT Officer',
+  'Others',
+];
+
+const STAFF_ROLES = ['faculty', 'admin'];
+
+// ── Position picker ───────────────────────────────────────────────────────────
+function PositionDropdown({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <TouchableOpacity style={sf.dropdownBtn} onPress={() => setOpen(true)} activeOpacity={0.8}>
+        <Text style={[sf.dropdownText, !value && sf.dropdownPlaceholder]}>{value || 'Select position'}</Text>
+        <Ionicons name="chevron-down-outline" size={14} color="#64748B" />
+      </TouchableOpacity>
+      <PickerSheet
+        visible={open}
+        title="Job Position"
+        items={POSITIONS}
+        value={value}
+        onSelect={onChange}
+        onClose={() => setOpen(false)}
+      />
+    </>
+  );
+}
+
+// ── Role picker ───────────────────────────────────────────────────────────────
+function RoleDropdown({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ROLES = [
+    { label: 'Faculty / Lecturer', value: 'faculty' },
+    { label: 'Administrator',      value: 'admin'   },
+  ];
+  return (
+    <>
+      <TouchableOpacity style={sf.dropdownBtn} onPress={() => setOpen(true)} activeOpacity={0.8}>
+        <Text style={sf.dropdownText}>
+          {ROLES.find((r) => r.value === value)?.label || 'Select role'}
+        </Text>
+        <Ionicons name="chevron-down-outline" size={14} color="#64748B" />
+      </TouchableOpacity>
+      <PickerSheet
+        visible={open}
+        title="System Role"
+        items={ROLES}
+        value={value}
+        onSelect={onChange}
+        onClose={() => setOpen(false)}
+      />
+    </>
+  );
+}
+
+// ── Shared field wrapper — defined at module scope so its identity never changes
+// (defining it inside a component causes React to unmount/remount on every
+//  keystroke, making TextInputs lose focus after a single character)
+const Field = ({ label, required, half, children }) => (
+  <View style={[sf.field, half && sf.halfField]}>
+    <Text style={sf.label}>
+      {label}{required ? <Text style={sf.req}> *</Text> : null}
+    </Text>
+    {children}
+  </View>
+);
+
+// ── Staff registration form ───────────────────────────────────────────────────
+function StaffFormSection({ form, onChange, departments, avatarUri, onAvatarChange, isEdit }) {
+  const set = (key, val) => onChange({ ...form, [key]: val });
+  const isOthers = form.staff_position === 'Others';
+
+  const pickAvatar = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') { Alert.alert('Permission needed'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true, aspect: [1, 1], quality: 0.7,
+    });
+    if (!result.canceled && result.assets?.[0]) onAvatarChange(result.assets[0].uri);
+  };
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') { Alert.alert('Permission needed'); return; }
+    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.7 });
+    if (!result.canceled && result.assets?.[0]) onAvatarChange(result.assets[0].uri);
+  };
+
+  const showAvatarOptions = () => Alert.alert('Profile Photo', 'Choose source', [
+    { text: 'Camera', onPress: takePhoto },
+    { text: 'Photo Library', onPress: pickAvatar },
+    { text: 'Remove', style: 'destructive', onPress: () => onAvatarChange(null) },
+    { text: 'Cancel', style: 'cancel' },
+  ]);
+
+  return (
+    <View>
+      {/* ── Avatar ── */}
+      <View style={sf.avatarSection}>
+        <TouchableOpacity onPress={showAvatarOptions} activeOpacity={0.85} style={sf.avatarWrap}>
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={sf.avatar} />
+          ) : (
+            <View style={sf.avatarPlaceholder}>
+              <Ionicons name="person-outline" size={32} color="#94A3B8" />
+            </View>
+          )}
+          <View style={sf.avatarBadge}>
+            <Ionicons name="camera" size={12} color="#FFFFFF" />
+          </View>
+        </TouchableOpacity>
+        <View style={sf.avatarInfo}>
+          <Text style={sf.avatarTitle}>Profile Photo</Text>
+          <Text style={sf.avatarSub}>Tap to upload from camera or library</Text>
+        </View>
+      </View>
+
+      {/* ── Identity ── */}
+      <Text style={sf.sectionHeader}>IDENTITY</Text>
+      <Field label="Full Name" required>
+        <TextInput style={sf.input} value={form.staff_full_name || ''} onChangeText={(v) => set('staff_full_name', v)}
+          placeholder="e.g. Dr. Samuel Acheampong" placeholderTextColor="#94A3B8" autoCapitalize="words" />
+      </Field>
+      <Field label="Display Name">
+        <TextInput style={sf.input} value={form.staff_display_name || ''} onChangeText={(v) => set('staff_display_name', v)}
+          placeholder="Defaults to full name if blank" placeholderTextColor="#94A3B8" autoCapitalize="words" />
+      </Field>
+
+      {/* ── IDs (dual column) ── */}
+      <Text style={sf.sectionHeader}>STAFF ID</Text>
+      <View style={sf.row}>
+        <Field label="Staff ID" required half>
+          <TextInput style={sf.input} value={form.staff_id || ''} onChangeText={(v) => set('staff_id', v)}
+            placeholder="e.g. STF-001" placeholderTextColor="#94A3B8" autoCapitalize="characters" />
+        </Field>
+        <Field label="Phone" half>
+          <TextInput style={sf.input} value={form.staff_phone || ''} onChangeText={(v) => set('staff_phone', v)}
+            placeholder="+233..." placeholderTextColor="#94A3B8" keyboardType="phone-pad" />
+        </Field>
+      </View>
+
+      {/* ── Role & Position ── */}
+      <Text style={sf.sectionHeader}>ROLE & POSITION</Text>
+      <Field label="System Role">
+        <RoleDropdown value={form.staff_role || 'faculty'} onChange={(v) => set('staff_role', v)} />
+      </Field>
+
+      <Field label="Job Position" required>
+        <PositionDropdown value={form.staff_position} onChange={(v) => {
+          set('staff_position', v);
+          if (v !== 'Others') set('staff_position_custom', '');
+        }} />
+      </Field>
+
+      {/* Conditional: "Others" description */}
+      {isOthers && (
+        <Field label="Please specify your position" required>
+          <TextInput style={sf.input} value={form.staff_position_custom || ''} onChangeText={(v) => set('staff_position_custom', v)}
+            placeholder="e.g. Research Coordinator" placeholderTextColor="#94A3B8" autoCapitalize="words" />
+        </Field>
+      )}
+
+      {/* ── Department ── */}
+      <Text style={sf.sectionHeader}>DEPARTMENT</Text>
+      <Field label="Department">
+        <DepartmentDropdown value={form.staff_department} onChange={(v) => set('staff_department', v)} departments={departments} />
+      </Field>
+
+      {/* ── Account ── */}
+      <Text style={sf.sectionHeader}>ACCOUNT</Text>
+      <Field label="Email Address" required>
+        <TextInput style={[sf.input, isEdit && sf.inputDisabled]} value={form.email || ''}
+          onChangeText={(v) => set('email', v)} placeholder="name@rmu.edu.gh"
+          placeholderTextColor="#94A3B8" autoCapitalize="none" keyboardType="email-address"
+          editable={!isEdit} />
+        {isEdit && <Text style={sf.helperText}>Email cannot be changed after account creation</Text>}
+      </Field>
+      {!isEdit && (
+        <Field label="Password" required>
+          <TextInput style={sf.input} value={form.password || ''} onChangeText={(v) => set('password', v)}
+            placeholder="Min. 6 characters" placeholderTextColor="#94A3B8" secureTextEntry />
+        </Field>
+      )}
+    </View>
+  );
+}
+
+// ── Student registration form ──────────────────────────────────────────────────
+function StudentFormSection({ form, onChange, departments, avatarUri, onAvatarChange, isEdit }) {
+  const set = (key, val) => onChange({ ...form, [key]: val });
+
+  const [selectedDeptId, setSelectedDeptId] = useState('');
+  const [programmes,     setProgs]           = useState([]);
+  const [loadingProgs,   setLoadingProgs]    = useState(false);
+
+  useEffect(() => {
+    if (!selectedDeptId) { setProgs([]); return; }
+    setLoadingProgs(true);
+    supabase.from('programmes').select('id, name').eq('department_id', selectedDeptId).order('name')
+      .then(({ data }) => setProgs(data || []))
+      .finally(() => setLoadingProgs(false));
+  }, [selectedDeptId]);
+
+  const pickAvatar = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') { Alert.alert('Permission needed', 'Allow photo library access.'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true, aspect: [1, 1], quality: 0.7,
+    });
+    if (!result.canceled && result.assets?.[0]) onAvatarChange(result.assets[0].uri);
+  };
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') { Alert.alert('Permission needed'); return; }
+    const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.7 });
+    if (!result.canceled && result.assets?.[0]) onAvatarChange(result.assets[0].uri);
+  };
+
+  const showAvatarOptions = () => Alert.alert('Profile Photo', 'Choose source', [
+    { text: 'Camera', onPress: takePhoto },
+    { text: 'Photo Library', onPress: pickAvatar },
+    { text: 'Remove', style: 'destructive', onPress: () => onAvatarChange(null) },
+    { text: 'Cancel', style: 'cancel' },
+  ]);
+
+  return (
+    <View>
+      {/* ── Avatar ── */}
+      <View style={sf.avatarSection}>
+        <TouchableOpacity onPress={showAvatarOptions} activeOpacity={0.85} style={sf.avatarWrap}>
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={sf.avatar} />
+          ) : (
+            <View style={sf.avatarPlaceholder}>
+              <Ionicons name="person-outline" size={32} color="#94A3B8" />
+            </View>
+          )}
+          <View style={sf.avatarBadge}>
+            <Ionicons name="camera" size={12} color="#FFFFFF" />
+          </View>
+        </TouchableOpacity>
+        <View style={sf.avatarInfo}>
+          <Text style={sf.avatarTitle}>Profile Photo</Text>
+          <Text style={sf.avatarSub}>Tap to upload from camera or library</Text>
+        </View>
+      </View>
+
+      {/* ── Identity ── */}
+      <Text style={sf.sectionHeader}>IDENTITY</Text>
+      <Field label="Full Name" required>
+        <TextInput style={sf.input} value={form.full_name || ''} onChangeText={(v) => set('full_name', v)}
+          placeholder="e.g. Kwame Mensah" placeholderTextColor="#94A3B8" autoCapitalize="words" />
+      </Field>
+      <Field label="Display Name">
+        <TextInput style={sf.input} value={form.display_name || ''} onChangeText={(v) => set('display_name', v)}
+          placeholder="Defaults to full name if blank" placeholderTextColor="#94A3B8" autoCapitalize="words" />
+      </Field>
+
+      {/* ── IDs (dual column) ── */}
+      <Text style={sf.sectionHeader}>STUDENT IDs</Text>
+      <View style={sf.row}>
+        <Field label="Student ID" required half>
+          <TextInput style={sf.input} value={form.student_id || ''} onChangeText={(v) => set('student_id', v)}
+            placeholder="e.g. STU-12345" placeholderTextColor="#94A3B8" autoCapitalize="characters" />
+        </Field>
+        <Field label="Index Number" required half>
+          <TextInput style={sf.input} value={form.index_number || ''} onChangeText={(v) => set('index_number', v)}
+            placeholder="e.g. RMU/2024/001" placeholderTextColor="#94A3B8" autoCapitalize="characters" />
+        </Field>
+      </View>
+
+      {/* ── Academic ── */}
+      <Text style={sf.sectionHeader}>ACADEMIC DETAILS</Text>
+      <Field label="Department">
+        <DepartmentDropdown
+          value={form.department}
+          onChange={(v) => { set('department', v); set('programme', ''); }}
+          departments={departments}
+          onDeptIdChange={(id) => { setSelectedDeptId(id); set('programme', ''); }}
+        />
+      </Field>
+      <Field label="Programme">
+        <ProgrammeDropdown
+          value={form.programme}
+          onChange={(v) => set('programme', v)}
+          programmes={programmes}
+          loading={loadingProgs}
+          locked={!selectedDeptId}
+        />
+      </Field>
+
+      {/* ── Contact ── */}
+      <Text style={sf.sectionHeader}>CONTACT</Text>
+      <Field label="Phone Number">
+        <TextInput style={sf.input} value={form.phone || ''} onChangeText={(v) => set('phone', v)}
+          placeholder="+233..." placeholderTextColor="#94A3B8" keyboardType="phone-pad" />
+      </Field>
+
+      {/* ── Account ── */}
+      <Text style={sf.sectionHeader}>ACCOUNT</Text>
+      <Field label="Email Address" required>
+        <TextInput style={[sf.input, isEdit && sf.inputDisabled]} value={form.email || ''}
+          onChangeText={(v) => set('email', v)} placeholder="name@rmu.edu.gh"
+          placeholderTextColor="#94A3B8" autoCapitalize="none" keyboardType="email-address"
+          editable={!isEdit} />
+        {isEdit && <Text style={sf.helperText}>Email cannot be changed after account creation</Text>}
+      </Field>
+      {!isEdit && (
+        <Field label="Password" required>
+          <TextInput style={sf.input} value={form.password || ''} onChangeText={(v) => set('password', v)}
+            placeholder="Min. 6 characters" placeholderTextColor="#94A3B8" secureTextEntry />
+        </Field>
+      )}
+    </View>
+  );
+}
+
 const ManagePeopleScreen = ({ navigation }) => {
-  const [people, setPeople] = useState([]);
-  const [showModal, setShowModal] = useState(false);
+  const [people,          setPeople]         = useState([]);
+  const [departments,     setDepartments]    = useState([]);
+  const [showModal,       setShowModal]      = useState(false);
   const [isEditingPerson, setIsEditingPerson] = useState(false);
   const [editingPersonId, setEditingPersonId] = useState(null);
-  const [userType, setUserType] = useState('student');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [userType,        setUserType]       = useState('student');
+  const [searchQuery,     setSearchQuery]    = useState('');
+  const [avatarUri,       setAvatarUri]      = useState(null); // local URI for student avatar
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    role: 'student',
-    studentID: '',
-    programme: '',
-    level: '100',
-    department: '',
+    // shared
+    email: '', password: '',
+    // student
+    full_name: '', display_name: '', student_id: '', index_number: '',
+    programme: '', department: '', phone: '',
+    // staff fields
+    name: '', staff_department: '',
+    staff_full_name: '', staff_display_name: '', staff_id: '',
+    staff_phone: '', staff_role: 'faculty', staff_position: '',
+    staff_position_custom: '',
   });
   const { userRole } = useAuth();
+
+  // Fetch departments for dropdown
+  useEffect(() => {
+    supabase.from('departments').select('id, name').order('name')
+      .then(({ data }) => setDepartments(data || []));
+  }, []);
   const peopleCount = people.length;
 
   const filteredPeople = React.useMemo(() => {
@@ -64,34 +507,44 @@ const ManagePeopleScreen = ({ navigation }) => {
     setIsEditingPerson(false);
     setEditingPersonId(null);
     setUserType('student');
+    setAvatarUri(null);
     setFormData({
-      name: '',
-      email: '',
-      password: '',
-      role: 'student',
-      studentID: '',
-      programme: '',
-      level: '100',
-      department: '',
+      email: '', password: '',
+      full_name: '', display_name: '', student_id: '', index_number: '',
+      programme: '', department: '', phone: '',
+      name: '', staff_department: '',
+      staff_full_name: '', staff_display_name: '', staff_id: '',
+      staff_phone: '', staff_role: 'faculty', staff_position: '',
+      staff_position_custom: '',
     });
     setShowModal(true);
   };
 
   const openEditModal = (person) => {
-    const nextUserType = person.role === 'staff' ? 'staff' : 'student';
-
+    const nextUserType = (person.role === 'staff' || person.role === 'faculty') ? 'staff' : 'student';
     setIsEditingPerson(true);
     setEditingPersonId(person.id);
     setUserType(nextUserType);
+    setAvatarUri(person.avatar_url || null);
     setFormData({
-      name: person.name || '',
       email: person.email || '',
       password: '',
-      role: nextUserType,
-      studentID: person.studentID || person.studentId || '',
+      full_name: person.full_name || person.name || '',
+      display_name: person.display_name || '',
+      student_id: person.student_id || person.studentID || '',
+      index_number: person.index_number || '',
       programme: person.programme || '',
-      level: person.level ? String(person.level) : '100',
       department: person.department || '',
+      phone: person.phone || '',
+      name: person.full_name || person.name || '',
+      staff_department: person.department || '',
+      staff_full_name: person.full_name || person.name || '',
+      staff_display_name: person.display_name || '',
+      staff_id: person.staff_id || '',
+      staff_phone: person.phone || '',
+      staff_role: person.role || 'faculty',
+      staff_position: person.position || '',
+      staff_position_custom: '',
     });
     setShowModal(true);
   };
@@ -107,123 +560,110 @@ const ManagePeopleScreen = ({ navigation }) => {
     return () => { unsubscribe(); };
   }, []);
 
+  // Upload avatar to Supabase storage
+  const uploadAvatar = async (uri) => {
+    if (!uri || uri.startsWith('http')) return uri;
+    const ext = uri.match(/\.(\w+)(\?|$)/)?.[1] || 'jpg';
+    const contentType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+    const filename = `avatars/${Date.now()}.${ext}`;
+    const file = new File(uri);
+    const { error } = await supabase.storage.from('locations').upload(filename, file, { contentType, upsert: true });
+    if (error) throw error;
+    const { data } = supabase.storage.from('locations').getPublicUrl(filename);
+    return data.publicUrl;
+  };
+
   const handleSavePerson = async () => {
-    const actionLabel = isEditingPerson ? 'handleSavePerson(edit)' : 'handleSavePerson(create)';
-    console.log(`🔵 ${actionLabel}: Button clicked`);
-    console.log('User role:', userRole);
-    console.log('USER_ROLES.ADMIN:', USER_ROLES.ADMIN);
-    
     if (userRole !== USER_ROLES.ADMIN) {
-      console.warn('handleAddPerson: User is not admin');
       return Alert.alert('Unauthorized', 'You are not allowed to perform this action');
     }
 
-    // Validation
-    console.log(`${actionLabel}: Starting validation...`);
-    console.log('Form data:', JSON.stringify(formData, null, 2));
-    console.log('User type:', userType);
-    
-    if (!formData.name.trim() || !formData.email.trim()) {
-      console.warn('handleAddPerson: Name or email missing');
-      return Alert.alert('Validation Error', 'Name and Email are required');
+    if (!formData.email.trim()) {
+      return Alert.alert('Validation Error', 'Email is required');
+    }
+    if (!isEditingPerson && (!formData.password?.trim() || formData.password.length < 6)) {
+      return Alert.alert('Validation Error', 'Password must be at least 6 characters');
     }
 
-    if (!isEditingPerson && (!formData.password.trim() || formData.password.length < 6)) {
-      console.warn(`${actionLabel}: Password validation failed`);
-      return Alert.alert('Validation Error', 'Password must be at least 6 characters long');
-    }
-
+    // Student-specific validation
     if (userType === 'student') {
-      if (!formData.studentID.trim()) {
-        console.warn(`${actionLabel}: Student ID missing`);
-        return Alert.alert('Validation Error', 'Student ID is required for students');
-      }
-      if (!formData.programme.trim()) {
-          console.warn(`${actionLabel}: Programme missing`);
-        return Alert.alert('Validation Error', 'Programme is required for students');
-      }
+      if (!formData.full_name?.trim()) return Alert.alert('Validation Error', 'Full Name is required');
+      if (!formData.student_id?.trim()) return Alert.alert('Validation Error', 'Student ID is required');
+      if (!formData.index_number?.trim()) return Alert.alert('Validation Error', 'Index Number is required');
     }
 
-    if (userType === 'staff' && !formData.department.trim()) {
-      console.warn(`${actionLabel}: Department missing`);
-      return Alert.alert('Validation Error', 'Department is required for staff');
+    // Staff validation
+    if (userType === 'staff') {
+      if (!formData.staff_full_name?.trim()) return Alert.alert('Validation Error', 'Full Name is required');
+      if (!formData.staff_id?.trim())        return Alert.alert('Validation Error', 'Staff ID is required');
+      if (!formData.staff_position)          return Alert.alert('Validation Error', 'Position is required');
+      if (formData.staff_position === 'Others' && !formData.staff_position_custom?.trim()) {
+        return Alert.alert('Validation Error', 'Please specify the position');
+      }
     }
-
-    console.log(`✓ ${actionLabel}: All validations passed`);
 
     try {
-      // Prepare data WITHOUT password (password is managed separately by Firebase Auth)
-      const userData = {
-        name: formData.name,
-        role: userType,
-        email: formData.email,
-      };
+      setUploadingAvatar(true);
 
-      // Add student-specific fields
+      let avatarUrl = avatarUri?.startsWith('http') ? avatarUri : null;
+      if (avatarUri && !avatarUri.startsWith('http')) {
+        avatarUrl = await uploadAvatar(avatarUri);
+      }
+
+      let payload;
+
       if (userType === 'student') {
-        userData.studentID = formData.studentID;
-        userData.programme = formData.programme;
-        userData.level = parseInt(formData.level);
-        userData.department = '';
+        const displayName = formData.display_name?.trim() || formData.full_name.trim();
+        payload = {
+          role:          'student',              // hardcoded — never exposed to form
+          email:         formData.email.trim(),
+          full_name:     formData.full_name.trim(),
+          display_name:  displayName,
+          student_id:    formData.student_id.trim(),
+          index_number:  formData.index_number.trim(),
+          programme:     formData.programme || null,
+          department:    formData.department || null,
+          phone:         formData.phone?.trim() || null,
+          avatar_url:    avatarUrl,
+        };
+      } else {
+        const resolvedPosition = formData.staff_position === 'Others'
+          ? formData.staff_position_custom.trim()
+          : formData.staff_position;
+        const staffDisplayName = formData.staff_display_name?.trim() || formData.staff_full_name.trim();
+        payload = {
+          role:         formData.staff_role || 'faculty',
+          email:        formData.email.trim(),
+          full_name:    formData.staff_full_name.trim(),
+          display_name: staffDisplayName,
+          staff_id:     formData.staff_id.trim(),
+          position:     resolvedPosition,
+          department:   formData.staff_department || null,
+          phone:        formData.staff_phone?.trim() || null,
+          avatar_url:   avatarUrl,
+        };
       }
 
-      // Add staff-specific fields
-      if (userType === 'staff') {
-        userData.department = formData.department;
-        userData.studentID = '';
-        userData.programme = '';
-        userData.level = '';
-      }
+      console.log('📋 User payload:', JSON.stringify(payload, null, 2));
 
       if (isEditingPerson) {
-        await updateItem('users', editingPersonId, userData);
+        await updateItem('users', editingPersonId, payload);
       } else {
-        await createUserWithAuthAndFirestore(
-          formData.email,
-          formData.password,
-          userData
-        );
+        await createUserWithAuthAndFirestore(formData.email, formData.password, payload);
       }
 
-      // Close modal and reset form
       setShowModal(false);
-      setIsEditingPerson(false);
-      setEditingPersonId(null);
-      setFormData({
-        name: '',
-        email: '',
-        password: '',
-        role: userType,
-        studentID: '',
-        programme: '',
-        level: '100',
-        department: '',
-      });
-
-      Alert.alert(
-        'Success',
-        isEditingPerson
-          ? `${userType.charAt(0).toUpperCase() + userType.slice(1)} updated successfully`
-          : `${userType.charAt(0).toUpperCase() + userType.slice(1)} account created successfully`
-      );
+      setAvatarUri(null);
+      Alert.alert('Success', isEditingPerson ? 'Record updated successfully' : 'Account created successfully');
     } catch (error) {
-      console.error(`✗ ${actionLabel}: Exception caught`);
-      console.error('Error:', error);
-      
-      // Provide user-friendly error messages
-      let errorMessage = isEditingPerson ? 'Unable to update user' : 'Unable to create user';
       const msg = (error.message || '').toLowerCase();
+      let errorMessage = error.message || (isEditingPerson ? 'Unable to update' : 'Unable to create user');
       if (msg.includes('already registered') || msg.includes('already exists') || msg.includes('duplicate')) {
         errorMessage = 'This email is already registered';
-      } else if (msg.includes('password') && msg.includes('6')) {
-        errorMessage = 'Password must be at least 6 characters';
-      } else if (msg.includes('invalid') && msg.includes('email')) {
-        errorMessage = 'Invalid email address';
-      } else if (error.message) {
-        errorMessage = error.message;
       }
-      
       Alert.alert('Error', errorMessage);
+    } finally {
+      setUploadingAvatar(false);
     }
   };
 
@@ -492,122 +932,44 @@ const ManagePeopleScreen = ({ navigation }) => {
                 </TouchableOpacity>
               </View>
 
-              {/* Common Fields */}
-              <Text style={styles.sectionLabel}>Basic Information</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Full Name"
-                value={formData.name}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, name: text })
-                }
-                placeholderTextColor={COLORS.muted}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Email Address"
-                value={formData.email}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, email: text })
-                }
-                keyboardType="email-address"
-                placeholderTextColor={COLORS.muted}
-                editable={!isEditingPerson}
-                pointerEvents={isEditingPerson ? 'none' : 'auto'}
-              />
-              {isEditingPerson ? (
-                <Text style={styles.helperText}>
-                  Email is locked while editing to keep the account login in sync with Firebase Auth.
-                </Text>
-              ) : null}
-              <TextInput
-                style={styles.input}
-                placeholder="Password (min 6 characters)"
-                placeholderTextColor={COLORS.muted}
-                value={formData.password}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, password: text })
-                }
-                secureTextEntry={true}
-                editable={!isEditingPerson}
-                pointerEvents={isEditingPerson ? 'none' : 'auto'}
-              />
-              {isEditingPerson ? (
-                <Text style={styles.helperText}>
-                  Password changes are not supported in this form. Leave this field disabled while updating profile details.
-                </Text>
-              ) : null}
-
-              {/* Student Fields */}
+              {/* ── STUDENT form ── */}
               {userType === 'student' && (
-                <>
-                  <Text style={styles.sectionLabel}>Academic Information</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Student ID"
-                    value={formData.studentID}
-                    onChangeText={(text) =>
-                      setFormData({ ...formData, studentID: text })
-                    }
-                    placeholderTextColor={COLORS.muted}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Programme"
-                    value={formData.programme}
-                    onChangeText={(text) =>
-                      setFormData({ ...formData, programme: text })
-                    }
-                    placeholderTextColor={COLORS.muted}
-                  />
-                  <Text style={styles.sectionLabel}>Level</Text>
-                  <View style={styles.pickerContainer}>
-                    <Picker
-                      selectedValue={formData.level}
-                      onValueChange={(value) =>
-                        setFormData({ ...formData, level: value })
-                      }
-                      style={styles.picker}
-                    >
-                      <Picker.Item label="100" value="100" />
-                      <Picker.Item label="200" value="200" />
-                      <Picker.Item label="300" value="300" />
-                      <Picker.Item label="400" value="400" />
-                    </Picker>
-                  </View>
-                </>
+                <StudentFormSection
+                  form={formData}
+                  onChange={setFormData}
+                  departments={departments}
+                  avatarUri={avatarUri}
+                  onAvatarChange={setAvatarUri}
+                  isEdit={isEditingPerson}
+                />
               )}
 
-              {/* Staff Fields */}
+              {/* ── STAFF form ── */}
               {userType === 'staff' && (
-                <>
-                  <Text style={styles.sectionLabel}>Staff Information</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Department"
-                    value={formData.department}
-                    onChangeText={(text) =>
-                      setFormData({ ...formData, department: text })
-                    }
-                    placeholderTextColor={COLORS.muted}
-                  />
-                </>
+                <StaffFormSection
+                  form={formData}
+                  onChange={setFormData}
+                  departments={departments}
+                  avatarUri={avatarUri}
+                  onAvatarChange={setAvatarUri}
+                  isEdit={isEditingPerson}
+                />
               )}
 
               <View style={styles.formButtons}>
-                <CustomButton
-                  title="Cancel"
-                  onPress={() => setShowModal(false)}
-                  variant="outline"
-                  style={{ flex: 1 }}
-                />
-                <View style={{ width: 12 }} />
-                <CustomButton
-                  title={isEditingPerson ? 'Update Person' : 'Add Person'}
+                <TouchableOpacity style={[styles.cancelBtn]} onPress={() => setShowModal(false)} activeOpacity={0.8}>
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.saveBtn, uploadingAvatar && { opacity: 0.6 }]}
                   onPress={handleSavePerson}
-                  variant="primary"
-                  style={{ flex: 1 }}
-                />
+                  disabled={uploadingAvatar}
+                  activeOpacity={0.85}
+                >
+                  {uploadingAvatar
+                    ? <ActivityIndicator color="#FFFFFF" size="small" />
+                    : <Text style={styles.saveBtnText}>{isEditingPerson ? 'Save Changes' : 'Create Account'}</Text>}
+                </TouchableOpacity>
               </View>
             </ScrollView>
           </View>
@@ -1032,9 +1394,101 @@ const styles = StyleSheet.create({
   },
   formButtons: {
     flexDirection: 'row',
+    gap: 12,
     marginTop: 24,
     marginBottom: 12,
   },
+  cancelBtn: {
+    flex: 1, height: 48, borderRadius: 12,
+    borderWidth: 1.5, borderColor: '#E2E8F0',
+    justifyContent: 'center', alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+  },
+  cancelBtnText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
+  saveBtn: {
+    flex: 1, height: 48, borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center', alignItems: 'center',
+    shadowColor: COLORS.primary, shadowOpacity: 0.28,
+    shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 3,
+  },
+  saveBtnText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
+});
+
+// ── StudentFormSection styles ──────────────────────────────────────────────────
+const sf = StyleSheet.create({
+  sectionHeader: {
+    fontSize: 11, fontWeight: '700', color: '#94A3B8',
+    letterSpacing: 1, marginBottom: 10, marginTop: 16,
+  },
+  field: { marginBottom: 14 },
+  halfField: { flex: 1 },
+  label: { fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 5 },
+  req: { color: '#EF4444' },
+  row: { flexDirection: 'row', gap: 12 },
+  input: {
+    backgroundColor: '#F8FAFC', borderRadius: 10,
+    borderWidth: 1.5, borderColor: '#E2E8F0',
+    paddingHorizontal: 12, paddingVertical: 11,
+    fontSize: 14, color: '#0F172A',
+  },
+  inputDisabled: { backgroundColor: '#F1F5F9', color: '#94A3B8' },
+  helperText: { fontSize: 11, color: '#94A3B8', marginTop: 4 },
+
+  // Avatar
+  avatarSection: {
+    flexDirection: 'row', alignItems: 'center',
+    gap: 14, marginBottom: 4,
+    backgroundColor: '#F8FAFC', borderRadius: 14,
+    borderWidth: 1.5, borderColor: '#E2E8F0', padding: 14,
+  },
+  avatarWrap: { position: 'relative' },
+  avatar: { width: 64, height: 64, borderRadius: 32 },
+  avatarPlaceholder: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: '#F1F5F9',
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2, borderColor: '#E2E8F0', borderStyle: 'dashed',
+  },
+  avatarBadge: {
+    position: 'absolute', bottom: 0, right: 0,
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2, borderColor: '#FFFFFF',
+  },
+  avatarInfo: { flex: 1 },
+  avatarTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  avatarSub: { fontSize: 12, color: '#64748B', marginTop: 2 },
+
+  // Dropdowns
+  dropdownBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC', borderRadius: 10,
+    borderWidth: 1.5, borderColor: '#E2E8F0',
+    paddingHorizontal: 12, paddingVertical: 11,
+  },
+  dropdownText: { fontSize: 14, fontWeight: '500', color: '#0F172A', flex: 1 },
+  dropdownPlaceholder: { color: '#94A3B8', fontWeight: '400' },
+  sheetWrap: { flex: 1, justifyContent: 'flex-end' },
+  pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  pickerSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 20, paddingTop: 12, maxHeight: '65%',
+  },
+  pickerHandle: {
+    width: 36, height: 4, borderRadius: 2,
+    backgroundColor: '#E2E8F0', alignSelf: 'center', marginBottom: 16,
+  },
+  pickerTitle: { fontSize: 17, fontWeight: '800', color: '#0F172A', marginBottom: 10 },
+  pickerOption: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', paddingVertical: 13,
+  },
+  pickerBorder: { borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  pickerOptionText: { fontSize: 14, fontWeight: '500', color: '#0F172A', flex: 1 },
+  pickerOptionActive: { fontWeight: '700', color: COLORS.primary },
 });
 
 export default ManagePeopleScreen;
