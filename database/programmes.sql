@@ -9,8 +9,9 @@
 ALTER TABLE public.departments
   ADD COLUMN IF NOT EXISTS faculty text;
 
-ALTER TABLE public.departments
-  ADD CONSTRAINT IF NOT EXISTS departments_name_key UNIQUE (name);
+-- CREATE UNIQUE INDEX supports IF NOT EXISTS (ADD CONSTRAINT does not)
+CREATE UNIQUE INDEX IF NOT EXISTS departments_name_key
+  ON public.departments (name);
 
 
 -- ---------------------------------------------------------------------------
