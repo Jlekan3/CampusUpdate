@@ -81,23 +81,24 @@ export default function StaffHomeScreen() {
   useEffect(() => {
     setIsLoading(true);
 
-    // Fetch department structures and assign database listeners
+    // Timeout fallback — clear loading after 5 s regardless of subscription state
+    const timeout = setTimeout(() => setIsLoading(false), 5000);
+
     const unsubDepts = subscribeToDepartments((data) => {
       setDepartments(data || []);
-      setIsLoading(false); // clear loading as soon as either subscription resolves
+      setIsLoading(false);
     });
 
-    // Fetch student/user tracking reports and assign database listeners
     const unsubIssues = subscribeToIssueReports((data) => {
       setIssueReports(data || []);
       setIsLoading(false);
     });
 
-    // Fetch user profiles directory to support dynamic targeted selections
     fetchUsersDirectory();
 
     return () => {
-      if (typeof unsubDepts === 'function') unsubDepts();
+      clearTimeout(timeout);
+      if (typeof unsubDepts  === 'function') unsubDepts();
       if (typeof unsubIssues === 'function') unsubIssues();
     };
   }, []);
@@ -184,15 +185,15 @@ export default function StaffHomeScreen() {
   };
 
   return (
-    <ScreenWrapper style={styles.canvasContainer}>
-      
-      {/* Dynamic Header Component */}
+    <ScreenWrapper backgroundColor={C.bgCanvas} paddingHorizontal={0} paddingBottom={0}>
+
+      {/* Header */}
       <View style={styles.brandHeader}>
         <View>
           <Text style={styles.brandTitle}>RMU Portal</Text>
           <Text style={styles.brandSubtitle}>Faculty & Staff Control Centre</Text>
         </View>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.composerTriggerButton}
           onPress={() => setBroadcastModalVisible(true)}
         >
@@ -201,7 +202,7 @@ export default function StaffHomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Segmented Top Navigation Bar Controls */}
+      {/* Tab bar */}
       <View style={styles.segmentNavigationBar}>
         {['Overview', 'Departments', 'Reports'].map((tab) => (
           <TouchableOpacity
@@ -216,30 +217,44 @@ export default function StaffHomeScreen() {
         ))}
       </View>
 
-      {/* Global Activity Loading Indicator Overlay */}
-      {isLoading && <ActivityIndicator size="large" color={C.blueAccent} style={{ marginVertical: 20 }} />}
-
+      {/* Loading state replaces content while fetching */}
+      {isLoading ? (
+        <View style={styles.loadingCenter}>
+          <ActivityIndicator size="large" color={C.blueAccent} />
+          <Text style={styles.loadingText}>Loading dashboard…</Text>
+        </View>
+      ) : (
       <ScrollView contentContainerStyle={styles.scrollLayoutPane} showsVerticalScrollIndicator={false}>
-        
-        {/* TAB SUBSECTION PANEL: OVERVIEW PLATFORM */}
+
+        {/* OVERVIEW */}
         {activeTab === 'Overview' && (
           <View style={styles.contentDashboardSection}>
             <Text style={styles.panelBlockSectionHeader}>Recent Activities & Broadcast Streams</Text>
-            
-            {events.slice(0, 4).map((item) => (
+
+            {events.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="megaphone-outline" size={40} color={C.borderLight} />
+                <Text style={styles.emptyStateText}>No broadcasts yet</Text>
+                <Text style={styles.emptyStateSub}>Tap Broadcast to post a notification or event</Text>
+              </View>
+            ) : events.slice(0, 4).map((item) => (
               <View key={item.id} style={styles.dataLogCardRow}>
                 <View style={styles.badgeIndicatorMarker}>
-                  <Ionicons 
-                    name={item.type === 'Event' ? "calendar-sharp" : "notifications-sharp"} 
-                    size={20} 
-                    color={C.blueAccent} 
+                  <Ionicons
+                    name={item.category === 'Event' ? 'calendar-sharp' : 'notifications-sharp'}
+                    size={20}
+                    color={C.blueAccent}
                   />
                 </View>
                 <View style={styles.dataLogCardBody}>
                   <Text style={styles.dataLogCardTitleText}>{item.title}</Text>
-                  <Text style={styles.dataLogCardSubtitleText} numberOfLines={2}>{item.body}</Text>
+                  <Text style={styles.dataLogCardSubtitleText} numberOfLines={2}>
+                    {item.message || item.body || item.description || ''}
+                  </Text>
                   <View style={styles.metadataCardContainerBadge}>
-                    <Text style={styles.badgeScopeIndicatorLabel}>Target: {item.target_audience || 'Everyone'}</Text>
+                    <Text style={styles.badgeScopeIndicatorLabel}>
+                      {item.audience || item.target_audience || 'Everyone'}
+                    </Text>
                   </View>
                 </View>
               </View>
@@ -251,7 +266,12 @@ export default function StaffHomeScreen() {
         {activeTab === 'Departments' && (
           <View style={styles.contentDashboardSection}>
             <Text style={styles.panelBlockSectionHeader}>Campus Academic Department Registries</Text>
-            {departments.map((dept) => (
+            {departments.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="business-outline" size={40} color={C.borderLight} />
+                <Text style={styles.emptyStateText}>No departments found</Text>
+              </View>
+            ) : departments.map((dept) => (
               <TouchableOpacity
                 key={dept.id}
                 style={styles.dataLogCardRow}
@@ -278,7 +298,12 @@ export default function StaffHomeScreen() {
         {activeTab === 'Reports' && (
           <View style={styles.contentDashboardSection}>
             <Text style={styles.panelBlockSectionHeader}>Supervised Student Issue Tickets</Text>
-            {issueReports.map((report) => (
+            {issueReports.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="document-text-outline" size={40} color={C.borderLight} />
+                <Text style={styles.emptyStateText}>No reports yet</Text>
+              </View>
+            ) : issueReports.map((report) => (
               <TouchableOpacity
                 key={report.id}
                 style={styles.dataLogCardRow}
@@ -302,6 +327,7 @@ export default function StaffHomeScreen() {
         )}
 
       </ScrollView>
+      )} {/* end isLoading ternary */}
 
       {/* MODAL ARCHITECTURE 1: MULTI-DIRECTION BROADCAST COMPOSER ENGINE */}
       <Modal visible={broadcastModalVisible} animationType="slide" transparent={true}>
@@ -521,9 +547,33 @@ export default function StaffHomeScreen() {
 
 // ── Corporate Modern Structural Stylesheets ─────────────────────────────────
 const styles = StyleSheet.create({
-  canvasContainer: {
+  loadingCenter: {
     flex: 1,
-    backgroundColor: C.bgCanvas,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 80,
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: C.textMuted,
+    fontWeight: '500',
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 48,
+    gap: 10,
+  },
+  emptyStateText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: C.textMuted,
+  },
+  emptyStateSub: {
+    fontSize: 13,
+    color: C.textMuted,
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
   brandHeader: {
     flexDirection: 'row',
