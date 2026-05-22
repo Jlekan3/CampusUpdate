@@ -1104,7 +1104,6 @@ export default function CampusStructureScreen({ navigation }) {
   const [locations,   setLocations]   = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [refreshing,  setRefreshing]  = useState(false);
-  const [filter,      setFilter]      = useState('All');
   const [search,      setSearch]      = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [editTarget,   setEditTarget]   = useState(null);
@@ -1139,17 +1138,14 @@ export default function CampusStructureScreen({ navigation }) {
   }, [buildings, departments, dining, locations]);
 
   const filtered = useMemo(() => {
-    let result = filter === 'All' ? allItems : allItems.filter((x) => x._category === filter);
-    if (search.trim()) {
-      const q = search.toLowerCase().trim();
-      result = result.filter((x) =>
-        x.name?.toLowerCase().includes(q) ||
-        x._category?.toLowerCase().includes(q) ||
-        x._subtitle?.toLowerCase().includes(q)
-      );
-    }
-    return result;
-  }, [allItems, filter, search]);
+    if (!search.trim()) return allItems;
+    const q = search.toLowerCase().trim();
+    return allItems.filter((x) =>
+      x.name?.toLowerCase().includes(q) ||
+      x._category?.toLowerCase().includes(q) ||
+      x._subtitle?.toLowerCase().includes(q)
+    );
+  }, [allItems, search]);
 
   const counts = `${buildings.length} buildings · ${departments.length} depts · ${dining.length} dining · ${locations.length} locations`;
 
@@ -1166,8 +1162,6 @@ export default function CampusStructureScreen({ navigation }) {
     ]);
   };
 
-  const FILTERS = ['All', ...CATEGORIES];
-
   return (
     <SafeAreaView style={s.root} edges={['top']}>
       {/* ── Header ── */}
@@ -1177,7 +1171,6 @@ export default function CampusStructureScreen({ navigation }) {
         </TouchableOpacity>
         <View style={s.headerText}>
           <Text style={s.headerTitle}>Campus Structure</Text>
-          {/* Lighter, smaller subtitle */}
           <Text style={s.headerSub}>
             {allItems.length} total  ·  {buildings.length} buildings  ·  {dining.length} dining
           </Text>
@@ -1187,48 +1180,14 @@ export default function CampusStructureScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* ── Filter pills — active state uses category accent color ── */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.filterBar} contentContainerStyle={s.filterBarContent}>
-        {FILTERS.map((chip) => {
-          const active   = filter === chip;
-          const accentC  = chip === 'All' ? '#FFFFFF' : (CATEGORY_META[chip]?.color || '#FFFFFF');
-          const accentBg = chip === 'All' ? 'rgba(255,255,255,0.22)' : (accentC + '28');
-          return (
-            <TouchableOpacity
-              key={chip}
-              style={[
-                s.filterPill,
-                active && { backgroundColor: accentBg, borderColor: accentC + '80' },
-              ]}
-              onPress={() => { setFilter(chip); setSearch(''); }}
-              activeOpacity={0.8}
-            >
-              {chip !== 'All' && (
-                <Ionicons
-                  name={CATEGORY_META[chip]?.icon || 'ellipse-outline'}
-                  size={11}
-                  color={active ? accentC : 'rgba(255,255,255,0.55)'}
-                />
-              )}
-              <Text style={[
-                s.filterPillText,
-                active && { color: chip === 'All' ? '#FFFFFF' : accentC, fontWeight: '700' },
-              ]}>
-                {chip}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      {/* ── Search bar — clean white ── */}
+      {/* ── Search bar ── */}
       <View style={s.searchWrap}>
         <Ionicons name="search-outline" size={17} color="#94A3B8" />
         <TextInput
           style={s.searchInput}
           value={search}
           onChangeText={setSearch}
-          placeholder={`Search ${filter === 'All' ? 'all structures' : filter.toLowerCase() + 's'}…`}
+          placeholder="Search all structures…"
           placeholderTextColor="#94A3B8"
           returnKeyType="search"
           clearButtonMode="while-editing"
