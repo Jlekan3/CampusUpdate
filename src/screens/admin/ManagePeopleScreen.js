@@ -15,6 +15,9 @@ import {
   Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import * as XLSX from 'xlsx';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import { supabase } from '../../config/supabase';
 
@@ -37,6 +40,7 @@ const ROLE_THEMES = {
 export default function ManagePeopleScreen({ navigation }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
   const [search, setSearch] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -227,6 +231,77 @@ export default function ManagePeopleScreen({ navigation }) {
     );
   };
 
+  // ── Excel / CSV import ──────────────────────────────────────────────────────
+  const handleImportRows = async (rows) => {
+    const toInsert = [];
+    const skipped  = [];
+
+    rows.forEach((row, i) => {
+      const full_name  = (row['full_name']  || row['Full Name']  || row['name']     || '').toString().trim();
+      const email      = (row['email']      || row['Email']      || '').toString().trim().toLowerCase();
+      const phone      = (row['phone']      || row['Phone']      || '').toString().trim() || null;
+      const staff_id   = (row['staff_id']   || row['Staff ID']   || '').toString().trim() || null;
+      const department = (row['department'] || row['Department'] || '').toString().trim() || null;
+      const position   = (row['position']   || row['Position']   || '').toString().trim() || null;
+
+      if (!full_name || !email) {
+        skipped.push(`Row ${i + 2}: missing full_name or email`);
+        return;
+      }
+      toInsert.push({ full_name, email, role: 'staff', phone, staff_id, department, position, is_anonymous: false });
+    });
+
+    if (!toInsert.length) {
+      Alert.alert('No valid rows', skipped.length ? skipped.join('\n') : 'The file contained no valid rows.\n\nExpected columns: full_name, email, phone, staff_id, department, position');
+      setImporting(false);
+      return;
+    }
+
+    const { error } = await supabase.from('users').insert(toInsert);
+    if (error) throw error;
+
+    fetchUsers();
+    let msg = `${toInsert.length} staff record${toInsert.length === 1 ? '' : 's'} imported.`;
+    if (skipped.length) msg += `\n\n${skipped.length} row${skipped.length === 1 ? '' : 's'} skipped:\n${skipped.join('\n')}`;
+    Alert.alert('Import Complete', msg);
+    setImporting(false);
+  };
+
+  const handleImportStaff = async () => {
+    try {
+      setImporting(true);
+
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'text/csv',
+          'application/csv',
+          '*/*',
+        ],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets?.length) { setImporting(false); return; }
+
+      const file   = result.assets[0];
+      const isCsv  = file.name?.toLowerCase().endsWith('.csv');
+      const fileText = isCsv
+        ? await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.UTF8 })
+        : await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.Base64 });
+
+      const workbook = isCsv
+        ? XLSX.read(fileText, { type: 'string' })
+        : XLSX.read(fileText, { type: 'base64' });
+
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows  = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      await handleImportRows(rows);
+    } catch (err) {
+      setImporting(false);
+      Alert.alert('Import Failed', err?.message || 'Could not read file. Use .xlsx or .csv format.');
+    }
+  };
+
   return (
     <ScreenWrapper backgroundColor={BG} statusBarStyle="dark-content">
       {/* ── HEADER BLOCK ── */}
@@ -259,6 +334,17 @@ export default function ManagePeopleScreen({ navigation }) {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* ── Import button ── */}
+      <TouchableOpacity
+        style={[s.importBtn, importing && { opacity: 0.6 }]}
+        onPress={handleImportStaff}
+        disabled={importing}
+        activeOpacity={0.8}
+      >
+        <Ionicons name={importing ? 'hourglass-outline' : 'cloud-upload-outline'} size={16} color={NAVY} />
+        <Text style={s.importBtnText}>{importing ? 'Importing…' : 'Import from Excel / CSV'}</Text>
+      </TouchableOpacity>
 
       {/* ── MAIN DIRECTORY TRANSLATION LIST ── */}
       {loading && users.length === 0 ? (
@@ -458,6 +544,9 @@ const s = StyleSheet.create({
   searchSection: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 20, marginTop: 16, paddingHorizontal: 14, height: 46, borderRadius: 12, backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER },
   searchInputField: { flex: 1, fontSize: 14, color: SLATE },
   
+  importBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 20, marginTop: 10, paddingVertical: 11, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1.5, borderColor: BORDER, backgroundColor: SURFACE },
+  importBtnText: { fontSize: 13, fontWeight: '700', color: NAVY },
+
   listContainer: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 40, gap: 12 },
   centeredIndicatorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 60 },
   emptyStateContainer: { alignItems: 'center', justifyContent: 'center', paddingTop: 60, gap: 12 },
