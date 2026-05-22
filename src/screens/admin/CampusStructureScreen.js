@@ -998,11 +998,25 @@ const ph = StyleSheet.create({
   subText: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.55)', letterSpacing: 0.8, textTransform: 'uppercase' },
 });
 
+// ── Fallback icon map per category ────────────────────────────────────────────
+const FALLBACK_ICON = {
+  Department: 'school-outline',
+  Hostel:     'bed-outline',
+  Building:   'business-outline',
+  Dining:     'restaurant-outline',
+  Gate:       'map-outline',
+  Other:      'construct-outline',
+};
+
 // ── Unified list card ─────────────────────────────────────────────────────────
 const StructureCard = ({ item, onEdit, onDelete }) => {
-  const meta   = CATEGORY_META[item._category] || CATEGORY_META.Other;
-  const image  = item.image_url || item.image_urls?.[0] || null;
-  const scaleA = useRef(new Animated.Value(1)).current;
+  const meta     = CATEGORY_META[item._category] || CATEGORY_META.Other;
+  const imageUri = item.image_url || item.image_urls?.[0] || null;
+  const scaleA   = useRef(new Animated.Value(1)).current;
+
+  // Track image load failure so we can swap to the icon placeholder
+  const [imgError, setImgError] = useState(false);
+  const showImage = imageUri && !imgError;
 
   const pressIn  = () => Animated.spring(scaleA, { toValue: 0.965, speed: 24, bounciness: 3, useNativeDriver: true }).start();
   const pressOut = () => Animated.spring(scaleA, { toValue: 1,     speed: 24, bounciness: 5, useNativeDriver: true }).start();
@@ -1011,11 +1025,36 @@ const StructureCard = ({ item, onEdit, onDelete }) => {
     <TouchableOpacity onPressIn={pressIn} onPressOut={pressOut} activeOpacity={1}>
       <Animated.View style={[s.card, { transform: [{ scale: scaleA }] }]}>
 
-        {/* ── Media area ── */}
+        {/* ── Media area ─────────────────────────────────────────────────────
+            Explicit width/height/backgroundColor ensure the container never
+            collapses to 0 whether the image loads, fails, or is absent.
+        ──────────────────────────────────────────────────────────────────── */}
         <View style={s.cardMediaWrap}>
-          {image
-            ? <Image source={{ uri: image }} style={s.cardImage} resizeMode="cover" />
-            : <CategoryPlaceholder category={item._category} />}
+          {showImage ? (
+            <Image
+              source={{ uri: imageUri }}
+              style={s.cardImage}
+              resizeMode="cover"
+              onError={() => setImgError(true)}
+            />
+          ) : imageUri === null ? (
+            /* No URL stored — show animated category illustration */
+            <CategoryPlaceholder category={item._category} />
+          ) : (
+            /* URL present but failed to load — show coloured icon fallback */
+            <View style={[s.cardImageFallback, { backgroundColor: meta.bg }]}>
+              <View style={s.fallbackIconRing}>
+                <Ionicons
+                  name={FALLBACK_ICON[item._category] || 'image-outline'}
+                  size={42}
+                  color={meta.color}
+                />
+              </View>
+              <Text style={[s.fallbackLabel, { color: meta.color }]}>
+                {item._category}
+              </Text>
+            </View>
+          )}
 
           {/* Category tag — top-left overlay */}
           <View style={[s.catTag, { backgroundColor: meta.bg + 'F2' }]}>
@@ -1314,9 +1353,44 @@ const s = StyleSheet.create({
     shadowRadius: 14, shadowOffset: { width: 0, height: 5 }, elevation: 4,
     marginBottom: 0,
   },
-  // Media container
-  cardMediaWrap: { width: '100%', overflow: 'hidden' },
-  cardImage:     { width: '100%', height: 182 },
+  // Media container — explicit height + backgroundColor prevents white collapse
+  cardMediaWrap: {
+    width:                '100%',
+    height:               160,
+    borderTopLeftRadius:  20,
+    borderTopRightRadius: 20,
+    overflow:             'hidden',
+    backgroundColor:      '#EDF1F8',
+  },
+  cardImage: {
+    width:  '100%',
+    height: '100%',
+  },
+  // Shown when a URI is present but fails to load
+  cardImageFallback: {
+    width:          '100%',
+    height:         '100%',
+    justifyContent: 'center',
+    alignItems:     'center',
+    gap:            8,
+  },
+  fallbackIconRing: {
+    width:           80,
+    height:          80,
+    borderRadius:    40,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderWidth:     1.5,
+    borderColor:     'rgba(255,255,255,0.30)',
+    justifyContent:  'center',
+    alignItems:      'center',
+  },
+  fallbackLabel: {
+    fontSize:      11,
+    fontWeight:    '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    opacity:       0.8,
+  },
 
   // Category overlay tag
   catTag: {

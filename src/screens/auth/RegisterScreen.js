@@ -305,7 +305,7 @@ export default function RegisterScreen({ navigation }) {
                 <Text style={s.label}>Student ID <Text style={s.req}>*</Text></Text>
                 <InputRow focused={focused.studentId} error={errors.studentId}>
                   <TextInput style={s.input} value={form.studentId} onChangeText={(v) => { set('studentId')(v); clearError('studentId'); }}
-                    placeholder="STU-12345" placeholderTextColor={PH}
+                    placeholder="00000000" placeholderTextColor={PH}
                     autoCapitalize="characters" onFocus={() => onFocus('studentId')} onBlur={() => onBlur('studentId')} />
                 </InputRow>
                 {errors.studentId ? <Text style={s.err}>{errors.studentId}</Text> : null}
@@ -314,7 +314,7 @@ export default function RegisterScreen({ navigation }) {
                 <Text style={s.label}>Index Number <Text style={s.req}>*</Text></Text>
                 <InputRow focused={focused.indexNumber} error={errors.indexNumber}>
                   <TextInput style={s.input} value={form.indexNumber} onChangeText={(v) => { set('indexNumber')(v); clearError('indexNumber'); }}
-                    placeholder="RMU/2024/001" placeholderTextColor={PH}
+                    placeholder="BIT0002066" placeholderTextColor={PH}
                     autoCapitalize="characters" onFocus={() => onFocus('indexNumber')} onBlur={() => onBlur('indexNumber')} />
                 </InputRow>
                 {errors.indexNumber ? <Text style={s.err}>{errors.indexNumber}</Text> : null}

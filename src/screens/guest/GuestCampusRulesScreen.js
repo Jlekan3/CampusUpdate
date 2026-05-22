@@ -4,7 +4,6 @@ import {
   FlatList,
   LayoutAnimation,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -36,8 +35,6 @@ const SEV = {
   info:     { color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE', label: 'Info'     },
 };
 
-const CATEGORIES = ['All', 'Academic', 'Residential', 'Traffic & Parking', 'Code of Conduct'];
-
 const CAT_COLOR = {
   Academic:            '#2563EB',
   Residential:         '#7C3AED',
@@ -49,7 +46,6 @@ export default function GuestCampusRulesScreen({ navigation }) {
   const [rules,    setRules]    = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [search,   setSearch]   = useState('');
-  const [filter,   setFilter]   = useState('All');
   const [expanded, setExpanded] = useState(null);
 
   useEffect(() => {
@@ -63,11 +59,10 @@ export default function GuestCampusRulesScreen({ navigation }) {
   }, []);
 
   const displayed = useMemo(() => {
-    let items = filter === 'All' ? rules : rules.filter((r) => r.category === filter);
     const q = search.trim().toLowerCase();
-    if (q) items = items.filter((r) => (r.title + r.description).toLowerCase().includes(q));
-    return items;
-  }, [rules, filter, search]);
+    if (!q) return rules;
+    return rules.filter((r) => (r.title + (r.description || '')).toLowerCase().includes(q));
+  }, [rules, search]);
 
   const toggle = (id) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -107,24 +102,6 @@ export default function GuestCampusRulesScreen({ navigation }) {
         )}
       </View>
 
-      {/* ── Category filter chips ── */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
-        {CATEGORIES.map((cat) => {
-          const active = filter === cat;
-          const accent = cat === 'All' ? NAVY : (CAT_COLOR[cat] || NAVY);
-          return (
-            <TouchableOpacity
-              key={cat}
-              style={[s.chip, active && { backgroundColor: accent, borderColor: accent }]}
-              onPress={() => setFilter(cat)}
-              activeOpacity={0.8}
-            >
-              <Text style={[s.chipText, active && { color: '#fff', fontWeight: '700' }]}>{cat}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
       {/* ── List ── */}
       {loading ? (
         <View style={s.center}><ActivityIndicator color={NAVY} size="large" /></View>
@@ -138,7 +115,7 @@ export default function GuestCampusRulesScreen({ navigation }) {
             <View style={s.empty}>
               <Ionicons name="shield-outline" size={44} color={LIGHT} />
               <Text style={s.emptyTitle}>No rules found</Text>
-              <Text style={s.emptySub}>Try a different search or category.</Text>
+              <Text style={s.emptySub}>{rules.length === 0 ? 'No rules have been added yet.' : 'Try a different search.'}</Text>
             </View>
           }
           renderItem={({ item }) => {
@@ -191,12 +168,8 @@ const s = StyleSheet.create({
   headerBadge:   { backgroundColor: '#EDF1F8', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   headerBadgeText:{ fontSize: 13, fontWeight: '700', color: NAVY },
 
-  searchRow:  { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginTop: 14, backgroundColor: SURFACE, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, borderColor: BORDER },
+  searchRow:  { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginTop: 14, marginBottom: 4, backgroundColor: SURFACE, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, borderColor: BORDER },
   searchInput:{ flex: 1, fontSize: 14, color: SLATE, padding: 0 },
-
-  chipRow: { paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
-  chip:    { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER },
-  chipText:{ fontSize: 12, fontWeight: '600', color: MUTED },
 
   list:  { paddingHorizontal: 16, paddingBottom: 32, gap: 10 },
   center:{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 60 },

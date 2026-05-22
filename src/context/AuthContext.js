@@ -90,6 +90,7 @@ export const AuthProvider = ({ children }) => {
 
   const isExplicitLoginInFlight = useRef(false);
   const didStartupAuthReset     = useRef(false);
+  const suppressOtpRouting      = useRef(false);
 
   // ── Core auth state listener ────────────────────────────────────────────────
   useEffect(() => {
@@ -98,8 +99,17 @@ export const AuthProvider = ({ children }) => {
         setAuthLoading(true);
 
         if (!session?.user) {
+          suppressOtpRouting.current = false;
           setUser(null);
           setRole('guest');
+          setActionLoading(false);
+          setAuthLoading(false);
+          return;
+        }
+
+        // OTP verification fires SIGNED_IN — suppress routing so the success
+        // modal stays visible until logout() clears the session after 3 s.
+        if (suppressOtpRouting.current) {
           setActionLoading(false);
           setAuthLoading(false);
           return;
@@ -164,6 +174,7 @@ export const AuthProvider = ({ children }) => {
 
   // ── logout ──────────────────────────────────────────────────────────────────
   const logout = async () => {
+    suppressOtpRouting.current = false;
     setActionLoading(true);
     setAuthLoading(true);
     try {
@@ -216,11 +227,11 @@ export const AuthProvider = ({ children }) => {
     if (checkErr) throw checkErr;
     if (!exists) throw new Error('No account found with that email address. Please check and try again.');
 
-    // Step 2: send 6-digit OTP (shouldCreateUser: false prevents accidental signup)
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.toLowerCase().trim(),
-      options: { shouldCreateUser: false },
-    });
+    // Step 2: send recovery OTP via resetPasswordForEmail so the token type
+    // matches 'recovery' in verifyOtp (signInWithOtp would generate 'email' type)
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      email.toLowerCase().trim(),
+    );
     if (error) throw error;
   };
 
@@ -228,17 +239,23 @@ export const AuthProvider = ({ children }) => {
   // Verifies the 6-digit code from the email. On success, Supabase creates a
   // session so the user can immediately call resetPassword().
   const verifyOtp = async (email, token, type) => {
-    // Supabase OTP types:
-    //   'signup'   — 6-digit code from the signup confirmation email
-    //   'email'    — 6-digit code from signInWithOtp (used for recovery flow)
-    //   'recovery' — 6-digit code from resetPasswordForEmail (not used here)
-    const otpType = type === 'recovery' ? 'email' : 'signup';
+    // Suppress onAuthStateChange routing for signup OTP so the success modal
+    // stays visible. Recovery OTP navigates to ResetPassword immediately so
+    // no suppression is needed there.
+    if (type !== 'recovery') suppressOtpRouting.current = true;
+    // Map to the correct Supabase OTP type:
+    //   'recovery' → 'recovery'  (password-reset flow)
+    //   anything else → 'signup' (account confirmation flow)
+    const verificationType = type === 'recovery' ? 'recovery' : 'signup';
     const { data, error } = await supabase.auth.verifyOtp({
       email: email.toLowerCase().trim(),
       token,
-      type: otpType,
+      type: verificationType,
     });
-    if (error) throw error;
+    if (error) {
+      suppressOtpRouting.current = false;
+      throw error;
+    }
     return data;
   };
 

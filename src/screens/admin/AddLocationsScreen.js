@@ -146,7 +146,7 @@ const AddLocationsScreen = ({ navigation }) => {
       return formData.imageurl.trim() || previousImageUrl || '';
     }
 
-    if (previousImageUrl && previousImageUrl.includes('firebasestorage.googleapis.com')) {
+    if (previousImageUrl && previousImageUrl.includes('supabase.co/storage')) {
       try {
         await deleteLocationImage(previousImageUrl);
       } catch (error) {

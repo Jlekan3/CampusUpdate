@@ -18,13 +18,24 @@ import {
   subscribeToUsers,
   subscribeToEvents,
   subscribeToNotifications,
+  subscribeToBuildings,
+  subscribeToDining,
 } from '../../services/databaseService';
 
-// Animated count-up hook
-const useCountUp = (target, duration = 1000) => {
+// ── Safe local theme — never undefined even before ThemeContext hydrates ──────
+const buildTheme = (isDark) => ({
+  bg:          isDark ? ADMIN_THEME.darkBackground : ADMIN_THEME.background,
+  surface:     isDark ? ADMIN_THEME.darkSurface     : ADMIN_THEME.surface,
+  border:      isDark ? ADMIN_THEME.darkBorder      : ADMIN_THEME.border,
+  textPrimary: isDark ? ADMIN_THEME.darkText        : ADMIN_THEME.textDark,
+  textMuted:   isDark ? ADMIN_THEME.darkMuted       : ADMIN_THEME.textMuted,
+  cardShadow:  isDark ? '#000' : '#0A1628',
+});
+
+// ── Animated count-up hook ────────────────────────────────────────────────────
+const useCountUp = (target, duration = 900) => {
   const animVal = useRef(new Animated.Value(0)).current;
   const [displayed, setDisplayed] = useState(0);
-
   useEffect(() => {
     Animated.timing(animVal, {
       toValue: target,
@@ -32,166 +43,294 @@ const useCountUp = (target, duration = 1000) => {
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     }).start();
-    const listener = animVal.addListener(({ value }) => setDisplayed(Math.round(value)));
-    return () => animVal.removeListener(listener);
+    const id = animVal.addListener(({ value }) => setDisplayed(Math.round(value)));
+    return () => animVal.removeListener(id);
   }, [target]);
-
   return displayed;
 };
 
-// Individual animated stat card
-const StatCard = ({ item, anim }) => {
+// ── Stat card (resilient icon container — never collapses) ────────────────────
+const StatCard = ({ item, anim, theme }) => {
   const count = useCountUp(item.value);
-  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] });
+  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [28, 0] });
 
   return (
-    <Animated.View style={{ opacity: anim, transform: [{ translateY }], width: '48%', marginBottom: 12 }}>
-      <View style={[styles.statCard, { backgroundColor: item.bg, borderColor: item.borderColor }]}>
-        <View style={[styles.statIconWrap, { backgroundColor: item.color + '22' }]}>
-          <Ionicons name={item.icon} size={20} color={item.color} />
-        </View>
-        <Text style={[styles.statCount, { color: item.color }]}>{count}</Text>
-        <Text style={styles.statTitle}>{item.title}</Text>
-        <View style={[styles.trendChip, { backgroundColor: item.color + '18' }]}>
-          <Ionicons name="pulse-outline" size={10} color={item.color} />
-          <Text style={[styles.trendText, { color: item.color }]}>Live</Text>
+    <Animated.View
+      style={[
+        st.statWrap,
+        { opacity: anim, transform: [{ translateY }] },
+      ]}
+    >
+      <View
+        style={[
+          st.statCard,
+          {
+            backgroundColor: theme.surface,
+            borderColor:      theme.border,
+            shadowColor:      theme.cardShadow,
+          },
+        ]}
+      >
+        {/* Left accent bar */}
+        <View style={[st.statAccentBar, { backgroundColor: item.color }]} />
+
+        <View style={st.statInner}>
+          {/* Icon enclosure — explicit 44×44 so it never collapses */}
+          <View
+            style={[
+              st.statIconBox,
+              {
+                width:           44,
+                height:          44,
+                borderRadius:    14,
+                backgroundColor: item.color + '1A',
+                justifyContent:  'center',
+                alignItems:      'center',
+              },
+            ]}
+          >
+            <Ionicons name={item.icon} size={22} color={item.color} />
+          </View>
+
+          {/* Metrics */}
+          <Text style={[st.statCount, { color: item.color }]}>{count}</Text>
+          <Text style={[st.statLabel, { color: theme.textMuted }]}>{item.title}</Text>
+
+          {/* Live chip */}
+          <View style={[st.liveChip, { backgroundColor: item.color + '14' }]}>
+            <View style={[st.liveDot, { backgroundColor: item.color }]} />
+            <Text style={[st.liveChipText, { color: item.color }]}>Live</Text>
+          </View>
         </View>
       </View>
     </Animated.View>
   );
 };
 
-const QUICK_ACTIONS = [
-  { label: 'Campus Structure', icon: 'business-outline',       color: ADMIN_THEME.primary,        nav: 'CampusStructure' },
-  { label: 'Campus Content',   icon: 'location-outline',        color: '#2563EB',                  nav: 'CampusContent' },
-  { label: 'Issues Reported & Analytics', icon: 'bar-chart-outline', color: ADMIN_THEME.success, nav: 'ReportsAnalytics' },
-  { label: 'Control Centre',   icon: 'shield-outline',          color: '#DC2626',                  nav: 'ControlCentre' },
-  { label: 'Emergency Contacts', icon: 'call-outline',          color: '#E53E3E',                  nav: 'EmergencyContacts' },
-  { label: 'Campus Rules',       icon: 'document-text-outline', color: ADMIN_THEME.info,            nav: 'ManageCampusRules'  },
-];
+// ── Quick-action card ─────────────────────────────────────────────────────────
+const ActionCard = ({ action, anim, onPress, theme }) => {
+  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] });
 
+  return (
+    <Animated.View style={[st.actionWrap, { opacity: anim, transform: [{ translateY }] }]}>
+      <TouchableOpacity
+        style={[
+          st.actionCard,
+          {
+            backgroundColor: theme.surface,
+            borderColor:      theme.border,
+            shadowColor:      theme.cardShadow,
+          },
+        ]}
+        onPress={onPress}
+        activeOpacity={0.85}
+      >
+        {/* Icon enclosure — explicit 52×52 with defensive backgroundColor */}
+        <View
+          style={{
+            width:           52,
+            height:          52,
+            borderRadius:    16,
+            backgroundColor: action.color + '18',
+            justifyContent:  'center',
+            alignItems:      'center',
+            marginBottom:    10,
+          }}
+        >
+          <Ionicons name={action.icon} size={26} color={action.color} />
+        </View>
+
+        <Text style={[st.actionLabel, { color: theme.textPrimary }]} numberOfLines={2}>
+          {action.label}
+        </Text>
+        <Text style={[st.actionSub, { color: theme.textMuted }]} numberOfLines={1}>
+          {action.sub}
+        </Text>
+
+        {/* Arrow badge */}
+        <View
+          style={[
+            st.actionArrow,
+            {
+              backgroundColor: action.color + '14',
+              width:  28,
+              height: 28,
+              borderRadius: 14,
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginTop: 10,
+              alignSelf: 'flex-end',
+            },
+          ]}
+        >
+          <Ionicons name="arrow-forward" size={13} color={action.color} />
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
+// ── Main component ────────────────────────────────────────────────────────────
 const AdminDashboard = ({ navigation }) => {
-  const { colors } = useTheme();
+  const { isDarkMode } = useTheme();
+  const theme = buildTheme(isDarkMode);
   const { user } = useAuth();
 
-  const [users, setUsers] = useState([]);
-  const [events, setEvents] = useState([]);
-  const [reports, setReports] = useState([]);
+  // Live data
+  const [users,         setUsers]         = useState([]);
+  const [events,        setEvents]        = useState([]);
+  const [reports,       setReports]       = useState([]);
   const [notifications, setNotifications] = useState([]);
-
-  // One anim per stat card — statCards has 8 items, cardAnims must match
-  const cardAnims = useRef([...Array(8)].map(() => new Animated.Value(0))).current;
-  const heroAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    // Stagger entrance
-    Animated.sequence([
-      Animated.timing(heroAnim, { toValue: 1, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
-      Animated.stagger(70, cardAnims.map((a) => Animated.timing(a, { toValue: 1, duration: 380, easing: Easing.out(Easing.back(1.1)), useNativeDriver: false }))),
-    ]).start();
-  }, []);
+  const [buildings,     setBuildings]     = useState([]);
+  const [dining,        setDining]        = useState([]);
 
   useEffect(() => {
     const subs = [
-      subscribeToUsers((items) => setUsers(items || [])),
-      subscribeToEvents((items) => setEvents(items || [])),
-      subscribeToIssueReports((items) => setReports(items || [])),
-      subscribeToNotifications((items) => setNotifications(items || [])),
+      subscribeToUsers((d)         => setUsers(d         || [])),
+      subscribeToEvents((d)        => setEvents(d        || [])),
+      subscribeToIssueReports((d)  => setReports(d       || [])),
+      subscribeToNotifications((d) => setNotifications(d || [])),
+      subscribeToBuildings((d)     => setBuildings(d     || [])),
+      subscribeToDining((d)        => setDining(d        || [])),
     ];
-    return () => subs.forEach((unsub) => { try { unsub?.(); } catch (e) {} });
+    return () => subs.forEach((u) => { try { u?.(); } catch (_) {} });
   }, []);
 
-  const unreadReportCount = useMemo(() => {
-    return reports.reduce((count, r) => {
-      const role = (r?.reporterRole || '').toString().toLowerCase();
-      const isStudentOrStaff = role.includes('student') || role.includes('staff') || role.includes('faculty');
-      return isStudentOrStaff && !r?.adminReadAt ? count + 1 : count;
-    }, 0);
-  }, [reports]);
+  const unreadCount = useMemo(() =>
+    reports.reduce((c, r) => {
+      const role = (r?.reporterRole || '').toLowerCase();
+      return (role.includes('student') || role.includes('staff') || role.includes('faculty')) && !r?.adminReadAt
+        ? c + 1 : c;
+    }, 0),
+  [reports]);
 
+  // ── Stat cards ──────────────────────────────────────────────────────────────
   const statCards = useMemo(() => [
     {
-      id: 'students',
+      id:    'students',
       title: 'Students',
-      value: users.filter((u) => u.role === 'student').length,
-      icon: 'school-outline',
-      color: ADMIN_THEME.info,
-      bg: '#EBF8FF',
-      borderColor: '#BEE3F8',
+      value:  users.filter((u) => u.role === 'student' && !u.is_anonymous).length,
+      icon:   'school-outline',
+      color:  ADMIN_THEME.info,
     },
     {
-      id: 'staff',
+      id:    'staff',
       title: 'Staff',
-      value: users.filter((u) => ['faculty', 'staff'].includes(u.role)).length,
-      icon: 'briefcase-outline',
-      color: ADMIN_THEME.primary,
-      bg: '#EBF0FF',
-      borderColor: '#C3DAFE',
+      value:  users.filter((u) => ['faculty', 'staff'].includes(u.role)).length,
+      icon:   'briefcase-outline',
+      color:  ADMIN_THEME.primary,
     },
     {
-      id: 'guests',
+      id:    'guests',
       title: 'Guests',
-      value: users.filter((u) => u.role === 'guest').length,
-      icon: 'person-outline',
-      color: '#6B46C1',
-      bg: '#FAF5FF',
-      borderColor: '#D6BCFA',
+      value:  users.filter((u) => u.role === 'guest' || u.is_anonymous).length,
+      icon:   'person-circle-outline',
+      color:  '#7C3AED',
     },
     {
-      id: 'events',
-      title: 'Active Events',
-      value: events.length,
-      icon: 'calendar-outline',
-      color: ADMIN_THEME.success,
-      bg: '#F0FFF4',
-      borderColor: '#C6F6D5',
+      id:    'events',
+      title: 'Events',
+      value:  events.length,
+      icon:   'calendar-outline',
+      color:  ADMIN_THEME.success,
     },
     {
-      id: 'emergency',
-      title: 'Emergency',
-      value: reports.filter((r) => {
-        const cat = (r.category || '').toLowerCase();
-        const priority = (r.priority || '').toLowerCase();
-        return cat === 'emergency' || priority === 'high' || priority === 'critical';
-      }).length,
-      icon: 'alert-circle-outline',
-      color: ADMIN_THEME.danger,
-      bg: '#FFF5F5',
-      borderColor: '#FED7D7',
+      id:    'buildings',
+      title: 'Buildings',
+      value:  buildings.length,
+      icon:   'business-outline',
+      color:  '#0891B2',
     },
     {
-      id: 'announcements',
+      id:    'dining',
+      title: 'Dining Hubs',
+      value:  dining.length,
+      icon:   'fast-food-outline',
+      color:  '#D97706',
+    },
+    {
+      id:    'alerts',
+      title: 'Open Reports',
+      value:  reports.filter((r) => r.status === 'open' || r.status === 'in_progress').length,
+      icon:   'alert-circle-outline',
+      color:  ADMIN_THEME.danger,
+    },
+    {
+      id:    'notices',
       title: 'Announcements',
-      value: notifications.length,
-      icon: 'megaphone-outline',
-      color: ADMIN_THEME.warning,
-      bg: '#FFFBEB',
-      borderColor: '#FDE68A',
+      value:  notifications.length,
+      icon:   'megaphone-outline',
+      color:  ADMIN_THEME.warning,
+    },
+  ], [users, events, reports, notifications, buildings, dining]);
+
+  // ── Quick actions ────────────────────────────────────────────────────────────
+  const QUICK_ACTIONS = useMemo(() => [
+    {
+      label: 'Manage Users',
+      sub:   'Students & Staff',
+      icon:  'people-circle-outline',
+      color: ADMIN_THEME.primary,
+      nav:   'CampusStructure',
     },
     {
-      id: 'inProgress',
-      title: 'Issues In Progress',
-      value: reports.filter((r) => r.status === 'in_progress').length,
-      icon: 'time-outline',
-      color: '#2563EB',
-      bg: '#EFF6FF',
-      borderColor: '#BFDBFE',
+      label: 'Buildings & Locations',
+      sub:   'Facilities & Maps',
+      icon:  'business-outline',
+      color: '#0891B2',
+      nav:   'CampusContent',
     },
     {
-      id: 'activeToday',
-      title: 'Active Today',
-      value: users.filter((u) => {
-        const last = u.lastLoginAt;
-        if (!last) return false;
-        const d = last instanceof Date ? last : (last?.toDate ? last.toDate() : new Date(last));
-        return !isNaN(d.getTime()) && Date.now() - d.getTime() < 86400000;
-      }).length,
-      icon: 'pulse-outline',
-      color: ADMIN_THEME.statusAvailable,
-      bg: '#E6FFFA',
-      borderColor: '#B2F5EA',
+      label: 'Events & Notifications',
+      sub:   'Announcements',
+      icon:  'calendar-outline',
+      color: ADMIN_THEME.success,
+      nav:   'CampusContent',
     },
-  ], [users, events, reports, notifications]);
+    {
+      label: 'Dining & Rules',
+      sub:   'Cafeterias & Policies',
+      icon:  'fast-food-outline',
+      color: '#D97706',
+      nav:   'CampusContent',
+    },
+    {
+      label: 'Analytics & Reports',
+      sub:   'Issues & Metrics',
+      icon:  'bar-chart-outline',
+      color: '#7C3AED',
+      nav:   'ReportsAnalytics',
+    },
+    {
+      label: 'Control Centre',
+      sub:   'Admin Settings',
+      icon:  'shield-checkmark-outline',
+      color: ADMIN_THEME.danger,
+      nav:   'ControlCentre',
+    },
+  ], []);
+
+  // ── Animations ───────────────────────────────────────────────────────────────
+  const heroAnim  = useRef(new Animated.Value(0)).current;
+  const cardAnims = useRef(statCards.map(() => new Animated.Value(0))).current;
+  const actionAnims = useRef(QUICK_ACTIONS.map(() => new Animated.Value(0))).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(heroAnim, {
+        toValue: 1, duration: 420,
+        easing: Easing.out(Easing.cubic), useNativeDriver: false,
+      }),
+      Animated.stagger(55, [
+        ...cardAnims.map((a) =>
+          Animated.timing(a, { toValue: 1, duration: 360, easing: Easing.out(Easing.back(1.05)), useNativeDriver: false })
+        ),
+        ...actionAnims.map((a) =>
+          Animated.timing(a, { toValue: 1, duration: 340, easing: Easing.out(Easing.cubic), useNativeDriver: false })
+        ),
+      ]),
+    ]).start();
+  }, []);
 
   const greeting = () => {
     const h = new Date().getHours();
@@ -200,103 +339,142 @@ const AdminDashboard = ({ navigation }) => {
     return 'Good evening';
   };
 
-  const heroTranslate = heroAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] });
+  const heroTranslate = heroAnim.interpolate({ inputRange: [0, 1], outputRange: [-18, 0] });
+  const adminName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Admin';
 
   return (
-    <ScreenWrapper backgroundColor={colors.background} statusBarStyle="light-content">
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+    <ScreenWrapper
+      backgroundColor={isDarkMode ? ADMIN_THEME.darkBackground : ADMIN_THEME.background}
+      statusBarStyle="light-content"
+    >
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={st.scroll}
+      >
 
-        {/* Hero Card */}
-        <Animated.View style={[styles.heroCard, { opacity: heroAnim, transform: [{ translateY: heroTranslate }] }]}>
-          <View style={styles.heroGoldBar} />
-          {/* Gold glow orb */}
-          <View style={styles.heroGoldOrb} />
-          <View style={styles.heroNavyOrb} />
+        {/* ══ Hero card ══════════════════════════════════════════════════════ */}
+        <Animated.View
+          style={[st.hero, { opacity: heroAnim, transform: [{ translateY: heroTranslate }] }]}
+        >
+          {/* Gold top bar */}
+          <View style={st.heroGoldBar} />
+          {/* Decorative orbs */}
+          <View style={st.heroOrbGold} />
+          <View style={st.heroOrbNavy} />
 
           {/* Header row */}
-          <View style={styles.heroHeader}>
+          <View style={st.heroRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.heroGreeting}>{greeting()},</Text>
-              <Text style={styles.heroName} numberOfLines={1}>
-                {user?.displayName || user?.email?.split('@')[0] || 'Admin'}
-              </Text>
-              <Text style={styles.heroSub}>RMU Campus Administration</Text>
+              <Text style={st.heroGreeting}>{greeting()},</Text>
+              <Text style={st.heroName} numberOfLines={1}>{adminName}</Text>
+              <Text style={st.heroRole}>RMU Campus Administration</Text>
             </View>
-            <View style={styles.heroActions}>
+
+            <View style={st.heroBtnRow}>
+              {/* Notification bell */}
               <TouchableOpacity
-                style={styles.heroIconBtn}
+                style={st.heroBtn}
                 onPress={() => navigation.navigate('AdminTabs', { screen: 'Reports' })}
+                activeOpacity={0.85}
               >
                 <Ionicons name="notifications-outline" size={20} color="#fff" />
-                {unreadReportCount > 0 && (
-                  <View style={styles.heroBadge}>
-                    <Text style={styles.heroBadgeText}>{unreadReportCount > 9 ? '9+' : unreadReportCount}</Text>
+                {unreadCount > 0 && (
+                  <View style={st.heroNotifBadge}>
+                    <Text style={st.heroNotifText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
                   </View>
                 )}
               </TouchableOpacity>
+
+              {/* Settings */}
               <TouchableOpacity
-                style={styles.heroIconBtn}
+                style={st.heroBtn}
                 onPress={() => navigation.navigate('ControlCentre', { initialTab: 'Settings' })}
+                activeOpacity={0.85}
               >
                 <Ionicons name="settings-outline" size={20} color="#fff" />
               </TouchableOpacity>
             </View>
           </View>
 
-        </Animated.View>
-
-        {/* Stats Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={[styles.sectionTitle, { color: colors.textDark }]}>Campus Overview</Text>
-            <View style={styles.liveBadge}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveText}>Live</Text>
+          {/* Status pills */}
+          <View style={st.heroPillRow}>
+            <View style={st.heroPill}>
+              <Ionicons name="people-outline" size={12} color="rgba(255,255,255,0.85)" />
+              <Text style={st.heroPillText}>{users.length} Users</Text>
+            </View>
+            <View style={[st.heroPill, st.heroPillGold]}>
+              <Ionicons name="pulse-outline" size={12} color={ADMIN_THEME.accent} />
+              <Text style={[st.heroPillText, { color: ADMIN_THEME.accent }]}>Live Data</Text>
+            </View>
+            <View style={st.heroPill}>
+              <Ionicons name="calendar-outline" size={12} color="rgba(255,255,255,0.85)" />
+              <Text style={st.heroPillText}>{events.length} Events</Text>
             </View>
           </View>
-          <Text style={[styles.sectionSub, { color: colors.textMuted }]}>Real-time campus statistics</Text>
+        </Animated.View>
 
-          <View style={styles.statsGrid}>
+        {/* ══ Campus Overview stats ══════════════════════════════════════════ */}
+        <View style={st.section}>
+          <View style={st.sectionHeaderRow}>
+            <View>
+              <Text style={[st.sectionTitle, { color: theme.textPrimary }]}>Campus Overview</Text>
+              <Text style={[st.sectionSub, { color: theme.textMuted }]}>Real-time campus statistics</Text>
+            </View>
+            <View style={st.liveBadge}>
+              <View style={st.liveBadgeDot} />
+              <Text style={st.liveBadgeText}>Live</Text>
+            </View>
+          </View>
+
+          <View style={st.statsGrid}>
             {statCards.map((item, i) => (
-              <StatCard key={item.id} item={item} anim={cardAnims[i]} />
+              <StatCard
+                key={item.id}
+                item={item}
+                anim={cardAnims[i] || new Animated.Value(1)}
+                theme={theme}
+              />
             ))}
           </View>
         </View>
 
-        {/* Quick Actions */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.textDark }]}>Quick Actions</Text>
-          <Text style={[styles.sectionSub, { color: colors.textMuted }]}>Jump to any admin module</Text>
+        {/* ══ Quick Actions ══════════════════════════════════════════════════ */}
+        <View style={st.section}>
+          <Text style={[st.sectionTitle, { color: theme.textPrimary }]}>Quick Actions</Text>
+          <Text style={[st.sectionSub, { color: theme.textMuted }]}>Jump to any admin module</Text>
 
-          <View style={styles.actionsGrid}>
-            {QUICK_ACTIONS.map((action) => (
-              <TouchableOpacity
+          <View style={st.actionsGrid}>
+            {QUICK_ACTIONS.map((action, i) => (
+              <ActionCard
                 key={action.label}
-                style={[styles.actionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                action={action}
+                anim={actionAnims[i] || new Animated.Value(1)}
                 onPress={() => navigation.navigate(action.nav)}
-                activeOpacity={0.75}
-              >
-                <View style={[styles.actionIconWrap, { backgroundColor: action.color + '18' }]}>
-                  <Ionicons name={action.icon} size={22} color={action.color} />
-                </View>
-                <Text style={[styles.actionLabel, { color: colors.textDark }]}>{action.label}</Text>
-                <View style={[styles.actionArrow, { backgroundColor: action.color + '14' }]}>
-                  <Ionicons name="arrow-forward" size={12} color={action.color} />
-                </View>
-              </TouchableOpacity>
+                theme={theme}
+              />
             ))}
           </View>
         </View>
 
-        {/* Info banner */}
-        <View style={styles.infoBanner}>
-          <View style={styles.infoBannerAccent} />
-          <View style={[styles.infoBannerIcon, { backgroundColor: ADMIN_THEME.accent }]}>
-            <Ionicons name="compass-outline" size={22} color={ADMIN_THEME.primary} />
+        {/* ══ Smart Campus info banner ═══════════════════════════════════════ */}
+        <View style={st.infoBanner}>
+          <View style={st.infoBannerBar} />
+          {/* Icon enclosure — explicit 52×52 */}
+          <View
+            style={{
+              width:           52,
+              height:          52,
+              borderRadius:    16,
+              backgroundColor: ADMIN_THEME.accent,
+              justifyContent:  'center',
+              alignItems:      'center',
+            }}
+          >
+            <Ionicons name="compass-outline" size={24} color={ADMIN_THEME.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.infoBannerTitle}>Smart Campus Platform</Text>
-            <Text style={styles.infoBannerText}>
+            <Text style={st.infoBannerTitle}>Smart Campus Platform</Text>
+            <Text style={st.infoBannerSub}>
               Manage campus structure, content, reports, and emergency alerts from four unified modules.
             </Text>
           </View>
@@ -307,279 +485,132 @@ const AdminDashboard = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
-  scrollContent: { paddingBottom: 32 },
+// ── Styles ────────────────────────────────────────────────────────────────────
+const st = StyleSheet.create({
+  scroll: { paddingBottom: 40 },
 
-  // Hero
-  heroCard: {
+  // ── Hero ────────────────────────────────────────────────────────────────────
+  hero: {
     backgroundColor: ADMIN_THEME.primary,
-    marginHorizontal: 0,
     paddingHorizontal: 20,
     paddingTop: 52,
-    paddingBottom: 24,
+    paddingBottom: 22,
     overflow: 'hidden',
   },
   heroGoldBar: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0,
-    height: 4,
-    backgroundColor: ADMIN_THEME.accent,
+    position: 'absolute', top: 0, left: 0, right: 0,
+    height: 4, backgroundColor: ADMIN_THEME.accent,
   },
-  heroGoldOrb: {
+  heroOrbGold: {
     position: 'absolute',
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: 'rgba(197,160,71,0.12)',
-    top: -60,
-    right: -60,
+    width: 220, height: 220, borderRadius: 110,
+    backgroundColor: 'rgba(197,160,71,0.11)',
+    top: -70, right: -70,
   },
-  heroNavyOrb: {
+  heroOrbNavy: {
     position: 'absolute',
-    width: 160,
-    height: 160,
-    borderRadius: 80,
+    width: 150, height: 150, borderRadius: 75,
     backgroundColor: 'rgba(255,255,255,0.04)',
-    bottom: -40,
-    left: -40,
+    bottom: -50, left: -40,
   },
-  heroHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 18,
+  heroRow:     { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16 },
+  heroGreeting:{ fontSize: 13, color: 'rgba(255,255,255,0.6)', fontWeight: '500' },
+  heroName:    { fontSize: 25, fontWeight: '800', color: '#fff', marginTop: 2, letterSpacing: -0.3 },
+  heroRole:    { fontSize: 13, color: ADMIN_THEME.accent, marginTop: 3, fontWeight: '600' },
+  heroBtnRow:  { flexDirection: 'row', gap: 8, marginTop: 4 },
+  heroBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.13)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center', alignItems: 'center', overflow: 'visible',
   },
-  heroGreeting: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.65)',
-    fontWeight: '500',
-  },
-  heroName: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: '#fff',
-    marginTop: 2,
-  },
-  heroSub: {
-    fontSize: 13,
-    color: ADMIN_THEME.accent,
-    marginTop: 3,
-    fontWeight: '600',
-  },
-  heroActions: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 4,
-  },
-  heroIconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-    overflow: 'visible',
-  },
-  heroBadge: {
-    position: 'absolute',
-    top: -5,
-    right: -5,
-    minWidth: 17,
-    height: 17,
-    borderRadius: 9,
+  heroNotifBadge: {
+    position: 'absolute', top: -4, right: -4,
+    minWidth: 17, height: 17, borderRadius: 9,
     backgroundColor: '#E53E3E',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-    borderWidth: 1.5,
-    borderColor: ADMIN_THEME.primary,
+    justifyContent: 'center', alignItems: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5, borderColor: ADMIN_THEME.primary,
   },
-  heroBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
-  heroPillRow: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
+  heroNotifText: { color: '#fff', fontSize: 9, fontWeight: '800' },
+  heroPillRow:   { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   heroPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 20, paddingHorizontal: 11, paddingVertical: 6,
   },
   heroPillGold: {
-    backgroundColor: 'rgba(197,160,71,0.22)',
-    borderColor: 'rgba(197,160,71,0.4)',
+    backgroundColor: 'rgba(197,160,71,0.18)',
+    borderColor: 'rgba(197,160,71,0.35)',
   },
-  heroPillText: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 12,
-    fontWeight: '600',
-  },
+  heroPillText: { color: 'rgba(255,255,255,0.88)', fontSize: 11, fontWeight: '600' },
 
-  // Sections
-  section: {
-    paddingHorizontal: 16,
-    paddingTop: 22,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  sectionSub: {
-    fontSize: 13,
-    marginBottom: 14,
-    marginTop: 2,
-  },
+  // ── Sections ────────────────────────────────────────────────────────────────
+  section:        { paddingHorizontal: 16, paddingTop: 24 },
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
+  sectionTitle:   { fontSize: 18, fontWeight: '800', letterSpacing: -0.2 },
+  sectionSub:     { fontSize: 13, marginTop: 2 },
+
+  // Live badge
   liveBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: '#F0FFF4',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#C6F6D5',
+    borderWidth: 1, borderColor: '#C6F6D5',
+    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5,
   },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#38A169' },
-  liveText: { fontSize: 11, fontWeight: '700', color: '#38A169' },
+  liveBadgeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#38A169' },
+  liveBadgeText: { fontSize: 11, fontWeight: '700', color: '#38A169' },
 
-  // Stat cards grid
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
+  // ── Stat grid ───────────────────────────────────────────────────────────────
+  statsGrid:  { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  statWrap:   { width: '48.5%', marginBottom: 12 },
   statCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: 14,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
-  statIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  statCount: {
-    fontSize: 28,
-    fontWeight: '800',
-    lineHeight: 34,
-  },
-  statTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#718096',
-    marginTop: 2,
-    marginBottom: 8,
-  },
-  trendChip: {
+    borderRadius: 18, borderWidth: 1,
+    overflow: 'hidden',
+    shadowOpacity: 0.05, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 }, elevation: 2,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+  },
+  statAccentBar: { width: 4 },
+  statInner:  { flex: 1, padding: 13 },
+  statIconBox:{ marginBottom: 10 },
+  statCount:  { fontSize: 28, fontWeight: '800', lineHeight: 34, letterSpacing: -0.5 },
+  statLabel:  { fontSize: 11, fontWeight: '600', marginTop: 2, marginBottom: 8 },
+  liveChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
     alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
   },
-  trendText: { fontSize: 10, fontWeight: '700' },
+  liveDot:      { width: 5, height: 5, borderRadius: 3 },
+  liveChipText: { fontSize: 10, fontWeight: '700' },
 
-  // Quick actions
-  actionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
+  // ── Action grid ─────────────────────────────────────────────────────────────
+  actionsGrid:  { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 10 },
+  actionWrap:   { width: '48%' },
   actionCard: {
-    width: '48%',
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 1,
+    borderRadius: 18, borderWidth: 1, padding: 16,
+    shadowOpacity: 0.05, shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 }, elevation: 2,
   },
-  actionIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  actionLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    flex: 1,
-  },
-  actionArrow: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 8,
-    alignSelf: 'flex-end',
-  },
+  actionLabel:  { fontSize: 14, fontWeight: '800', letterSpacing: -0.1 },
+  actionSub:    { fontSize: 11, marginTop: 3 },
+  actionArrow:  {},
 
-  // Info banner
+  // ── Info banner ─────────────────────────────────────────────────────────────
   infoBanner: {
-    flexDirection: 'row',
+    flexDirection: 'row', alignItems: 'center', gap: 14,
     backgroundColor: ADMIN_THEME.primary,
-    borderRadius: 20,
-    padding: 16,
-    marginHorizontal: 16,
-    marginTop: 24,
-    alignItems: 'center',
-    gap: 14,
+    borderRadius: 20, padding: 16,
+    marginHorizontal: 16, marginTop: 24,
     overflow: 'hidden',
   },
-  infoBannerAccent: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0,
-    height: 3,
-    backgroundColor: ADMIN_THEME.accent,
+  infoBannerBar: {
+    position: 'absolute', top: 0, left: 0, right: 0,
+    height: 3, backgroundColor: ADMIN_THEME.accent,
   },
-  infoBannerIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  infoBannerTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#fff',
-    marginBottom: 4,
-  },
-  infoBannerText: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.75)',
-    lineHeight: 17,
-  },
+  infoBannerTitle: { fontSize: 15, fontWeight: '800', color: '#fff', marginBottom: 4 },
+  infoBannerSub:   { fontSize: 12, color: 'rgba(255,255,255,0.72)', lineHeight: 17 },
 });
 
 export default AdminDashboard;

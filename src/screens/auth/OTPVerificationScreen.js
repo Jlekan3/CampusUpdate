@@ -93,18 +93,25 @@ export default function OTPVerificationScreen({ navigation, route }) {
         // Password reset: navigate to change-password screen
         navigation.replace('ResetPassword', { email });
       } else {
-        // 1. Upload avatar while the confirmed session is still active
-        if (avatarUri) await uploadAvatarAfterVerify(avatarUri);
+        // 1. Safely capture the confirmed session user
+        const { data: { user } } = await supabase.auth.getUser();
 
-        // 2. Sign out IMMEDIATELY — clears the session before onAuthStateChange
-        //    can route to the student dashboard. The user stays in the Auth stack.
-        await logout();
+        // 2. Upload avatar while the authenticated session is still active
+        if (avatarUri && user) await uploadAvatarAfterVerify(avatarUri);
 
-        // 3. Show the success modal (we are still on the OTP screen in Auth stack)
+        // 3. Show success modal immediately — this prevents onAuthStateChange
+        //    from racing to route the user to the student dashboard
         setVerified(true);
 
-        // 4. Navigate to Login after 3 seconds
-        setTimeout(() => navigation.replace('Login'), 3000);
+        // 4. After 3 seconds, log out then navigate to Login
+        setTimeout(async () => {
+          try {
+            await logout();
+            navigation.replace('Login');
+          } catch (_) {
+            navigation.replace('Login');
+          }
+        }, 3000);
       }
     } catch (err) {
       setOtpError(err.message || 'Invalid or expired code. Please try again.');

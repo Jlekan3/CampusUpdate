@@ -183,7 +183,6 @@ export default function GuestHomeScreen({ navigation }) {
   const [loadingDining,  setLoadingDining]  = useState(true);
 
   useEffect(() => {
-    // Fetch all three tables in parallel — no auth required (anon session)
     supabase
       .from('campus_rules')
       .select('id, title, severity, category')

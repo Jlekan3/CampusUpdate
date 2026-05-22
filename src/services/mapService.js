@@ -395,7 +395,18 @@ export const fetchRouteGuidance = async (startLocation, endLocation, options = {
 		return { path: [], steps: [], distance: 0, duration: 0 };
 	}
 
-	const url = `https://router.project-osrm.org/route/v1/${profile}/${startCoordinates.longitude},${startCoordinates.latitude};${endCoordinates.longitude},${endCoordinates.latitude}?overview=full&geometries=polyline&steps=true`;
+	// Request up to 3 alternatives so we can always select the shortest.
+	// continue_straight=false lets OSRM prefer direct turns over U-turn
+	// avoidance, which produces tighter campus-path routes.
+	const url = [
+		`https://router.project-osrm.org/route/v1/${profile}/`,
+		`${startCoordinates.longitude},${startCoordinates.latitude}`,
+		`;`,
+		`${endCoordinates.longitude},${endCoordinates.latitude}`,
+		`?overview=full&geometries=polyline&steps=true`,
+		`&alternatives=3&continue_straight=false`,
+	].join('');
+
 	const response = await fetch(url);
 
 	if (!response.ok) {
@@ -403,11 +414,16 @@ export const fetchRouteGuidance = async (startLocation, endLocation, options = {
 	}
 
 	const data = await response.json();
-	const route = data?.routes?.[0];
+	const routes = data?.routes;
 
-	if (!route) {
+	if (!routes || routes.length === 0) {
 		return { path: [], steps: [], distance: 0, duration: 0 };
 	}
+
+	// Always take the shortest route by distance regardless of OSRM's ordering
+	const route = [...routes].sort(
+		(a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity),
+	)[0];
 
 	const encodedPolyline = route?.geometry;
 	const path = encodedPolyline ? decodePolyline(encodedPolyline) : [];
@@ -434,4 +450,111 @@ export const fetchRouteGuidance = async (startLocation, endLocation, options = {
 export const fetchRoutePath = async (startLocation, endLocation, options = {}) => {
 	const guidance = await fetchRouteGuidance(startLocation, endLocation, options);
 	return guidance.path;
+};
+
+// ─── Off-route detection helpers ─────────────────────────────────────────────
+
+/**
+ * Perpendicular distance (metres) from point P to the segment A→B.
+ * Uses a flat-earth approximation — accurate enough for campus-scale distances.
+ */
+export const distanceToSegmentMeters = (pLat, pLng, aLat, aLng, bLat, bLng) => {
+	const R = 6371000;
+	const toRad = (v) => (v * Math.PI) / 180;
+
+	const dAB = Math.sqrt(
+		Math.pow((bLat - aLat) * toRad(1) * R, 2) +
+		Math.pow((bLng - aLng) * toRad(1) * R * Math.cos(toRad(aLat)), 2),
+	);
+	if (dAB < 0.1) {
+		// Degenerate segment — return distance to point A
+		return Math.sqrt(
+			Math.pow((pLat - aLat) * toRad(1) * R, 2) +
+			Math.pow((pLng - aLng) * toRad(1) * R * Math.cos(toRad(aLat)), 2),
+		);
+	}
+
+	// Parameter t ∈ [0,1] of the nearest point on segment A→B
+	const t = Math.max(
+		0,
+		Math.min(
+			1,
+			(
+				(pLat - aLat) * (bLat - aLat) +
+				(pLng - aLng) * (bLng - aLng) * Math.pow(Math.cos(toRad(aLat)), 2)
+			) / (
+				Math.pow(bLat - aLat, 2) +
+				Math.pow((bLng - aLng) * Math.cos(toRad(aLat)), 2)
+			),
+		),
+	);
+
+	const nLat = aLat + t * (bLat - aLat);
+	const nLng = aLng + t * (bLng - aLng);
+
+	return Math.sqrt(
+		Math.pow((pLat - nLat) * toRad(1) * R, 2) +
+		Math.pow((pLng - nLng) * toRad(1) * R * Math.cos(toRad(aLat)), 2),
+	);
+};
+
+/**
+ * Minimum distance (metres) from a point to the nearest segment of a polyline.
+ */
+export const minDistanceToPath = (lat, lng, path = []) => {
+	if (!path || path.length === 0) return Infinity;
+	if (path.length === 1) {
+		const toRad = (v) => (v * Math.PI) / 180;
+		const R = 6371000;
+		return Math.sqrt(
+			Math.pow((lat - path[0].latitude) * toRad(1) * R, 2) +
+			Math.pow((lng - path[0].longitude) * toRad(1) * R * Math.cos(toRad(lat)), 2),
+		);
+	}
+	let min = Infinity;
+	for (let i = 0; i < path.length - 1; i++) {
+		const d = distanceToSegmentMeters(
+			lat, lng,
+			path[i].latitude, path[i].longitude,
+			path[i + 1].latitude, path[i + 1].longitude,
+		);
+		if (d < min) min = d;
+	}
+	return min;
+};
+
+/**
+ * Absolute angular difference between two compass headings (0–180 °).
+ */
+export const headingDifference = (h1, h2) => {
+	if (h1 == null || h2 == null) return 0;
+	const diff = Math.abs((h1 % 360) - (h2 % 360));
+	return diff > 180 ? 360 - diff : diff;
+};
+
+/**
+ * Expected bearing (degrees) of the route segment nearest to the user.
+ * Returns null if the path is too short to compute a bearing.
+ */
+export const expectedRouteHeading = (lat, lng, path = []) => {
+	if (!path || path.length < 2) return null;
+	let minDist = Infinity;
+	let bestSegment = 0;
+	for (let i = 0; i < path.length - 1; i++) {
+		const d = distanceToSegmentMeters(
+			lat, lng,
+			path[i].latitude, path[i].longitude,
+			path[i + 1].latitude, path[i + 1].longitude,
+		);
+		if (d < minDist) { minDist = d; bestSegment = i; }
+	}
+	const a = path[bestSegment];
+	const b = path[bestSegment + 1];
+	const toRad = (v) => (v * Math.PI) / 180;
+	const dLng = toRad(b.longitude - a.longitude);
+	const y = Math.sin(dLng) * Math.cos(toRad(b.latitude));
+	const x =
+		Math.cos(toRad(a.latitude)) * Math.sin(toRad(b.latitude)) -
+		Math.sin(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.cos(dLng);
+	return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 };

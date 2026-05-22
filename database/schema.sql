@@ -479,8 +479,11 @@ BEGIN
       NEW.raw_user_meta_data->>'display_name',
       ''
     ),
-    COALESCE(NEW.raw_user_meta_data->>'role', 'student'),
-    COALESCE((NEW.raw_user_meta_data->>'is_anonymous')::boolean, false),
+    CASE
+      WHEN COALESCE(NEW.is_anonymous, false) = true THEN 'guest'
+      ELSE COALESCE(NEW.raw_user_meta_data->>'role', 'student')
+    END,
+    COALESCE(NEW.is_anonymous, false),
     now(),
     now()
   )

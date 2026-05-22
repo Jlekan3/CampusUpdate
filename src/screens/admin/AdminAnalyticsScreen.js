@@ -155,7 +155,7 @@ const AdminAnalyticsScreen = () => {
       const latest = { admin: null, faculty: null, student: null, guest: null };
 
       list.forEach((user) => {
-        const role = getRoleFromUser(user);
+        const role = user.is_anonymous ? 'guest' : getRoleFromUser(user);
         counts[role] = (counts[role] || 0) + 1;
 
         const activityAt = getUserActivityDate(user);

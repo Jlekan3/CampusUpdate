@@ -8,8 +8,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "deploy:rules": "firebase deploy --only firestore:rules,storage",
-    "admin": "node admin-cli.js"
+"admin": "node admin-cli.js"
   },
   "dependencies": {
     "@expo-google-fonts/outfit": "^0.4.3",
@@ -38,7 +37,8 @@
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
     "react-native-gesture-handler": "~2.28.0",
-    "react-native-maps": "1.20.1",
+    "react-native-maps": "^1.20.1",
+    "react-native-maps-directions": "^1.9.0",
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.16.0",

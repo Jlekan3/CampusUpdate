@@ -4,9 +4,9 @@ import {
   Alert,
   FlatList,
   Linking,
-  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -32,8 +32,6 @@ const CAT_CFG = {
   Maintenance: { color: '#059669', bg: '#ECFDF5', icon: 'construct-outline'        },
 };
 
-const CATEGORIES = ['All', 'Emergency', 'Medical', 'Counseling', 'Security', 'Maintenance'];
-
 const call = (number) => {
   const cleaned = `tel:${number.replace(/\s/g, '')}`;
   Linking.canOpenURL(cleaned)
@@ -44,21 +42,30 @@ const call = (number) => {
 export default function GuestEmergencyScreen({ navigation }) {
   const [contacts, setContacts] = useState([]);
   const [loading,  setLoading]  = useState(true);
-  const [filter,   setFilter]   = useState('All');
+  const [search,   setSearch]   = useState('');
 
   useEffect(() => {
     supabase
       .from('safety_and_support')
       .select('id, title, description, phone_number, alternative_phone_number, category, is_available_24_7, operating_hours, icon_name')
       .order('category')
-      .then(({ data }) => { if (data) setContacts(data); })
+      .order('title')
+      .then(({ data, error }) => {
+        if (data) setContacts(data);
+      })
       .finally(() => setLoading(false));
   }, []);
 
-  const displayed = useMemo(
-    () => filter === 'All' ? contacts : contacts.filter((c) => c.category === filter),
-    [contacts, filter]
-  );
+  const displayed = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return contacts;
+    return contacts.filter((c) =>
+      (c.title        || '').toLowerCase().includes(q) ||
+      (c.description  || '').toLowerCase().includes(q) ||
+      (c.category     || '').toLowerCase().includes(q) ||
+      (c.phone_number || '').toLowerCase().includes(q)
+    );
+  }, [contacts, search]);
 
   return (
     <ScreenWrapper backgroundColor={BG} statusBarStyle="dark-content">
@@ -85,26 +92,22 @@ export default function GuestEmergencyScreen({ navigation }) {
         </View>
       </View>
 
-      {/* ── Category filter chips ── */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
-        {CATEGORIES.map((cat) => {
-          const active = filter === cat;
-          const color  = cat === 'All' ? NAVY : (CAT_CFG[cat]?.color || NAVY);
-          return (
-            <TouchableOpacity
-              key={cat}
-              style={[s.chip, active && { backgroundColor: color, borderColor: color }]}
-              onPress={() => setFilter(cat)}
-              activeOpacity={0.8}
-            >
-              {cat !== 'All' && CAT_CFG[cat] && (
-                <Ionicons name={CAT_CFG[cat].icon} size={11} color={active ? '#fff' : MUTED} />
-              )}
-              <Text style={[s.chipText, active && { color: '#fff', fontWeight: '700' }]}>{cat}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+      {/* ── Search bar ── */}
+      <View style={s.searchRow}>
+        <Ionicons name="search-outline" size={16} color={LIGHT} />
+        <TextInput
+          style={s.searchInput}
+          placeholder="Search contacts, category…"
+          placeholderTextColor={LIGHT}
+          value={search}
+          onChangeText={setSearch}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch('')}>
+            <Ionicons name="close-circle" size={16} color={LIGHT} />
+          </TouchableOpacity>
+        )}
+      </View>
 
       {/* ── Contacts list ── */}
       {loading ? (
@@ -119,7 +122,7 @@ export default function GuestEmergencyScreen({ navigation }) {
             <View style={s.empty}>
               <Ionicons name="call-outline" size={44} color={LIGHT} />
               <Text style={s.emptyTitle}>No contacts found</Text>
-              <Text style={s.emptySub}>Try a different category filter.</Text>
+              <Text style={s.emptySub}>{contacts.length === 0 ? 'No contacts have been added yet.' : 'Try a different search.'}</Text>
             </View>
           }
           renderItem={({ item }) => {
@@ -202,19 +205,18 @@ const s = StyleSheet.create({
   headerBadge:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
   headerBadgeText: { fontSize: 13, fontWeight: '700' },
 
-  sosBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginHorizontal: 16, marginTop: 14, backgroundColor: '#FEF2F2', borderRadius: 14, padding: 12, borderWidth: 1, borderColor: '#FECACA' },
-  sosBannerLeft:{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, flex: 1 },
-  sosBannerText:{ fontSize: 12, color: '#9B2335', fontWeight: '600', flex: 1, lineHeight: 17 },
+  sosBanner:     { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginHorizontal: 16, marginTop: 14, backgroundColor: '#FEF2F2', borderRadius: 14, padding: 12, borderWidth: 1, borderColor: '#FECACA' },
+  sosBannerLeft: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, flex: 1 },
+  sosBannerText: { fontSize: 12, color: '#9B2335', fontWeight: '600', flex: 1, lineHeight: 17 },
 
-  chipRow:  { paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
-  chip:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 13, paddingVertical: 7, borderRadius: 20, backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER },
-  chipText: { fontSize: 12, fontWeight: '600', color: MUTED },
+  searchRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginTop: 14, marginBottom: 4, backgroundColor: SURFACE, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, borderColor: BORDER },
+  searchInput: { flex: 1, fontSize: 14, color: SLATE, padding: 0 },
 
-  list:  { paddingHorizontal: 16, paddingBottom: 32, gap: 12 },
-  center:{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 60 },
-  empty: { alignItems: 'center', paddingTop: 60, gap: 10 },
-  emptyTitle:{ fontSize: 17, fontWeight: '700', color: SLATE },
-  emptySub:  { fontSize: 13, color: MUTED },
+  list:   { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 32, gap: 12 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 60 },
+  empty:  { alignItems: 'center', paddingTop: 60, gap: 10 },
+  emptyTitle: { fontSize: 17, fontWeight: '700', color: SLATE },
+  emptySub:   { fontSize: 13, color: MUTED, textAlign: 'center', maxWidth: 220 },
 
   card:        { flexDirection: 'row', backgroundColor: SURFACE, borderRadius: 16, borderWidth: 1, borderColor: BORDER, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 },
   cardBar:     { width: 4 },
@@ -223,7 +225,7 @@ const s = StyleSheet.create({
   catBadge:    { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
   catBadgeText:{ fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
   availBadge:  { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  availBadgeOn:{ backgroundColor: '#ECFDF5' },
+  availBadgeOn: { backgroundColor: '#ECFDF5' },
   availBadgeOff:{ backgroundColor: '#F1F5F9' },
   availDot:    { width: 6, height: 6, borderRadius: 3 },
   availText:   { fontSize: 10, fontWeight: '700' },

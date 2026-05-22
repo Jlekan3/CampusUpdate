@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -42,6 +42,17 @@ export default function GuestDiningScreen({ navigation }) {
     if (!q) return dining;
     return dining.filter((d) => (d.name + (d.description || '')).toLowerCase().includes(q));
   }, [dining, search]);
+
+  const handleOpenOnMap = useCallback((item) => {
+    if (!item.latitude || !item.longitude) return;
+    navigation.navigate('GuestTabs', {
+      screen: 'Map',
+      params: {
+        selectedLocation: { id: item.id, name: item.name, latitude: item.latitude, longitude: item.longitude },
+        autoRoute: true,
+      },
+    });
+  }, [navigation]);
 
   return (
     <ScreenWrapper backgroundColor={BG} statusBarStyle="dark-content">
@@ -100,7 +111,12 @@ export default function GuestDiningScreen({ navigation }) {
             </View>
           }
           renderItem={({ item }) => (
-            <View style={s.card}>
+            <TouchableOpacity
+              style={s.card}
+              activeOpacity={0.85}
+              onPress={() => handleOpenOnMap(item)}
+              disabled={!item.latitude || !item.longitude}
+            >
               {/* Gold top stripe */}
               <View style={s.cardStripe} />
               <View style={s.cardBody}>
@@ -129,17 +145,15 @@ export default function GuestDiningScreen({ navigation }) {
                   <Text style={s.cardDesc} numberOfLines={3}>{item.description}</Text>
                 ) : null}
 
-                {/* Map pin if has coords */}
+                {/* View on Map button */}
                 {(item.latitude && item.longitude) ? (
-                  <View style={s.coordRow}>
-                    <Ionicons name="location-outline" size={12} color={MUTED} />
-                    <Text style={s.coordText}>
-                      {Number(item.latitude).toFixed(4)}°N · {Math.abs(Number(item.longitude)).toFixed(4)}°W
-                    </Text>
+                  <View style={s.mapBtnRow}>
+                    <Ionicons name="navigate-outline" size={13} color={NAVY} />
+                    <Text style={s.mapBtnText}>View on Map & Get Directions</Text>
                   </View>
                 ) : null}
               </View>
-            </View>
+            </TouchableOpacity>
           )}
         />
       )}
@@ -179,6 +193,6 @@ const s = StyleSheet.create({
   openDot:     { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981' },
   openText:    { fontSize: 10, fontWeight: '700', color: '#059669' },
   cardDesc:    { fontSize: 13, color: MUTED, lineHeight: 19 },
-  coordRow:    { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
-  coordText:   { fontSize: 11, color: LIGHT },
+  mapBtnRow:   { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, backgroundColor: '#EFF6FF', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, alignSelf: 'flex-start', borderWidth: 1, borderColor: '#BFDBFE' },
+  mapBtnText:  { fontSize: 12, fontWeight: '700', color: NAVY },
 });
