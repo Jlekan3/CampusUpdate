@@ -15,20 +15,20 @@
 --   - Admins use a hardcoded email list in AuthContext, bypassing this entirely
 -- ─────────────────────────────────────────────────────────────────────────────
 
--- Step 1 – Function
-CREATE OR REPLACE FUNCTION auth.auto_confirm_non_student_email()
+-- Step 1 – Function in PUBLIC schema (auth schema blocks direct function creation)
+CREATE OR REPLACE FUNCTION public.auto_confirm_non_student_email()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = auth, public
+SET search_path = public, auth
 AS $$
 BEGIN
   -- Only auto-confirm if the email is NOT a student email
   IF NEW.email IS NOT NULL
      AND NEW.email NOT ILIKE '%@st.rmu.edu.gh' THEN
 
-    NEW.email_confirmed_at  = NOW();
-    NEW.confirmation_token  = '';
+    NEW.email_confirmed_at   = NOW();
+    NEW.confirmation_token   = '';
     NEW.confirmation_sent_at = NOW();
 
   END IF;
@@ -37,14 +37,14 @@ BEGIN
 END;
 $$;
 
--- Step 2 – Trigger (drop first so re-running this file is idempotent)
+-- Step 2 – Trigger on auth.users
 DROP TRIGGER IF EXISTS trg_auto_confirm_non_student ON auth.users;
 
 CREATE TRIGGER trg_auto_confirm_non_student
   BEFORE INSERT
   ON auth.users
   FOR EACH ROW
-  EXECUTE FUNCTION auth.auto_confirm_non_student_email();
+  EXECUTE FUNCTION public.auto_confirm_non_student_email();
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
