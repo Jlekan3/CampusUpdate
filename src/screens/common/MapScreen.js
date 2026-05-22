@@ -16,18 +16,10 @@ import * as Location from 'expo-location';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../context/ThemeContext';
-import { COLORS } from '../../utils/constants';
+import { COLORS, RMU_BOUNDS, INITIAL_REGION } from '../../utils/constants';
 import { supabase } from '../../config/supabase';
 
 const { width, height } = Dimensions.get('window');
-
-// Regional Maritime University (RMU) Default Target Map Boundary Viewport
-const RMU_DEFAULT_REGION = {
-  latitude: 5.6452, 
-  longitude: -0.0622,
-  latitudeDelta: 0.006,
-  longitudeDelta: 0.006,
-};
 
 // Insert your Google Maps API Key here for real road tracking computations
 const GOOGLE_MAPS_API_KEY = 'AIzaSyBI7i_--IVs0VEkYncUc-wPVG9IZwp3py0';
@@ -294,7 +286,7 @@ export default function MapScreen() {
     if (!userLocation || routePath.length < 2 || hasArrived) return;
 
     // A. Geofenced Arrival Verification
-    const distanceToTarget = getDistanceMeters(userLocation, endLocation || RMU_DEFAULT_REGION);
+    const distanceToTarget = getDistanceMeters(userLocation, endLocation || INITIAL_REGION);
     if (distanceToTarget <= 12) { // 12-meter structural lock perimeter
       setHasArrived(true);
       setRoutePath([]);
@@ -437,11 +429,23 @@ export default function MapScreen() {
         ref={mapRef}
         style={styles.mapCanvas}
         provider={PROVIDER_GOOGLE}
-        initialRegion={RMU_DEFAULT_REGION}
+        initialRegion={INITIAL_REGION}
         customMapStyle={isDarkMode ? darkMapJson : []}
         showsUserLocation={true}
         followsUserLocation={true}
         showsMyLocationButton={false}
+        onRegionChangeComplete={(region) => {
+          const outsideBounds =
+            region.latitude  < RMU_BOUNDS.sw.latitude  ||
+            region.latitude  > RMU_BOUNDS.ne.latitude  ||
+            region.longitude < RMU_BOUNDS.sw.longitude ||
+            region.longitude > RMU_BOUNDS.ne.longitude;
+          // latitudeDelta > 0.015 means the user has zoomed out past campus level
+          const tooFarOut = region.latitudeDelta > 0.015;
+          if ((outsideBounds || tooFarOut) && mapRef.current) {
+            mapRef.current.animateToRegion(INITIAL_REGION, 800);
+          }
+        }}
       >
         {endLocation && (
           <Marker coordinate={{ latitude: endLocation.latitude, longitude: endLocation.longitude }}>

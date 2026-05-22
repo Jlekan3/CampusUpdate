@@ -88,6 +88,21 @@ export const ADMIN_THEME = {
   glassDark: 'rgba(0,0,0,0.25)',
 };
 
+// ── RMU Geographical Bounds ───────────────────────────────────────────────────
+export const RMU_BOUNDS = {
+  latitude:  5.6122,   // Campus centre latitude
+  longitude: -0.0610,  // Campus centre longitude
+  sw: { latitude: 5.6060, longitude: -0.0680 }, // Southwest corner
+  ne: { latitude: 5.6180, longitude: -0.0540 }, // Northeast corner
+};
+
+export const INITIAL_REGION = {
+  latitude:      RMU_BOUNDS.latitude,
+  longitude:     RMU_BOUNDS.longitude,
+  latitudeDelta:  0.008,
+  longitudeDelta: 0.008,
+};
+
 /** RMU campus emergency & support contacts (Ghana). Update with official numbers. */
 export const CAMPUS_EMERGENCY_CONTACTS = [
   {
