@@ -434,16 +434,22 @@ export default function MapScreen() {
         showsUserLocation={true}
         followsUserLocation={true}
         showsMyLocationButton={false}
+        // Hard boundary — prevents native panning beyond campus (react-native-maps ≥ 0.64)
+        mapBoundaries={{
+          northEast: { latitude: RMU_BOUNDS.ne.latitude, longitude: RMU_BOUNDS.ne.longitude },
+          southWest: { latitude: RMU_BOUNDS.sw.latitude, longitude: RMU_BOUNDS.sw.longitude },
+        }}
+        // Fallback fence — snaps back if device / package doesn't honour mapBoundaries
         onRegionChangeComplete={(region) => {
           const outsideBounds =
             region.latitude  < RMU_BOUNDS.sw.latitude  ||
             region.latitude  > RMU_BOUNDS.ne.latitude  ||
             region.longitude < RMU_BOUNDS.sw.longitude ||
             region.longitude > RMU_BOUNDS.ne.longitude;
-          // latitudeDelta > 0.015 means the user has zoomed out past campus level
-          const tooFarOut = region.latitudeDelta > 0.015;
+          // latitudeDelta > 0.012 means user has zoomed out past campus level
+          const tooFarOut = region.latitudeDelta > 0.012;
           if ((outsideBounds || tooFarOut) && mapRef.current) {
-            mapRef.current.animateToRegion(INITIAL_REGION, 800);
+            mapRef.current.animateToRegion(INITIAL_REGION, 600);
           }
         }}
       >

@@ -88,19 +88,19 @@ export const ADMIN_THEME = {
   glassDark: 'rgba(0,0,0,0.25)',
 };
 
-// ── RMU Geographical Bounds ───────────────────────────────────────────────────
+// ── RMU Geographical Bounds (DMS-converted, Nungua, Accra, Ghana) ─────────────
 export const RMU_BOUNDS = {
-  latitude:  5.6122,   // Campus centre latitude
-  longitude: -0.0610,  // Campus centre longitude
-  sw: { latitude: 5.6060, longitude: -0.0680 }, // Southwest corner
-  ne: { latitude: 5.6180, longitude: -0.0540 }, // Northeast corner
+  latitude:  5.607500,  // Exact campus centre latitude
+  longitude: -0.063889, // Exact campus centre longitude
+  sw: { latitude: 5.602500, longitude: -0.070000 }, // Southern/western perimeter
+  ne: { latitude: 5.613500, longitude: -0.057000 }, // Northern/eastern perimeter
 };
 
 export const INITIAL_REGION = {
   latitude:      RMU_BOUNDS.latitude,
   longitude:     RMU_BOUNDS.longitude,
-  latitudeDelta:  0.008,
-  longitudeDelta: 0.008,
+  latitudeDelta:  0.006, // Tight initial zoom to frame campus immediately
+  longitudeDelta: 0.006,
 };
 
 /** RMU campus emergency & support contacts (Ghana). Update with official numbers. */
