@@ -302,6 +302,13 @@ const AdminDashboard = ({ navigation }) => {
       nav:   'ReportsAnalytics',
     },
     {
+      label: 'Emergency & Support',
+      sub:   'Contacts & Safety',
+      icon:  'call-outline',
+      color: '#DC2626',
+      nav:   'EmergencyContacts',
+    },
+    {
       label: 'Control Centre',
       sub:   'Admin Settings',
       icon:  'shield-checkmark-outline',
