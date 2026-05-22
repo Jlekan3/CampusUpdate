@@ -20,6 +20,28 @@ import * as FileSystem from 'expo-file-system';
 import * as XLSX from 'xlsx';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import { supabase } from '../../config/supabase';
+import { createUserWithAuthAndFirestore } from '../../services/databaseService';
+
+// Auto-generate a secure temp password (staff will be prompted to change on first login)
+const generateTempPassword = () => {
+  const upper   = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower   = 'abcdefghjkmnpqrstuvwxyz';
+  const digits  = '23456789';
+  const special = '@#!';
+  const all     = upper + lower + digits + special;
+  const pw = [
+    upper[Math.floor(Math.random()   * upper.length)],
+    lower[Math.floor(Math.random()   * lower.length)],
+    digits[Math.floor(Math.random()  * digits.length)],
+    special[Math.floor(Math.random() * special.length)],
+    ...Array.from({ length: 6 }, () => all[Math.floor(Math.random() * all.length)]),
+  ];
+  for (let i = pw.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pw[i], pw[j]] = [pw[j], pw[i]];
+  }
+  return pw.join('');
+};
 
 // ── Clean Design Tokens ───────────────────────────────────────────────────────
 const NAVY = '#1A365D';
@@ -158,13 +180,25 @@ export default function ManagePeopleScreen({ navigation }) {
         if (error) throw error;
         Alert.alert('Success', 'Profile updated successfully.');
       } else {
-        // Create new structural entry through database deployment mappings
-        const { error } = await supabase
-          .from('users')
-          .insert([{ ...payload, is_anonymous: false }]);
-
-        if (error) throw error;
-        Alert.alert('Success', 'New profile record created successfully.');
+        // Use the password from the form if provided, otherwise auto-generate one.
+        // createUserWithAuthAndFirestore creates the auth.users row first (which
+        // generates the UUID), then upserts public.users — fixing the null id error.
+        // The auto_confirm_staff trigger in Supabase skips email verification for
+        // non-@st.rmu.edu.gh addresses, so staff can log in immediately.
+        const tempPassword = password.trim() || generateTempPassword();
+        await createUserWithAuthAndFirestore(email.trim(), tempPassword, {
+          full_name:    fullName.trim(),
+          display_name: fullName.trim(),
+          role,
+          phone:        phone     || null,
+          department:   department || null,
+          position:     position  || null,
+          staff_id:     staffId   || null,
+        });
+        Alert.alert(
+          'Account Created',
+          `Staff account created for ${email.trim()}.\n\nTemporary password:\n${tempPassword}\n\nThey will be asked to change it on first login.`
+        );
       }
       setModalVisible(false);
       fetchUsers();
