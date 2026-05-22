@@ -245,24 +245,35 @@ export const AuthProvider = ({ children }) => {
   // Verifies the 6-digit code from the email. On success, Supabase creates a
   // session so the user can immediately call resetPassword().
   const verifyOtp = async (email, token, type) => {
-    // Suppress onAuthStateChange routing for signup OTP so the success modal
-    // stays visible. Recovery OTP navigates to ResetPassword immediately so
-    // no suppression is needed there.
     if (type !== 'recovery') suppressOtpRouting.current = true;
-    // Map to the correct Supabase OTP type:
-    //   'recovery' → 'recovery'  (password-reset flow)
-    //   anything else → 'signup' (account confirmation flow)
-    const verificationType = type === 'recovery' ? 'recovery' : 'signup';
-    const { data, error } = await supabase.auth.verifyOtp({
-      email: email.toLowerCase().trim(),
-      token,
-      type: verificationType,
-    });
-    if (error) {
-      suppressOtpRouting.current = false;
-      throw error;
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // For recovery flow use 'recovery' type directly.
+    if (type === 'recovery') {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: normalizedEmail, token, type: 'recovery',
+      });
+      if (error) throw error;
+      return data;
     }
-    return data;
+
+    // For signup: try 'signup' first (initial registration OTP).
+    // If that fails, try 'email' — this handles the case where the user
+    // tapped Resend, which calls signInWithOtp() and generates an 'email'
+    // type token instead of a 'signup' token.
+    const { data, error } = await supabase.auth.verifyOtp({
+      email: normalizedEmail, token, type: 'signup',
+    });
+    if (!error) return data;
+
+    const { data: data2, error: error2 } = await supabase.auth.verifyOtp({
+      email: normalizedEmail, token, type: 'email',
+    });
+    if (!error2) return data2;
+
+    suppressOtpRouting.current = false;
+    throw error; // throw original error for clearest message
   };
 
   // ── resendOtp ───────────────────────────────────────────────────────────────

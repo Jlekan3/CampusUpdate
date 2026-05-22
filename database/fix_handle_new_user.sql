@@ -22,9 +22,14 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
+  -- Skip anonymous sign-ins (email is NULL — no profile row needed).
+  IF NEW.email IS NULL THEN
+    RETURN NEW;
+  END IF;
+
   -- Student self-registration: email not confirmed yet (OTP pending).
   -- Skip now — handle_user_confirmed trigger will create the row after OTP.
-  IF NEW.email IS NOT NULL AND NEW.email_confirmed_at IS NULL THEN
+  IF NEW.email_confirmed_at IS NULL THEN
     RETURN NEW;
   END IF;
 
