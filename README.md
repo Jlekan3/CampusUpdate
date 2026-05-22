@@ -1,589 +1,605 @@
-# RMU Campus Navigation
+# RMU Campus Navigation App
 
-React Native (Expo) mobile app for **Regional Maritime University (RMU)** campus navigation. Students, faculty, and admins can browse an interactive campus map, search locations, save favourites, scan QR codes, view campus updates, register accounts, and manage campus data through Supabase.
+A cross-platform mobile application built for **Regional Maritime University (RMU), Ghana**. The app provides an interactive campus map, role-based dashboards for students, staff, and administrators, and a guest browsing mode — all backed by a Supabase cloud backend.
+
+> **Render diagrams** — open in VS Code with the Mermaid extension, or paste any block into [mermaid.live](https://mermaid.live).
 
 ---
 
 ## Table of Contents
 
-1. [System Diagrams](#system-diagrams)
-   - [System Flowchart](#1-system-flowchart)
-   - [Use Case Diagram](#2-use-case-diagram)
-   - [Sequence Diagram](#3-system-sequence-diagram)
-   - [Entity Relationship Diagram](#4-entity-relationship-diagram)
-   - [Activity Diagram](#5-activity-diagram)
-   - [User Flow Diagram](#6-user-flow-diagram)
-2. [Features by Role](#features-by-role)
-3. [Tech Stack](#tech-stack)
-4. [Project Setup](#project-setup)
-5. [Project Structure](#project-structure)
-6. [Database Schema](#database-schema)
-7. [QR Codes](#qr-codes)
-8. [Running the App](#running-the-app)
-9. [Troubleshooting](#troubleshooting)
+1. [System Overview](#1-system-overview)
+2. [Features by Role](#2-features-by-role)
+3. [Tech Stack](#3-tech-stack)
+4. [System Architecture](#4-system-architecture)
+5. [Authentication Flows](#5-authentication-flows)
+6. [Database Schema](#6-database-schema)
+7. [Use Case Diagram](#7-use-case-diagram)
+8. [Sequence Diagram](#8-sequence-diagram)
+9. [Activity Diagram](#9-activity-diagram)
+10. [Project Structure](#10-project-structure)
+11. [Project Setup](#11-project-setup)
+12. [Running the App](#12-running-the-app)
+13. [Troubleshooting](#13-troubleshooting)
 
 ---
 
-## System Diagrams
+## 1. System Overview
 
-### 1. System Flowchart
+The RMU Campus Navigation App serves four types of users through a single codebase:
 
-Shows the high-level flow of the entire application from launch through role-based navigation to feature access.
+| User Type | Access | How they enter |
+|-----------|--------|----------------|
+| **Guest** | Public campus info, map, dining, emergency contacts, campus rules | Tap "Continue as Guest" → anonymous Supabase sign-in |
+| **Student** | All guest features + notifications, events, favourites, report issues, profile | Register with `@st.rmu.edu.gh` email → OTP verification |
+| **Staff / Faculty** | All student features + staff dashboard | Admin-created account → temp password email → force change on first login |
+| **Admin** | Full CRUD over all data, user management, analytics | Hardcoded email list or DB role = admin |
+
+### Key System Behaviours
+
+- **OTP-based email verification** — 8-digit code sent to student email on registration; must be entered before account is activated.
+- **Guest mode** — anonymous Supabase session, no registration required. Accesses public data via RLS-`USING(true)` policies.
+- **Temp-password flow** — when an admin creates a staff or student account, a secure 10-character password is auto-generated, emailed to the user via a Supabase Edge Function (Brevo API), and the `must_change_password` flag is set. The user is intercepted on first login and forced to set a new password before reaching their dashboard.
+- **Role resolution** — after login, `AuthContext` resolves the user role from: (1) admin email list, (2) `user_metadata.role`, (3) `public.users.role` DB lookup. Anonymous sessions always resolve to `guest`.
+- **Real-time updates** — notifications, events, and user lists use Supabase Realtime subscriptions (`postgres_changes`).
+- **Avatar upload** — deferred to after OTP verification so `auth.uid()` is guaranteed to be set; uploaded to the `profiles` storage bucket.
+
+---
+
+## 2. Features by Role
+
+### 👤 Guest
+- Browse interactive campus map
+- Search and view location details
+- View campus rules (live from database)
+- View dining & cafeterias (live from database)
+- View emergency & support contacts (live from database)
+- Scan QR codes to open location details
+- Tap "Sign In" to transition to the Auth flow
+
+### 🎓 Student
+- All guest features
+- Register with `@st.rmu.edu.gh` email + 8-digit OTP verification
+- Upload a profile photo during registration
+- Student home dashboard with quick-action cards
+- Drawer sidebar navigation
+- Save favourite locations (toggle heart)
+- Browse campus events and express interest
+- Real-time notifications with unread badge counter
+- Dining & cafeteria listings
+- Campus rules and student handbook
+- Safety & support emergency contacts
+- Submit and track issue reports (with photos)
+- Scan QR codes → open location details
+
+### 👔 Staff / Faculty
+- Staff home dashboard
+- All map and search features
+- Real-time notifications
+- Saved favourite locations
+- Campus events
+
+### 🔑 Admin
+- Admin dashboard with live statistics (users, locations, buildings, events, reports)
+- **Manage People** — create student & staff accounts (auto-generated temp password + welcome email), edit, delete
+- **Manage Locations** — full CRUD, bulk Excel/CSV import, map pin preview
+- **Manage Buildings** — full CRUD with coordinates and floor count
+- **Manage Events** — create/edit/delete with featured flag and attendee count
+- **Manage Notifications** — create with audience targeting (everyone / students / staff / direct), pin important ones
+- **Manage Dining** — full CRUD for cafeterias and menus
+- **Manage Amenities** — facilities with location coordinates
+- **Manage Campus Rules** — severity-tagged rules (critical / warning / info)
+- **Manage Emergency Contacts** — safety & support listings
+- **Manage Departments** — department CRUD
+- **Review Reports** — view, respond to, and update status of student issue reports
+- **Analytics & Reports** — usage stats and export
+- Campus content management (campus structure, control centre)
+
+---
+
+## 3. Tech Stack
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Framework** | React Native 0.81 + Expo SDK 54 | Cross-platform mobile (Android & iOS) |
+| **Language** | JavaScript (React 19) | App logic and UI |
+| **Navigation** | React Navigation 7 | Stack, Bottom Tabs, Drawer navigators |
+| **Backend — Auth** | Supabase Auth | Email OTP, anonymous sign-in, password reset, session management |
+| **Backend — Database** | Supabase PostgreSQL | All app data with Row-Level Security policies |
+| **Backend — Realtime** | Supabase Realtime | Live notification/event updates via `postgres_changes` |
+| **Backend — Storage** | Supabase Storage | Profile photos (`profiles` bucket), location images (`locations` bucket) |
+| **Backend — Functions** | Supabase Edge Functions (Deno) | `send-welcome-email` — sends branded HTML welcome email with temp credentials |
+| **Email Delivery** | Brevo (SMTP + REST API) | OTP confirmation emails + admin welcome emails |
+| **Validation** | Zod | Schema validation for all forms |
+| **Map** | react-native-maps + OpenStreetMap tiles | Interactive campus map with markers |
+| **Icons** | HugeIcons (`@hugeicons/react-native`) + Ionicons | UI icons throughout |
+| **Fonts** | Outfit via `@expo-google-fonts/outfit` | Typography (Regular, SemiBold, Bold, ExtraBold) |
+| **Camera / Media** | Expo Image Picker, Expo Camera | Profile photo upload, QR scanning |
+| **File Import** | Expo Document Picker + XLSX | Bulk location import from Excel |
+| **State** | React Context API | Auth state, notifications/events, theme |
+
+---
+
+## 4. System Architecture
 
 ```mermaid
 flowchart TD
-    A([App Launch]) --> B{Auth State\nLoading}
-    B --> C{User\nAuthenticated?}
+  subgraph CLIENT["📱 Mobile Client — React Native / Expo"]
+    UI[Screens & Components]
+    NAV[React Navigation\nRootNavigator — role-based routing]
+    CTX[Context Layer\nAuthContext · CampusUpdatesContext]
+    SVC[Services Layer\ndatabaseService · mapService]
+  end
 
-    C -- No --> D[Auth Screens]
-    D --> D1[Login Screen]
-    D --> D2[Register Screen]
-    D --> D3[Forgot Password]
+  subgraph SUPABASE["☁️ Supabase Backend"]
+    AUTH[Auth Service\nEmail OTP · Anonymous · Password Reset\nuser_metadata — role, must_change_password]
+    DB[(PostgreSQL Database\nusers · locations · buildings · events\nnotifications · dining · campus_rules\nsafety_and_support · reports · favourites\namenities · departments · programmes)]
+    RLS[Row-Level Security\nPer-table policies — anon / authenticated / admin]
+    STORAGE[Storage Buckets\nprofiles — avatars\nlocations — location images]
+    REALTIME[Realtime Engine\npostgres_changes subscriptions]
+    EDGE[Edge Functions — Deno\nsend-welcome-email]
+  end
 
-    D1 -- Valid Credentials --> E[Supabase Auth]
-    D2 -- Fill Form + Submit --> F[Email Confirmation Sent]
-    F --> G[User Confirms Email]
-    G --> E
-    D3 -- Enter Email --> H[Reset Link Sent]
-    H --> I[Reset Password Screen]
-    I --> E
+  subgraph EXTERNAL["🌐 External Services"]
+    BREVO[Brevo\nSMTP — OTP / confirmation emails\nREST API — welcome emails from Edge Function]
+  end
 
-    E --> J{Resolve Role}
-    J -- admin email / DB role --> K[Admin Navigator]
-    J -- role = student --> L[Student Navigator]
-    J -- role = faculty --> M[Staff Navigator]
+  UI --> NAV --> CTX --> SVC
+  SVC <--> AUTH
+  SVC <--> DB
+  SVC <--> STORAGE
+  SVC --> EDGE
+  DB --> RLS
+  DB --> REALTIME --> CTX
+  AUTH --> BREVO
+  EDGE --> BREVO
 
-    K --> K1[Dashboard & Analytics]
-    K --> K2[Manage Locations & Buildings]
-    K --> K3[Manage Events & Dining]
-    K --> K4[Manage Notifications]
-    K --> K5[Manage Users & Reports]
-
-    L --> L1[Home Dashboard]
-    L --> L2[Drawer Sidebar]
-    L2 --> L3[Campus Map]
-    L2 --> L4[Events & Dining]
-    L2 --> L5[Notifications]
-    L2 --> L6[Favourites]
-    L2 --> L7[Campus Rules]
-    L2 --> L8[Safety & Support]
-    L2 --> L9[Report Issue]
-    L2 --> L10[Scan QR]
-
-    L1 & L3 & L4 & L5 --> N[(Supabase\nDatabase)]
-    K1 & K2 & K3 & K4 & K5 --> N
-
-    M --> M1[Staff Dashboard]
-    M1 --> N
+  style CLIENT fill:#EFF6FF,stroke:#3B82F6
+  style SUPABASE fill:#F0FDF4,stroke:#22C55E
+  style EXTERNAL fill:#FEF9EC,stroke:#F59E0B
 ```
 
 ---
 
-### 2. Use Case Diagram
+## 5. Authentication Flows
 
-Shows the actors and the system features each can access.
+### Student Self-Registration
 
 ```mermaid
-graph LR
-    subgraph Actors
-        STU([Student])
-        FAC([Faculty / Staff])
-        ADM([Admin])
-    end
-
-    subgraph Authentication
-        UC1[Register Account]
-        UC2[Login]
-        UC3[Reset Password]
-    end
-
-    subgraph Campus Navigation
-        UC4[View Campus Map]
-        UC5[Search Locations]
-        UC6[View Location Details]
-        UC7[Scan QR Code]
-        UC8[Get Directions]
-    end
-
-    subgraph Personal Features
-        UC9[Save Favourites]
-        UC10[View Notifications]
-        UC11[Browse Events]
-        UC12[View Dining Options]
-        UC13[View Campus Rules]
-        UC14[View Safety & Support]
-        UC15[Report Issue]
-    end
-
-    subgraph Admin Management
-        UC16[Manage Locations & Buildings]
-        UC17[Manage Events]
-        UC18[Manage Notifications]
-        UC19[Manage Dining & Amenities]
-        UC20[Manage Campus Rules]
-        UC21[Manage Users]
-        UC22[Review Reports]
-        UC23[View Analytics]
-        UC24[Bulk Import Locations]
-    end
-
-    STU --> UC1 & UC2 & UC3
-    STU --> UC4 & UC5 & UC6 & UC7 & UC8
-    STU --> UC9 & UC10 & UC11 & UC12 & UC13 & UC14 & UC15
-
-    FAC --> UC2 & UC3
-    FAC --> UC4 & UC5 & UC6 & UC7 & UC8
-    FAC --> UC9 & UC10 & UC11 & UC12 & UC13 & UC14 & UC15
-    FAC --> UC18
-
-    ADM --> UC2
-    ADM --> UC4 & UC5 & UC6
-    ADM --> UC16 & UC17 & UC18 & UC19 & UC20 & UC21 & UC22 & UC23 & UC24
+flowchart TD
+  A([Open Register Screen]) --> B[Fill form\nName · Student ID · Index No\nDepartment → Programme\nEmail @st.rmu.edu.gh\nPassword · Profile Photo]
+  B --> C{Zod validation\npasses?}
+  C -- No --> D[Show field errors] --> B
+  C -- Yes --> E[supabase.auth.signUp\nno avatar upload yet]
+  E --> F{Success?}
+  F -- No --> G[Show error e.g. email exists] --> B
+  F -- Yes --> H[Navigate to OTP Verification\npass email + avatarUri]
+  H --> I[User checks email\n8-digit code]
+  I --> J[Enter code → verifyOtp]
+  J --> K{Code valid?}
+  K -- No --> L[Show error · allow resend] --> I
+  K -- Yes --> M{Avatar selected?}
+  M -- Yes --> N[Upload avatar to\nprofiles bucket\nUpdate user_metadata + public.users]
+  N --> O
+  M -- No --> O[supabase.auth.signOut\nprevent auto-routing to dashboard]
+  O --> P[Success modal — Account Created!]
+  P --> Q[Redirect to Login after 3s]
 ```
 
----
+### Login + Role Routing
 
-### 3. System Sequence Diagram
+```mermaid
+flowchart TD
+  A([Login Screen]) --> B[Enter email + password]
+  B --> C[signInWithPassword]
+  C --> D{Auth OK?}
+  D -- No --> E[Show error] --> B
+  D -- Yes --> F{must_change_password\nin user_metadata?}
+  F -- Yes --> G[ForceChangePasswordScreen\nUser sets new password\nFlag cleared]
+  G --> H
+  F -- No --> H{Resolve role}
+  H -- admin email / DB role=admin --> I[Admin Navigator]
+  H -- role=faculty --> J[Staff Navigator]
+  H -- role=student --> K[Student Navigator]
+  H -- is_anonymous=true --> L[Guest Navigator]
+```
 
-Illustrates the interactions between the user, app, and Supabase backend for the key flows.
+### Admin Creates Account (Temp Password Flow)
 
 ```mermaid
 sequenceDiagram
-    actor U as User
-    participant App as React Native App
-    participant Auth as Supabase Auth
-    participant DB as Supabase DB
-    participant Email as Email Service
+  actor Admin
+  participant Form as ManagePeopleScreen
+  participant DB as databaseService
+  participant Auth as Supabase Auth
+  participant PG as public.users
+  participant EF as Edge Function
+  participant Email as Brevo
 
-    Note over U, Email: Registration Flow
-    U->>App: Fill Register Form
-    App->>App: Zod Validation
-    App->>Auth: signUp(email, password, metadata)
-    Auth->>Email: Send Confirmation Link
-    Auth-->>App: Success (pending confirmation)
-    App-->>U: Show EmailSent Screen
-    U->>Email: Click Confirmation Link
-    Email->>Auth: Verify Email
-    Auth->>DB: Trigger: create users row
-    U->>App: Login with credentials
-    App->>Auth: signInWithPassword()
-    Auth-->>App: Session + JWT
-    App->>DB: Fetch user profile & role
-    DB-->>App: Role = student
-    App-->>U: Navigate to Student Home
+  Admin->>Form: Fill staff/student form, tap Create
+  Form->>Form: generateTempPassword()
+  Form->>DB: createUserWithAuthAndFirestore(email, tempPw, payload)
+  DB->>Auth: signUp(email, tempPw, { must_change_password: true })
+  Auth-->>DB: userId
+  DB->>PG: upsert full profile row
+  DB->>EF: invoke send-welcome-email
+  EF->>Email: POST /v3/smtp/email (branded HTML)
+  Email-->>EF: 201 Accepted
+  DB-->>Form: user object
+  Form->>Admin: Alert shows temp password as backup
 
-    Note over U, DB: Viewing Campus Map
-    U->>App: Tap Campus Map
-    App->>DB: Query locations & buildings
-    DB-->>App: Location data
-    App-->>U: Render interactive map
-
-    Note over U, DB: Saving a Favourite
-    U->>App: Tap heart on Location
-    App->>DB: RPC toggle_favourite(location_id)
-    DB-->>App: added = true
-    App-->>U: Heart filled (saved)
-
-    Note over U, DB: Reporting an Issue
-    U->>App: Open Report Screen
-    U->>App: Fill title, description, category
-    App->>DB: INSERT into reports
-    DB-->>App: Confirm inserted
-    App-->>U: Show success alert
-
-    Note over U, DB: Admin Creating Notification
-    U->>App: Admin → New Notification
-    App->>DB: INSERT into notifications (audience, title, message)
-    DB-->>App: Realtime broadcast
-    App-->>U: Students see notification badge update
+  Note over Admin,Email: User first login
+  actor User
+  User->>Auth: signInWithPassword(email, tempPw)
+  Auth-->>User: Session (must_change_password: true)
+  User->>Form: RootNavigator shows ForceChangePasswordScreen
+  User->>Auth: updateUser({ password: newPw })
+  User->>Auth: updateUser({ data: { must_change_password: false } })
+  Auth-->>User: Routes to role dashboard
 ```
 
 ---
 
-### 4. Entity Relationship Diagram
+## 6. Database Schema
 
-Shows the database tables in Supabase and their relationships.
+### Tables
+
+| Table | Key Columns | Description |
+|-------|-------------|-------------|
+| `users` | `id`, `email`, `full_name`, `role`, `department`, `programme`, `student_id`, `index_number`, `staff_id`, `position`, `phone`, `avatar_url`, `last_login_at` | All user profiles — synced from `auth.users` via triggers |
+| `buildings` | `id`, `name`, `description`, `latitude`, `longitude`, `floors`, `image_url` | Physical campus buildings |
+| `locations` | `id`, `name`, `category`, `type`, `building`, `latitude`, `longitude`, `floor`, `room_number`, `image_urls[]`, `features[]`, `opening_hours` | Rooms, labs, offices and places within buildings |
+| `departments` | `id`, `name`, `faculty`, `description`, `head_of_department`, `contact_email`, `availability_status` | Academic and administrative departments |
+| `programmes` | `id`, `name`, `department_id`, `level`, `duration`, `is_active` | Degree programmes linked to departments |
+| `notifications` | `id`, `title`, `message`, `category`, `audience`, `recipient_ids[]`, `posted_by`, `is_pinned` | Campus announcements with audience targeting |
+| `notification_reads` | `id`, `user_id`, `notification_id`, `read_at` | Per-user read receipts |
+| `events` | `id`, `title`, `description`, `location`, `category`, `start_date`, `end_date`, `organizer`, `is_featured`, `attendee_count` | Campus events |
+| `event_interests` | `id`, `user_id`, `event_id` | User event RSVPs |
+| `favourites` | `id`, `user_id`, `location_id` | User-saved locations |
+| `dining` | `id`, `name`, `description`, `category`, `menu_items`, `operating_hours`, `location`, `image_url` | Campus cafeterias and food outlets |
+| `amenities` | `id`, `name`, `category`, `type`, `icon_name`, `latitude`, `longitude`, `operating_hours` | Campus facilities (ATMs, gyms, etc.) |
+| `campus_rules` | `id`, `title`, `description`, `category`, `severity`, `is_active` | Student handbook entries (critical / warning / info) |
+| `safety_and_support` | `id`, `title`, `phone_number`, `category`, `is_available_24_7` | Emergency and support contacts |
+| `reports` | `id`, `title`, `description`, `category`, `status`, `priority`, `reporter_id`, `photo_urls[]`, `admin_response`, `admin_read_at` | Student issue reports |
+
+### RPC Functions
+
+| Function | Description |
+|----------|-------------|
+| `toggle_favourite(p_location_id)` | Add or remove a favourite; returns `true` if added |
+| `mark_notification_read(p_notification_id)` | Upsert a read-receipt row |
+| `touch_user_login()` | Update `last_login_at` on the caller's user row |
+| `check_email_exists(p_email)` | SECURITY DEFINER — lets anon callers check if an email is registered (used in forgot-password flow) |
+
+### Entity Relationship Diagram
 
 ```mermaid
 erDiagram
-    USERS {
-        uuid id PK
-        text email
-        text full_name
-        text role
-        text department
-        text programme
-        text student_id
-        text staff_id
-        text index_number
-        text avatar_url
-        timestamp last_login_at
-        timestamp created_at
-    }
+  USERS ||--o{ NOTIFICATION_READS : "reads"
+  USERS ||--o{ EVENT_INTERESTS    : "interests in"
+  USERS ||--o{ FAVOURITES         : "saves"
+  USERS ||--o{ REPORTS            : "submits"
+  NOTIFICATIONS ||--o{ NOTIFICATION_READS : "tracked by"
+  EVENTS        ||--o{ EVENT_INTERESTS    : "tracked by"
+  LOCATIONS     ||--o{ FAVOURITES         : "saved in"
+  BUILDINGS     ||--o{ LOCATIONS          : "contains"
+  DEPARTMENTS   ||--o{ PROGRAMMES         : "offers"
 
-    BUILDINGS {
-        uuid id PK
-        text name
-        text description
-        text image_url
-        float latitude
-        float longitude
-        int floors
-        timestamp created_at
-    }
-
-    LOCATIONS {
-        uuid id PK
-        text name
-        text description
-        text building
-        text category
-        text type
-        float latitude
-        float longitude
-        text[] image_urls
-        int floor
-        text room_number
-        text[] features
-        jsonb opening_hours
-        timestamp created_at
-    }
-
-    NOTIFICATIONS {
-        uuid id PK
-        text title
-        text message
-        text category
-        text audience
-        uuid[] recipient_ids
-        uuid posted_by FK
-        bool is_pinned
-        timestamp created_at
-    }
-
-    NOTIFICATION_READS {
-        uuid id PK
-        uuid user_id FK
-        uuid notification_id FK
-        timestamp read_at
-    }
-
-    EVENTS {
-        uuid id PK
-        text title
-        text description
-        text location
-        text category
-        timestamp start_date
-        timestamp end_date
-        text image_url
-        text organizer
-        int attendee_count
-        bool is_featured
-        timestamp created_at
-    }
-
-    EVENT_INTERESTS {
-        uuid id PK
-        uuid user_id FK
-        uuid event_id FK
-        timestamp created_at
-    }
-
-    FAVOURITES {
-        uuid id PK
-        uuid user_id FK
-        uuid location_id FK
-        timestamp created_at
-    }
-
-    DINING {
-        uuid id PK
-        text name
-        text description
-        text category
-        jsonb menu_items
-        text operating_hours
-        text location
-        text image_url
-    }
-
-    CAMPUS_RULES {
-        uuid id PK
-        text title
-        text description
-        text category
-        text severity
-        timestamp created_at
-    }
-
-    REPORTS {
-        uuid id PK
-        text title
-        text description
-        text category
-        text status
-        text priority
-        uuid reporter_id FK
-        text reporter_name
-        text reporter_email
-        text[] photo_urls
-        text admin_response
-        timestamp admin_read_at
-        timestamp created_at
-    }
-
-    AMENITIES {
-        uuid id PK
-        text name
-        text category
-        text type
-        text icon_name
-        float latitude
-        float longitude
-        text operating_hours
-        text image_url
-    }
-
-    DEPARTMENTS {
-        uuid id PK
-        text name
-        text description
-        text availability_status
-        text operating_hours
-        text head_of_department
-        text contact_email
-        text contact_phone
-    }
-
-    USERS ||--o{ NOTIFICATION_READS : "reads"
-    USERS ||--o{ EVENT_INTERESTS : "interests"
-    USERS ||--o{ FAVOURITES : "saves"
-    USERS ||--o{ REPORTS : "submits"
-    USERS ||--o{ NOTIFICATIONS : "posts"
-    NOTIFICATIONS ||--o{ NOTIFICATION_READS : "tracked by"
-    EVENTS ||--o{ EVENT_INTERESTS : "tracked by"
-    LOCATIONS ||--o{ FAVOURITES : "saved in"
-    BUILDINGS ||--o{ LOCATIONS : "contains"
+  USERS {
+    uuid   id PK
+    text   email
+    text   full_name
+    text   role
+    text   department
+    text   programme
+    text   student_id
+    text   index_number
+    text   staff_id
+    text   position
+    text   avatar_url
+    timestamp last_login_at
+  }
+  LOCATIONS {
+    uuid   id PK
+    text   name
+    text   category
+    float  latitude
+    float  longitude
+    text   building
+    int    floor
+    text   room_number
+  }
+  BUILDINGS {
+    uuid  id PK
+    text  name
+    float latitude
+    float longitude
+    int   floors
+  }
+  DEPARTMENTS {
+    uuid id PK
+    text name
+    text faculty
+  }
+  PROGRAMMES {
+    uuid id PK
+    text name
+    uuid department_id FK
+    text level
+  }
+  NOTIFICATIONS {
+    uuid   id PK
+    text   title
+    text   message
+    text   audience
+    bool   is_pinned
+    uuid   posted_by FK
+  }
+  EVENTS {
+    uuid      id PK
+    text      title
+    text      category
+    timestamp start_date
+    bool      is_featured
+  }
+  REPORTS {
+    uuid id PK
+    text title
+    text status
+    text priority
+    uuid reporter_id FK
+  }
+  FAVOURITES {
+    uuid id PK
+    uuid user_id FK
+    uuid location_id FK
+  }
 ```
 
 ---
 
-### 5. Activity Diagram
+## 7. Use Case Diagram
 
-Shows the step-by-step activities a student performs from opening the app to completing a task.
+```mermaid
+graph LR
+  subgraph Actors
+    G(["👤 Guest"])
+    S(["🎓 Student"])
+    F(["👔 Staff / Faculty"])
+    A(["🔑 Admin"])
+  end
+
+  subgraph Public["Public — No Login Required"]
+    UC1[Browse Campus Map]
+    UC2[Search Locations]
+    UC3[View Campus Rules]
+    UC4[View Dining Info]
+    UC5[View Emergency Contacts]
+    UC6[Scan QR Code]
+  end
+
+  subgraph StudentOnly["Student Features"]
+    UC7[Register with OTP]
+    UC8[View & Edit Profile]
+    UC9[Save Favourite Locations]
+    UC10[Report an Issue]
+    UC11[Browse Events & RSVP]
+    UC12[View Notifications]
+  end
+
+  subgraph StaffOnly["Staff Features"]
+    UC13[View Staff Dashboard]
+  end
+
+  subgraph AdminOnly["Admin Features"]
+    UC14[Manage Users — Create with Temp PW]
+    UC15[Manage Locations & Buildings]
+    UC16[Manage Events & Notifications]
+    UC17[Manage Dining & Amenities]
+    UC18[Manage Campus Rules & Emergency]
+    UC19[Review & Respond to Reports]
+    UC20[View Analytics]
+  end
+
+  G --> UC1 & UC2 & UC3 & UC4 & UC5 & UC6
+  S --> UC7 & UC8 & UC9 & UC10 & UC11 & UC12
+  S --> UC1 & UC2 & UC3 & UC4 & UC5 & UC6
+  F --> UC13 & UC11 & UC12
+  F --> UC1 & UC2 & UC6
+  A --> UC14 & UC15 & UC16 & UC17 & UC18 & UC19 & UC20
+```
+
+---
+
+## 8. Sequence Diagram
+
+Real-time notification delivery from admin post to student badge update.
+
+```mermaid
+sequenceDiagram
+  actor Admin
+  participant App as React Native App
+  participant DB as Supabase DB
+  participant RT as Supabase Realtime
+  actor Student
+
+  Admin->>App: Create notification\n(title, message, audience=everyone)
+  App->>DB: INSERT INTO notifications
+  DB-->>RT: postgres_changes broadcast
+  RT-->>App: onPayload event fired\n(student's CampusUpdatesContext)
+  App->>App: Update notifications state
+  App-->>Student: Unread badge increments on tab bar
+  Student->>App: Tap Notifications tab
+  App-->>Student: List shows new notification
+  Student->>App: Tap to read
+  App->>DB: RPC mark_notification_read()
+  DB-->>App: read_at timestamp set
+  App-->>Student: Badge decrements
+```
+
+---
+
+## 9. Activity Diagram
+
+Full user lifecycle from app launch.
 
 ```mermaid
 flowchart TD
-    Start([Open App]) --> CheckAuth{Authenticated?}
+  Start([App Launch]) --> Init[AuthContext initialises\ncheck stored session]
+  Init --> L{authLoading?}
+  L -- true --> Spin[Loading spinner] --> L
+  L -- false --> U{User\nsession?}
 
-    CheckAuth -- No --> ShowLogin[Show Login Screen]
-    ShowLogin --> ChoiceAction{User Action}
-    ChoiceAction -- Sign In --> EnterCreds[Enter Email & Password]
-    ChoiceAction -- Sign Up --> GoRegister[Go to Register Screen]
-    ChoiceAction -- Forgot Password --> GoForgot[Go to Forgot Password]
+  U -- No --> Auth
+  U -- Yes --> FC{must_change\n_password?}
+  FC -- Yes --> FCS[ForceChangePasswordScreen]
+  FCS --> ChangeDone[Password updated\nFlag cleared] --> Role
+  FC -- No --> Role{Resolve role}
 
-    GoRegister --> FillForm[Fill Registration Form]
-    FillForm --> ValidateForm{Zod\nValidation\nPasses?}
-    ValidateForm -- No --> ShowErrors[Show Field Errors]
-    ShowErrors --> FillForm
-    ValidateForm -- Yes --> SubmitReg[Submit to Supabase]
-    SubmitReg --> EmailSent[Show Email Sent Screen]
-    EmailSent --> ClickLink[User Clicks Email Link]
-    ClickLink --> AccountActive[Account Activated]
-    AccountActive --> EnterCreds
+  subgraph Auth["Auth Stack"]
+    Login --> Register --> OTP[OTP Verification]
+    Login --> Forgot[Forgot Password] --> OTP2[OTP Verification] --> Reset[Reset Password]
+  end
 
-    GoForgot --> EnterEmail[Enter Email]
-    EnterEmail --> SendLink[Send Reset Link]
-    SendLink --> ClickReset[User Clicks Reset Link]
-    ClickReset --> NewPassword[Enter New Password]
-    NewPassword --> EnterCreds
+  Auth --> Role
 
-    EnterCreds --> Authenticate[Supabase Auth]
-    Authenticate --> ResolveRole{Resolve\nUser Role}
+  Role -- admin     --> AdminDash[Admin Dashboard]
+  Role -- faculty   --> StaffDash[Staff Dashboard]
+  Role -- student   --> StudentDash[Student Dashboard]
+  Role -- guest/anon --> GuestDash[Guest Dashboard]
 
-    CheckAuth -- Yes --> ResolveRole
+  subgraph Student["Student Flow"]
+    StudentDash --> Map[Campus Map]
+    StudentDash --> Search[Search Locations]
+    StudentDash --> Events[Campus Events]
+    StudentDash --> Notifs[Notifications]
+    StudentDash --> Report[Report Issue]
+    StudentDash --> QR[QR Scanner]
+    Map --> Details[Location Details] --> Fav[Save Favourite]
+  end
 
-    ResolveRole -- Student --> StudentHome[Student Home Screen]
-    ResolveRole -- Admin --> AdminDash[Admin Dashboard]
-    ResolveRole -- Faculty --> StaffDash[Staff Dashboard]
+  subgraph Admin["Admin Flow"]
+    AdminDash --> ManageUsers[Manage People\nTemp PW + Email]
+    AdminDash --> ManageLocs[Locations & Buildings]
+    AdminDash --> ManageEvents[Events & Notifications]
+    AdminDash --> ManageContent[Dining · Rules · Emergency]
+    AdminDash --> Reports[Review Reports]
+    AdminDash --> Analytics[Analytics]
+  end
 
-    StudentHome --> OpenDrawer{Open\nSidebar?}
-    OpenDrawer -- Yes --> ChooseFeature[Select Feature from Sidebar]
-    OpenDrawer -- No --> QuickAction[Tap Quick Action Card]
-
-    ChooseFeature & QuickAction --> Feature{Feature}
-
-    Feature -- Map --> ViewMap[View Campus Map]
-    ViewMap --> SearchLocation[Search for Location]
-    SearchLocation --> ViewDetails[View Location Details]
-    ViewDetails --> SaveFav{Save\nFavourite?}
-    SaveFav -- Yes --> FavSaved[Favourite Saved]
-    SaveFav -- No --> Done1([Done])
-    FavSaved --> Done1
-
-    Feature -- Events --> BrowseEvents[Browse Events List]
-    BrowseEvents --> Done2([Done])
-
-    Feature -- Report --> FillReport[Fill Report Form]
-    FillReport --> SubmitReport[Submit to Supabase]
-    SubmitReport --> Confirmation[Show Confirmation]
-    Confirmation --> Done3([Done])
-
-    Feature -- QR --> ScanQR[Open QR Scanner]
-    ScanQR --> DecodeQR[Decode QR Payload]
-    DecodeQR --> OpenLocation[Open Location Details]
-    OpenLocation --> Done4([Done])
+  subgraph Guest["Guest Flow"]
+    GuestDash --> GMap[Campus Map]
+    GuestDash --> GRules[Campus Rules]
+    GuestDash --> GDining[Dining]
+    GuestDash --> GEmergency[Emergency & Support]
+  end
 ```
 
 ---
 
-### 6. User Flow Diagram
+## 10. Project Structure
 
-Shows the complete journey of each user type through the application screens.
-
-```mermaid
-flowchart LR
-    subgraph Entry["Entry Point"]
-        SPLASH[Splash / Loading]
-    end
-
-    subgraph AuthFlow["Auth Flow"]
-        LOGIN[Login Screen]
-        REGISTER[Register Screen]
-        FORGOT[Forgot Password]
-        EMAIL_SENT[Email Sent Screen]
-        RESET[Reset Password]
-    end
-
-    subgraph StudentFlow["Student Journey"]
-        S_HOME[Home Dashboard]
-        S_DRAWER[Sidebar Menu]
-        S_MAP[Campus Map]
-        S_SEARCH[Search Locations]
-        S_DETAILS[Location Details]
-        S_FAVS[Favourites]
-        S_NOTIFS[Notifications]
-        S_EVENTS[Events]
-        S_DINING[Dining]
-        S_RULES[Campus Rules]
-        S_SAFETY[Safety & Support]
-        S_REPORT[Report Issue]
-        S_QR[QR Scanner]
-    end
-
-    subgraph AdminFlow["Admin Journey"]
-        A_DASH[Admin Dashboard]
-        A_LOCS[Manage Locations]
-        A_BUILD[Manage Buildings]
-        A_EVENTS[Manage Events]
-        A_NOTIFS[Manage Notifications]
-        A_DINING[Manage Dining]
-        A_RULES[Manage Rules]
-        A_USERS[Manage Users]
-        A_REPORTS[Review Reports]
-        A_ANALYTICS[Analytics]
-    end
-
-    subgraph StaffFlow["Staff Journey"]
-        ST_HOME[Staff Dashboard]
-        ST_NOTIFS[Post Notifications]
-    end
-
-    SPLASH --> LOGIN
-
-    LOGIN --> REGISTER
-    LOGIN --> FORGOT
-    REGISTER --> EMAIL_SENT
-    FORGOT --> EMAIL_SENT
-    EMAIL_SENT --> RESET
-    RESET --> LOGIN
-
-    LOGIN -- Student --> S_HOME
-    LOGIN -- Admin --> A_DASH
-    LOGIN -- Faculty --> ST_HOME
-
-    S_HOME --> S_DRAWER
-    S_HOME --> S_MAP
-    S_HOME --> S_SEARCH
-    S_HOME --> S_EVENTS
-    S_HOME --> S_REPORT
-    S_HOME --> S_QR
-
-    S_DRAWER --> S_MAP
-    S_DRAWER --> S_NOTIFS
-    S_DRAWER --> S_FAVS
-    S_DRAWER --> S_EVENTS
-    S_DRAWER --> S_DINING
-    S_DRAWER --> S_RULES
-    S_DRAWER --> S_SAFETY
-    S_DRAWER --> S_REPORT
-    S_DRAWER --> S_QR
-
-    S_MAP --> S_DETAILS
-    S_SEARCH --> S_DETAILS
-    S_DETAILS --> S_FAVS
-
-    A_DASH --> A_LOCS
-    A_DASH --> A_BUILD
-    A_DASH --> A_EVENTS
-    A_DASH --> A_NOTIFS
-    A_DASH --> A_DINING
-    A_DASH --> A_RULES
-    A_DASH --> A_USERS
-    A_DASH --> A_REPORTS
-    A_DASH --> A_ANALYTICS
-
-    ST_HOME --> ST_NOTIFS
+```
+CampusMapApp/
+├── App.js                             # Root: font loading, context providers, RootNavigator
+├── app.json                           # Expo config
+├── uml.md                             # Full UML diagram set (Mermaid)
+├── database/
+│   ├── schema.sql                     # All tables, RLS policies, triggers, functions
+│   ├── programmes.sql                 # Departments + programmes seed data
+│   └── verify_before_save.sql         # handle_new_user + handle_user_confirmed triggers
+├── supabase/
+│   └── functions/
+│       └── send-welcome-email/
+│           └── index.ts               # Deno Edge Function — Brevo REST API welcome email
+└── src/
+    ├── components/
+    │   ├── OTPInputGroup.js            # 8-box OTP input (responsive sizing)
+    │   ├── StudentSidebar.js           # Drawer sidebar with avatar + nav items
+    │   ├── ScreenWrapper.js            # Safe area + status bar wrapper
+    │   ├── InputField.js               # Reusable text input with label/error
+    │   ├── LocationCard.js             # Map location card component
+    │   └── Map.js / Map.web.js         # Platform-specific map component
+    ├── config/
+    │   └── supabase.js                 # Supabase client (persistSession:false, AsyncStorage)
+    ├── context/
+    │   ├── AuthContext.js              # Auth state, role resolution, OTP, guest mode,
+    │   │                              #   mustChangePassword, clearMustChangePassword
+    │   ├── CampusUpdatesContext.js     # Realtime notifications + events subscriptions
+    │   └── ThemeContext.js
+    ├── navigation/
+    │   ├── RootNavigator.js            # Role-based root — intercepts mustChangePassword
+    │   ├── AuthNavigator.js            # Login · Register · OTPVerification · ForgotPassword
+    │   │                              #   · ResetPassword · EmailSent
+    │   ├── StudentNavigator.js         # Drawer + Bottom Tabs (Home/Map/Favs/Notifs) + Stack
+    │   ├── StaffNavigator.js           # Bottom Tabs (Home/Map/Alerts/Saved) + Stack
+    │   ├── AdminNavigator.js           # Bottom Tabs + full admin screen stack
+    │   └── GuestNavigator.js           # Bottom Tabs (Home/Map/Search/Favourites)
+    ├── screens/
+    │   ├── auth/
+    │   │   ├── LoginScreen.js          # Email + password, white/blue theme
+    │   │   ├── RegisterScreen.js       # Full student form: dept→prog dependency, avatar
+    │   │   ├── OTPVerificationScreen.js# 8-digit OTP, avatar upload post-verify, success modal
+    │   │   ├── ForgotPasswordScreen.js # Email check → OTP flow
+    │   │   ├── ResetPasswordScreen.js  # New password after recovery OTP
+    │   │   ├── EmailSentScreen.js
+    │   │   └── ForceChangePasswordScreen.js  # Shown on first login for admin-created accounts
+    │   ├── student/
+    │   │   ├── StudentHomeScreen.js    # Dashboard with avatar, quick-action cards
+    │   │   ├── FavoritesScreen.js
+    │   │   ├── NotificationsScreen.js  # Real-time with read receipts
+    │   │   ├── CampusEventsScreen.js
+    │   │   ├── DiningScreen.js
+    │   │   ├── CampusRulesScreen.js
+    │   │   ├── SafetySupportScreen.js
+    │   │   └── ReportIssueScreen.js    # Multi-photo issue submission
+    │   ├── staff/
+    │   │   └── StaffHomeScreen.js
+    │   ├── admin/
+    │   │   ├── AdminDashboard.js       # Live stats cards
+    │   │   ├── ManagePeopleScreen.js   # Create student/staff with temp PW
+    │   │   ├── ManageLocationsScreen.js
+    │   │   ├── AddLocationsScreen.js   # Bulk Excel import
+    │   │   ├── ManageBuildingsScreen.js
+    │   │   ├── ManageEventsScreen.js
+    │   │   ├── ManageNotificationsScreen.js
+    │   │   ├── ManageDiningScreen.js
+    │   │   ├── ManageAmenitiesScreen.js
+    │   │   ├── ManageCampusRulesScreen.js
+    │   │   ├── ManageEmergencyContactsScreen.js
+    │   │   ├── ManageDepartmentsScreen.js
+    │   │   ├── ManageReportsScreen.js
+    │   │   ├── AdminAnalyticsScreen.js
+    │   │   ├── AdminSettingsScreen.js
+    │   │   ├── CampusStructureScreen.js
+    │   │   ├── CampusContentScreen.js
+    │   │   ├── ControlCentreScreen.js
+    │   │   ├── EmergencyManagementScreen.js
+    │   │   └── ReportsAnalyticsScreen.js
+    │   ├── guest/
+    │   │   ├── GuestHomeScreen.js      # 2×2 card grid, live DB previews, RMU branding
+    │   │   ├── GuestCampusRulesScreen.js
+    │   │   ├── GuestEmergencyScreen.js
+    │   │   └── GuestDiningScreen.js
+    │   └── common/
+    │       ├── MapScreen.js            # Interactive map with markers from DB
+    │       ├── SearchLocationsScreen.js
+    │       ├── LocationDetailsScreen.js
+    │       └── QRScannerScreen.js
+    ├── services/
+    │   ├── databaseService.js          # Supabase CRUD + realtime subscriptions
+    │   │                              #   createUserWithAuthAndFirestore — temp PW + edge fn
+    │   ├── mapService.js
+    │   └── storageService.js
+    └── utils/
+        ├── theme.js                    # Colors, Outfit font variants, spacing, shadows
+        ├── validationSchemas.js        # Zod schemas — login, register, OTP (8-digit), forgot
+        └── constants.js               # USER_ROLES, COLORS, ENABLE_DEV_ADMIN_EMAIL_OVERRIDE
 ```
 
 ---
 
-## Features by Role
-
-### Student
-- Home dashboard with quick access cards and upcoming events
-- Interactive campus map with GPS and location search
-- Drawer sidebar navigation to all campus features
-- Save favourite locations
-- Browse events, dining options, campus rules
-- Safety & support contacts
-- Submit issue reports
-- Scan QR codes to open location details
-- Real-time notifications with unread badge
-
-### Faculty / Staff
-- All student features
-- Post campus-wide notifications
-
-### Admin
-- Dashboard with live statistics
-- Full CRUD: locations, buildings, dining, amenities, campus rules
-- Create and manage events and notifications (audience targeting)
-- Review and respond to student issue reports
-- User management (create student/faculty accounts)
-- Bulk import locations from Excel/CSV
-- Analytics export (PDF)
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Framework | React Native 0.81, Expo 54 |
-| Language | JavaScript (React 19) |
-| Navigation | React Navigation 7 (Stack, Bottom Tabs, Drawer) |
-| Backend | Supabase (Auth, PostgreSQL, Realtime, Storage) |
-| Validation | Zod |
-| Icons | HugeIcons (`@hugeicons/react-native`) + Ionicons |
-| Fonts | Outfit via `@expo-google-fonts/outfit` |
-| Map | react-native-maps + OpenStreetMap |
-| Other | Expo Location, Camera, Image Picker, Document Picker, XLSX |
-
----
-
-## Project Setup
+## 11. Project Setup
 
 ### 1. Clone and install
 
@@ -595,28 +611,58 @@ npm install
 
 ### 2. Environment variables
 
-Copy the example env and fill in your Supabase credentials:
+Create `.env.local` in the project root:
 
-```bash
-cp .env.example .env.local
+```env
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-| Variable | Description |
-|----------|-------------|
-| `EXPO_PUBLIC_SUPABASE_URL` | Your Supabase project URL |
-| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon/public key |
-| `GOOGLE_MAPS_API_KEY` | Google Maps JavaScript API key |
+### 3. Supabase database setup
 
-### 3. Supabase setup
+Run these SQL files **in order** in the Supabase SQL Editor:
 
-1. Create a project at [supabase.com](https://supabase.com)
-2. Run `database/schema.sql` in the SQL editor to create all tables, RLS policies, triggers, and functions
-3. Enable **Email** authentication in Auth settings
-4. Enable **email confirmation** (users receive a confirmation link after registration)
+```
+1. database/schema.sql            — tables, RLS, triggers, RPC functions
+2. database/programmes.sql        — departments + programmes seed data
+3. database/verify_before_save.sql — user-creation triggers
+```
 
-### 4. Admin user
+### 4. Supabase Auth configuration
 
-After running the schema, add your email to the `ADMIN_EMAILS` list in `src/context/AuthContext.js`:
+In **Supabase Dashboard → Authentication → Email Templates**:
+
+- **Confirm signup** template: replace `{{ .ConfirmationURL }}` with `{{ .Token }}`
+- **Magic Link** template: same replacement (used for OTP resend)
+
+This switches Supabase from sending a magic-link URL to sending the raw 8-digit OTP code.
+
+### 5. Brevo SMTP (for OTP emails)
+
+In **Supabase Dashboard → Settings → Auth → SMTP**:
+
+| Field | Value |
+|-------|-------|
+| Host | `smtp-relay.brevo.com` |
+| Port | `587` |
+| Username | Your Brevo account email |
+| Password | Brevo **SMTP key** (not account password — found under SMTP & API → SMTP Keys) |
+| Sender email | `noreply@rmu.edu.gh` |
+
+### 6. Deploy the welcome-email Edge Function
+
+```bash
+npx supabase login
+npx supabase link --project-ref <your-project-ref>
+npx supabase functions deploy send-welcome-email
+npx supabase secrets set BREVO_API_KEY=<your-brevo-api-key>
+```
+
+> Get the Brevo API key from: Brevo Dashboard → **SMTP & API** → **API Keys** → Create API key.
+
+### 7. Admin user setup
+
+Add your email to `ADMIN_EMAILS` in `src/context/AuthContext.js`:
 
 ```js
 const ADMIN_EMAILS = ['youremail@rmu.edu.gh'];
@@ -624,150 +670,52 @@ const ADMIN_EMAILS = ['youremail@rmu.edu.gh'];
 
 ---
 
-## Project Structure
-
-```
-CampusUpdate/
-├── App.js                          # Entry: font loading, providers, RootNavigator
-├── app.json                        # Expo config (softwareKeyboardLayoutMode: resize)
-├── database/
-│   └── schema.sql                  # Full Supabase schema, RLS policies, triggers
-└── src/
-    ├── components/
-    │   ├── FormInput.js             # Reusable text input with label + error
-    │   ├── OTPInputGroup.js         # 6-box OTP input
-    │   ├── StudentSidebar.js        # Drawer sidebar content
-    │   ├── CustomButton.js
-    │   ├── LocationCard.js
-    │   └── Map.js / Map.web.js
-    ├── config/
-    │   └── supabase.js              # Supabase client
-    ├── context/
-    │   ├── AuthContext.js           # Auth state, role resolution, register/login/logout
-    │   ├── CampusUpdatesContext.js  # Realtime notifications & events
-    │   └── ThemeContext.js
-    ├── navigation/
-    │   ├── RootNavigator.js         # Role-based root routing
-    │   ├── AuthNavigator.js         # Login, Register, ForgotPassword, ResetPassword, EmailSent
-    │   ├── StudentNavigator.js      # Drawer + Bottom Tabs + Stack
-    │   ├── StaffNavigator.js
-    │   └── AdminNavigator.js
-    ├── screens/
-    │   ├── auth/
-    │   │   ├── LoginScreen.js
-    │   │   ├── RegisterScreen.js    # With programme dropdown
-    │   │   ├── ForgotPasswordScreen.js
-    │   │   ├── ResetPasswordScreen.js
-    │   │   └── EmailSentScreen.js
-    │   ├── student/
-    │   │   ├── StudentHomeScreen.js # Dashboard with quick actions
-    │   │   ├── FavoritesScreen.js
-    │   │   ├── NotificationsScreen.js
-    │   │   ├── CampusEventsScreen.js
-    │   │   ├── DiningScreen.js
-    │   │   ├── CampusRulesScreen.js
-    │   │   ├── SafetySupportScreen.js
-    │   │   └── ReportIssueScreen.js
-    │   ├── admin/                   # Full admin CRUD screens
-    │   └── common/
-    │       ├── MapScreen.js
-    │       ├── SearchLocationsScreen.js
-    │       ├── LocationDetailsScreen.js
-    │       └── QRScannerScreen.js
-    ├── services/
-    │   ├── databaseService.js       # Supabase CRUD + realtime subscriptions
-    │   ├── mapService.js
-    │   └── storageService.js
-    └── utils/
-        ├── theme.js                 # Colors, fonts (Outfit), radius, shadow constants
-        ├── validationSchemas.js     # Zod schemas for all forms
-        └── constants.js            # Roles, emergency contacts
-```
-
----
-
-## Database Schema
-
-### Tables
-
-| Table | Description |
-|-------|-------------|
-| `users` | User profiles, roles, index number, programme |
-| `buildings` | Campus buildings with coordinates |
-| `locations` | Rooms and places (linked to buildings) |
-| `notifications` | Announcements with audience targeting |
-| `notification_reads` | Per-user read receipts |
-| `events` | Campus events |
-| `event_interests` | User RSVPs |
-| `favourites` | User-saved locations |
-| `dining` | Cafés and restaurants |
-| `campus_rules` | Student handbook entries |
-| `amenities` | Campus facilities |
-| `departments` | Staff departments with availability |
-| `reports` | Student issue reports |
-
-### RPC Functions
-
-| Function | Description |
-|----------|-------------|
-| `toggle_favourite(location_id)` | Add/remove favourite, returns boolean |
-| `mark_notification_read(notification_id)` | Mark as read |
-| `toggle_event_interest(event_id)` | RSVP toggle |
-| `touch_user_login()` | Update last_login_at |
-
----
-
-## QR Codes
-
-Generate QR codes with these payload formats:
-
-| Format | Example | Behaviour |
-|--------|---------|-----------|
-| Location ID | `location:uuid-here` | Opens location details |
-| Coordinates | `geo:5.607,-0.172` | Opens map centred on coords |
-
-QR scanning requires a **physical mobile device**.
-
----
-
-## Running the App
+## 12. Running the App
 
 ```bash
-npx expo start -c      # start with cleared cache (recommended)
+npx expo start -c      # clear cache (recommended first run)
 npx expo start         # normal start
 ```
 
 | Key | Action |
 |-----|--------|
-| `a` | Open on Android emulator |
-| `i` | Open on iOS simulator |
-| Scan QR | Open in Expo Go on device |
+| `a` | Open Android emulator |
+| `i` | Open iOS simulator |
+| Scan QR | Open in Expo Go on physical device |
+
+> **QR scanning** and **camera features** require a physical device.
 
 ---
 
-## Troubleshooting
+## 13. Troubleshooting
 
 | Problem | Fix |
 |---------|-----|
-| Fonts not loading | Run `npx expo start -c` to clear Metro cache |
-| `Invalid API key` on Supabase | Check `.env.local` has correct `EXPO_PUBLIC_SUPABASE_URL` and key |
-| Inputs not tappable | Ensure `softwareKeyboardLayoutMode: "resize"` in `app.json` |
-| Map blank | Check Google Maps API key in `src/config/googleMaps.js` |
-| Registration email not arriving | Check Supabase Auth → Email settings; check spam folder |
-| `permission-denied` | Verify Supabase RLS policies are applied (re-run `schema.sql`) |
-| QR does nothing | Check payload format; physical device required |
+| Fonts not loading | `npx expo start -c` to clear Metro cache |
+| Supabase `Invalid API key` | Check `.env.local` has correct `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` |
+| OTP email not arriving | Check Brevo SMTP config in Supabase Auth settings; check spam folder; verify email template uses `{{ .Token }}` not `{{ .ConfirmationURL }}` |
+| `permission-denied` on DB query | Re-run `schema.sql`; check RLS policies — public tables need `USING(true)` for anon access |
+| Programmes not loading in register | Run `programmes.sql` in Supabase SQL editor; check `departments` RLS allows anon SELECT |
+| Map shows blank | Check OpenStreetMap tile URL in `MapScreen.js`; ensure device has internet |
+| Avatar not showing after registration | Check `profiles` storage bucket exists and RLS allows authenticated insert |
+| `map of undefined` in admin form | Ensure department is selected before programme (dept→prog dependency) |
+| Welcome email not sent | Deploy Edge Function and set `BREVO_API_KEY` secret (see Setup step 6) |
+| User not forced to change password | Confirm `must_change_password: true` is in `user_metadata` after admin creates account |
+| `NAVIGATE 'Map' not handled` | Ensure `Stack.Screen name="Map"` exists in StudentNavigator and StaffNavigator |
 
 ---
 
 ## Security Notes
 
-- Do **not** commit `.env.local` or any API keys.
-- Replace placeholder emergency numbers in `src/utils/constants.js` with real RMU contacts.
-- Restrict Supabase anon key usage via RLS policies (all implemented in `schema.sql`).
-- Review `ADMIN_EMAILS` in `AuthContext.js` before production.
+- Never commit `.env.local` or any API keys to version control.
+- The Supabase **anon key** is safe to expose — all access is controlled by RLS policies.
+- The `ADMIN_EMAILS` list in `AuthContext.js` is a dev-time override; for production, rely solely on the `role` column in `public.users`.
+- The `check_email_exists` RPC is `SECURITY DEFINER` — review it before granting broad access.
+- Profile photos use user-scoped paths (`userId/timestamp.ext`) enforced by storage RLS.
 
 ---
 
-## License / Project Context
+## Project Context
 
-Final-year project — **RMU Campus Navigation** for Regional Maritime University, Ghana. For internal team use; configure Supabase credentials per environment before any public release.
+**Final-year capstone project** — Regional Maritime University, Nungua, Accra, Ghana.  
+Built for internal university use. Configure Supabase credentials per environment before any public deployment.
