@@ -8,10 +8,16 @@ import {
   TextInput,
   Alert,
   ScrollView,
+  Modal,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import * as XLSX from 'xlsx';
 import ScreenWrapper from '../../components/ScreenWrapper';
-import CustomButton from '../../components/CustomButton';
 import { COLORS } from '../../utils/constants';
 import {
   addDining,
@@ -21,6 +27,16 @@ import {
   subscribeToLocations,
   updateDining,
 } from '../../services/databaseService';
+
+// ── Design Tokens ────────────────────────────────────────────────────────────
+const NAVY = '#1A365D';
+const GOLD = '#C5A047';
+const SLATE = '#0F172A';
+const MUTED = '#64748B';
+const LIGHT = '#94A3B8';
+const BG = '#F8FAFC';
+const SURFACE = '#FFFFFF';
+const BORDER = '#E2E8F0';
 
 const defaultForm = {
   name: '',
@@ -43,58 +59,50 @@ const diningIcons = [
   'leaf-outline',
 ];
 
-const ManageDiningScreen = () => {
+export default function ManageDiningScreen({ navigation }) {
   const [diningOptions, setDiningOptions] = useState([]);
   const [availableLocations, setAvailableLocations] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+
+  // Form Management States
   const [selectedDiningId, setSelectedDiningId] = useState(null);
   const [formData, setFormData] = useState(defaultForm);
-  const [showForm, setShowForm] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const loadDining = async () => {
+    const loadInitialData = async () => {
       try {
+        setLoading(true);
         const items = await getDining();
         setDiningOptions(items || []);
       } catch (error) {
-        console.error('Failed to load dining records:', error);
+        console.error('Initialization error:', error);
+      } finally {
+        setLoading(false);
       }
     };
 
-    loadDining();
+    loadInitialData();
 
-    const unsubscribe = subscribeToDining((items) => {
+    const unsubscribeDining = subscribeToDining((items) => {
       setDiningOptions(items || []);
     });
 
-    return () => {
-      try {
-        unsubscribe && unsubscribe();
-      } catch (e) {
-        // ignore cleanup errors
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = subscribeToLocations((items) => {
+    const unsubscribeLocations = subscribeToLocations((items) => {
       const locationNames = (items || [])
         .map((item) => item.names || item.name || item.title || '')
         .filter(Boolean)
         .sort((a, b) => a.localeCompare(b));
-
       setAvailableLocations([...new Set(locationNames)]);
     });
 
     return () => {
-      try {
-        unsubscribe && unsubscribe();
-      } catch (e) {
-        // ignore cleanup errors
-      }
+      unsubscribeDining && unsubscribeDining();
+      unsubscribeLocations && unsubscribeLocations();
     };
   }, []);
 
@@ -103,24 +111,27 @@ const ManageDiningScreen = () => {
     if (!query) return diningOptions;
 
     return diningOptions.filter((item) => {
-      const fields = [item.name, item.type, item.location, item.hours, item.phone, item.cuisine, item.description, item.icon]
-        .map((value) => (value || '').toString().toLowerCase());
-
-      return fields.some((value) => value.includes(query));
+      return [
+        item.name,
+        item.category,
+        item.type,
+        item.location,
+        item.foodtype,
+        item.cuisine,
+      ]
+        .map((val) => (val || '').toString().toLowerCase())
+        .some((val) => val.includes(query));
     });
   }, [diningOptions, searchQuery]);
 
-  const diningCount = diningOptions.length;
-  const visibleCount = filteredDining.length;
-
-  const resetForm = () => {
+  const handleOpenAddModal = () => {
     setSelectedDiningId(null);
     setFormData(defaultForm);
     setShowLocationPicker(false);
-    setShowForm(false);
+    setModalVisible(true);
   };
 
-  const handleSelect = (item) => {
+  const handleOpenEditModal = (item) => {
     setSelectedDiningId(item.id);
     setFormData({
       name: item.name || '',
@@ -133,24 +144,12 @@ const ManageDiningScreen = () => {
       description: item.description || '',
     });
     setShowLocationPicker(false);
-    setShowForm(true);
-  };
-
-  const handleAddNew = () => {
-    setSelectedDiningId(null);
-    setFormData(defaultForm);
-    setShowLocationPicker(false);
-    setShowForm(true);
+    setModalVisible(true);
   };
 
   const handleSave = async () => {
-    if (!formData.name.trim()) {
-      Alert.alert('Validation', 'Dining name is required.');
-      return;
-    }
-
-    if (!formData.location.trim() || !formData.hours.trim()) {
-      Alert.alert('Validation', 'Location and hours are required.');
+    if (!formData.name.trim() || !formData.location.trim() || !formData.hours.trim()) {
+      Alert.alert('Required Fields', 'Please complete Name, Location, and Operating Hours.');
       return;
     }
 
@@ -169,841 +168,367 @@ const ManageDiningScreen = () => {
 
       if (selectedDiningId) {
         await updateDining(selectedDiningId, payload);
+        Alert.alert('Success', 'Dining asset parameters updated safely.');
       } else {
         await addDining(payload);
+        Alert.alert('Success', 'New dining option registered into platform framework.');
       }
-
-      Alert.alert('Success', selectedDiningId ? 'Dining option updated successfully!' : 'Dining option added successfully!');
-      resetForm();
+      setModalVisible(false);
     } catch (error) {
-      console.error('Save dining error:', error);
-      Alert.alert('Error', error?.message || 'Unable to save dining option');
+      Alert.alert('Save Failed', error?.message || 'Unable to store changes.');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = (targetId = selectedDiningId, label) => {
-    if (!targetId) return;
-
-    const friendlyName = (label || formData.name || '').trim();
-    const displayName = friendlyName ? `"${friendlyName}"` : 'this dining option';
-
-    Alert.alert('Delete Dining Option', `Are you sure you want to delete ${displayName}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            setDeleting(true);
-            await deleteDining(targetId);
-            Alert.alert('Success', 'Dining option deleted successfully!');
-            if (selectedDiningId === targetId) {
-              resetForm();
+  const handleDeleteItem = (targetId, name) => {
+    Alert.alert(
+      'Remove Resource Entry',
+      `Are you completely sure you want to delete "${name || 'this resource'}" from campus registry indices?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await deleteDining(targetId);
+              Alert.alert('Removed', 'Asset has been detached successfully.');
+            } catch (error) {
+              Alert.alert('Deletion Conflict', error?.message || 'Failed to remove asset.');
+            } finally {
+              setLoading(false);
             }
-          } catch (error) {
-            console.error('Delete dining error:', error);
-            Alert.alert('Error', error?.message || 'Unable to delete dining option');
-          } finally {
-            setDeleting(false);
-          }
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
-  const renderDiningItem = ({ item }) => (
-    <View style={styles.itemCard}>
-      <TouchableOpacity
-        style={styles.itemBody}
-        activeOpacity={0.85}
-        onPress={() => handleSelect(item)}
-      >
-        <View style={styles.itemTopRow}>
-          <View style={styles.itemHeader}>
-            <View style={styles.itemIcon}>
-              <Ionicons name={item.icon || 'restaurant-outline'} size={22} color={COLORS.primary} />
-            </View>
-            <View style={styles.itemContent}>
-              <Text style={styles.itemTitle}>{item.name || 'Untitled dining option'}</Text>
-              <Text style={styles.itemSubtitle} numberOfLines={1}>{item.category || item.type || 'Dining'}</Text>
-            </View>
-          </View>
-          <View style={styles.itemBadge}>
-            <Ionicons name="chevron-forward" size={16} color={COLORS.muted} />
-          </View>
-        </View>
-        <View style={styles.itemMetaRow}>
-          <Text style={styles.itemMeta}>{item.location}</Text>
-          <Text style={styles.itemMeta}>{item.hours}</Text>
-        </View>
-      </TouchableOpacity>
-      <View style={styles.itemActionsRow}>
-        <TouchableOpacity
-          style={[styles.itemActionButton, styles.itemActionPrimary]}
-          onPress={() => handleSelect(item)}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="create-outline" size={14} color={COLORS.primary} />
-          <Text style={[styles.itemActionText, styles.itemActionPrimaryText]}>Edit</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.itemActionButton, styles.itemActionDanger]}
-          onPress={() => handleDelete(item.id, item.name)}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="trash-outline" size={14} color={COLORS.white} />
-          <Text style={[styles.itemActionText, styles.itemActionDangerText]}>Delete</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+  // ── Excel / CSV Processing Engine ───────────────────────────
+  const handleImportRows = async (rows) => {
+    let insertedCount = 0;
+    const skipped = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const name = (row['name'] || row['Name'] || '').toString().trim();
+      const location = (row['location'] || row['Location'] || '').toString().trim();
+      const hours = (row['hours'] || row['Hours'] || row['Operating Hours'] || '').toString().trim();
+      const category = (row['category'] || row['Category'] || 'Restaurant').toString().trim();
+      const contact = (row['contact'] || row['Contact'] || row['Phone'] || '').toString().trim();
+      const foodtype = (row['foodtype'] || row['Food Type'] || row['Cuisine'] || '').toString().trim();
+      const description = (row['description'] || row['Description'] || '').toString().trim();
+      const icon = (row['icon'] || row['Icon'] || 'restaurant-outline').toString().trim();
+
+      if (!name || !location || !hours) {
+        skipped.push(`Row ${i + 2}: Missing required parameters (Name, Location, or Hours).`);
+        continue;
+      }
+
+      try {
+        await addDining({
+          name,
+          category,
+          location,
+          hours,
+          contact,
+          foodtype,
+          icon,
+          description,
+        });
+        insertedCount++;
+      } catch (err) {
+        skipped.push(`Row ${i + 2} Exception: ${err.message}`);
+      }
+    }
+
+    let completionSummary = `${insertedCount} spreadsheet row-entries mapped and inserted into live databases.`;
+    if (skipped.length) {
+      completionSummary += `\n\n${skipped.length} exceptions skipped:\n${skipped.slice(0, 5).join('\n')}`;
+    }
+    Alert.alert('Import Protocol Finished', completionSummary);
+    setImporting(false);
+  };
+
+  const handleImportExcelDocument = async () => {
+    try {
+      setImporting(true);
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'text/csv',
+          'application/csv',
+          '*/*',
+        ],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets?.length) {
+        setImporting(false);
+        return;
+      }
+
+      const file = result.assets[0];
+      const isCsv = file.name?.toLowerCase().endsWith('.csv');
+      const fileStringData = isCsv
+        ? await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.UTF8 })
+        : await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.Base64 });
+
+      const workbook = isCsv
+        ? XLSX.read(fileStringData, { type: 'string' })
+        : XLSX.read(fileStringData, { type: 'base64' });
+
+      const focusedSheetName = workbook.SheetNames[0];
+      const parsedSheet = workbook.Sheets[focusedSheetName];
+      const structuredRows = XLSX.utils.sheet_to_json(parsedSheet, { defval: '' });
+
+      await handleImportRows(structuredRows);
+    } catch (err) {
+      Alert.alert('Import Failed', err?.message || 'File interpretation failed. Verify schema.');
+    } finally {
+      setImporting(false);
+    }
+  };
 
   return (
-    <ScreenWrapper showsVerticalScrollIndicator>
-      <View style={styles.heroCard}>
-        <View style={styles.heroTopRow}>
-          <View style={styles.heroTextBlock}>
-            <Text style={styles.heroEyebrow}>Admin Dashboard</Text>
-            <Text style={styles.headerTitle}>Dining</Text>
-            <Text style={styles.headerSubtitle}>Manage campus dining options</Text>
-          </View>
-          <View style={styles.heroIconWrap}>
-            <Ionicons name="restaurant-outline" size={26} color={COLORS.white} />
-          </View>
+    <ScreenWrapper backgroundColor={BG} statusBarStyle="dark-content">
+      {/* ── HEADER ACTION ROW ── */}
+      <View style={s.headerBlock}>
+        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.8}>
+          <Ionicons name="arrow-back" size={20} color={SLATE} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={s.headerSubtitle}>ADMINISTRATION</Text>
+          <Text style={s.headerTitle}>Dining Directory</Text>
         </View>
-
-        <View style={styles.heroStatsRow}>
-          <View style={styles.heroPill}>
-            <Ionicons name="restaurant-outline" size={14} color={COLORS.white} />
-            <Text style={styles.heroPillText}>{diningCount} records</Text>
-          </View>
-          <View style={styles.heroPillSecondary}>
-            <Ionicons name="search-outline" size={14} color={COLORS.primary} />
-            <Text style={styles.heroPillTextSecondary}>{visibleCount} shown</Text>
-          </View>
-        </View>
-
-        <TouchableOpacity style={styles.addButton} onPress={handleAddNew} activeOpacity={0.9}>
-          <Ionicons name="add" size={20} color={COLORS.white} />
-          <Text style={styles.addButtonText}>Add Dining</Text>
+        <TouchableOpacity style={s.addRoundBtn} onPress={handleOpenAddModal} activeOpacity={0.85}>
+          <Ionicons name="add" size={22} color="#FFF" />
         </TouchableOpacity>
       </View>
 
-      <View style={styles.searchContainer}>
-        <View style={styles.searchInputWrap}>
-          <Ionicons name="search" size={18} color={COLORS.muted} style={styles.searchIcon} />
-          <TextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Search dining options..."
-            placeholderTextColor={COLORS.muted}
-            style={styles.searchInput}
-          />
-          {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearSearchButton} activeOpacity={0.8}>
-              <Ionicons name="close-circle" size={18} color={COLORS.muted} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-        <View style={styles.searchMetaRow}>
-          <Text style={styles.searchMetaText}>{searchQuery ? 'Filtered dining list' : 'Search the current roster'}</Text>
-          <Text style={styles.searchMetaCount}>{visibleCount} shown</Text>
-        </View>
+      {/* ── METADATA & SEARCH INTERFACE ── */}
+      <View style={s.searchSection}>
+        <Ionicons name="search-outline" size={18} color={LIGHT} style={{ marginRight: 10 }} />
+        <TextInput
+          style={s.searchInputField}
+          placeholder="Search locations, categories, menus..."
+          placeholderTextColor={LIGHT}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <Ionicons name="close-circle" size={16} color={LIGHT} />
+          </TouchableOpacity>
+        )}
       </View>
 
-      {showForm ? (
-        <View style={styles.formCard}>
-          <View style={styles.formHeader}>
-            <View style={styles.formTitleBlock}>
-              <Text style={styles.formEyebrow}>{selectedDiningId ? 'Edit record' : 'New record'}</Text>
-              <Text style={styles.formTitle}>{selectedDiningId ? 'Edit Dining Option' : 'New Dining Option'}</Text>
+      {/* ── MASS SPREADSHEET BATCHING LOADER ── */}
+      <TouchableOpacity
+        style={[s.importBarAction, importing && { opacity: 0.6 }]}
+        onPress={handleImportExcelDocument}
+        disabled={importing}
+        activeOpacity={0.8}
+      >
+        <Ionicons name={importing ? 'hourglass-outline' : 'cloud-upload-outline'} size={16} color={NAVY} />
+        <Text style={s.importBarText}>{importing ? 'Processing Spreadsheets…' : 'Import from Excel / CSV'}</Text>
+      </TouchableOpacity>
+
+      {/* ── CORE RENDER PIPELINE LIST ── */}
+      {loading && diningOptions.length === 0 ? (
+        <View style={s.centeredSpinner}>
+          <ActivityIndicator size="large" color={NAVY} />
+        </View>
+      ) : (
+        <FlatList
+          data={filteredDining}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={s.listContainer}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={s.emptyContextCard}>
+              <Ionicons name="restaurant-outline" size={44} color={LIGHT} />
+              <Text style={s.emptyContextText}>No matching dining operations registered.</Text>
             </View>
-            <TouchableOpacity onPress={resetForm} activeOpacity={0.85}>
-              <View style={styles.closeButton}>
-                <Ionicons name="close" size={20} color={COLORS.dark} />
+          }
+          renderItem={({ item }) => (
+            <View style={s.assetCard}>
+              <View style={s.cardIdentityRow}>
+                <View style={s.iconWrapperFrame}>
+                  <Ionicons name={item.icon || 'restaurant-outline'} size={20} color={NAVY} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={s.itemPrimaryName} numberOfLines={1}>{item.name}</Text>
+                  <Text style={s.itemCategoryLabel}>{item.category || item.type || 'Dining'}</Text>
+                </View>
               </View>
-            </TouchableOpacity>
-          </View>
 
-          <ScrollView
-            style={styles.formScroll}
-            contentContainerStyle={styles.formScrollContent}
-            showsVerticalScrollIndicator
-          >
-            <View style={styles.formSectionCard}>
-              <Text style={styles.label}>Name</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.name}
-                onChangeText={(value) => setFormData({ ...formData, name: value })}
-                placeholder="e.g. Main Cafeteria"
-                placeholderTextColor="#9CA3AF"
-              />
+              <View style={s.metaDetailsContainer}>
+                <View style={s.metaDataRow}>
+                  <Ionicons name="location-outline" size={13} color={MUTED} style={{ marginRight: 4 }} />
+                  <Text style={s.metaInfoText} numberOfLines={1}>{item.location}</Text>
+                </View>
+                <View style={[s.metaDataRow, { marginTop: 4 }]}>
+                  <Ionicons name="time-outline" size={13} color={MUTED} style={{ marginRight: 4 }} />
+                  <Text style={s.metaInfoText} numberOfLines={1}>{item.hours}</Text>
+                </View>
+              </View>
 
-              <Text style={styles.label}>Category</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-                {diningCategories.map((type) => (
-                  <TouchableOpacity
-                    key={type}
-                    style={[styles.chip, formData.category === type && styles.chipActive]}
-                    onPress={() => setFormData({ ...formData, category: type })}
-                  >
-                    <Text style={[styles.chipText, formData.category === type && styles.chipTextActive]}>{type}</Text>
+              <View style={s.cardActionsRow}>
+                <View style={{ flex: 1 }} />
+                <TouchableOpacity style={s.secondaryActionBtn} onPress={() => handleOpenEditModal(item)}>
+                  <Ionicons name="create-outline" size={14} color={NAVY} />
+                  <Text style={s.secondaryActionBtnText}>Modify</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.destructiveActionBtn} onPress={() => handleDeleteItem(item.id, item.name)}>
+                  <Ionicons name="trash-outline" size={14} color="#DC2626" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        />
+      )}
+
+      {/* ── ADMIN INTERACTIVE BOTTOM SHEET MODAL ── */}
+      <Modal animationType="slide" transparent visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.modalOverlayFrame}>
+          <View style={s.bottomSheetModalSurface}>
+            <View style={s.modalIndicatorHandle} />
+            <View style={s.modalHeaderRow}>
+              <Text style={s.modalTitleText}>{selectedDiningId ? 'Modify Dining Asset' : 'Add New Dining Option'}</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <Ionicons name="close" size={22} color={SLATE} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={s.modalFormScroll} showsVerticalScrollIndicator={false}>
+              <Text style={s.inputLabelHeader}>Dining Asset Name *</Text>
+              <TextInput style={s.cleanInputBox} value={formData.name} onChangeText={(val) => setFormData({ ...formData, name: val })} placeholder="e.g. Executive Cafeteria" placeholderTextColor={LIGHT} />
+
+              <Text style={s.inputLabelHeader}>Service Category</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScrollerContainer}>
+                {diningCategories.map((cat) => (
+                  <TouchableOpacity key={cat} style={[s.categoryPillSelection, formData.category === cat && s.categoryPillActive]} onPress={() => setFormData({ ...formData, category: cat })}>
+                    <Text style={[s.categoryPillText, formData.category === cat && s.categoryPillTextActive]}>{cat}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
-            </View>
 
-            <View style={styles.formSectionCard}>
-              <Text style={styles.label}>Location</Text>
-              <TouchableOpacity
-                style={styles.pickerButton}
-                onPress={() => setShowLocationPicker((current) => !current)}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.pickerButtonText, !formData.location && styles.pickerButtonPlaceholder]} numberOfLines={1}>
-                  {formData.location || 'Choose an existing location'}
+              <Text style={s.inputLabelHeader}>Campus Structural Location *</Text>
+              <TouchableOpacity style={s.dropdownBtn} onPress={() => setShowLocationPicker(!showLocationPicker)} activeOpacity={0.8}>
+                <Text style={[s.dropdownBtnText, !formData.location && { color: LIGHT }]} numberOfLines={1}>
+                  {formData.location || 'Select designated campus site'}
                 </Text>
-                <Ionicons name={showLocationPicker ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.muted} />
+                <Ionicons name={showLocationPicker ? 'chevron-up-outline' : 'chevron-down-outline'} size={16} color={LIGHT} />
               </TouchableOpacity>
 
-              {showLocationPicker ? (
-                <View style={styles.locationPickerPanel}>
-                  <Text style={styles.locationPickerTitle}>Select a campus location</Text>
-                  <ScrollView style={styles.locationPickerScroll} nestedScrollEnabled showsVerticalScrollIndicator>
-                    {availableLocations.length > 0 ? (
-                      availableLocations.map((location) => (
-                        <TouchableOpacity
-                          key={location}
-                          style={[styles.locationOption, formData.location === location && styles.locationOptionActive]}
-                          onPress={() => {
-                            setFormData({ ...formData, location });
-                            setShowLocationPicker(false);
-                          }}
-                          activeOpacity={0.8}
-                        >
-                          <Ionicons name="location-outline" size={16} color={formData.location === location ? COLORS.white : COLORS.primary} />
-                          <Text style={[styles.locationOptionText, formData.location === location && styles.locationOptionTextActive]} numberOfLines={1}>
-                            {location}
-                          </Text>
-                        </TouchableOpacity>
-                      ))
-                    ) : (
-                      <Text style={styles.locationPickerEmpty}>No saved locations available yet.</Text>
-                    )}
+              {showLocationPicker && (
+                <View style={s.pickerInlineContainer}>
+                  <ScrollView style={{ maxHeight: 140 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                    {availableLocations.map((loc) => (
+                      <TouchableOpacity key={loc} style={[s.pickerSelectionOptionRow, formData.location === loc && s.pickerSelectionActiveRow]} onPress={() => { setFormData({ ...formData, location: loc }); setShowLocationPicker(false); }}>
+                        <Text style={[s.pickerSelectionText, formData.location === loc && { fontWeight: '700', color: NAVY }]}>{loc}</Text>
+                      </TouchableOpacity>
+                    ))}
                   </ScrollView>
                 </View>
-              ) : null}
+              )}
 
-              <Text style={styles.label}>Hours</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.hours}
-                onChangeText={(value) => setFormData({ ...formData, hours: value })}
-                placeholder="e.g. 7:00 AM - 8:00 PM"
-                placeholderTextColor="#9CA3AF"
-              />
+              <Text style={s.inputLabelHeader}>Operating Schedule / Hours *</Text>
+              <TextInput style={s.cleanInputBox} value={formData.hours} onChangeText={(val) => setFormData({ ...formData, hours: val })} placeholder="e.g. Mon - Fri: 07:00 - 21:00" placeholderTextColor={LIGHT} />
 
-              <Text style={styles.label}>Contact</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.contact}
-                onChangeText={(value) => setFormData({ ...formData, contact: value })}
-                placeholder="e.g. +1 (234) 567-8901"
-                placeholderTextColor="#9CA3AF"
-              />
+              <Text style={s.inputLabelHeader}>Contact Communications Channel</Text>
+              <TextInput style={s.cleanInputBox} value={formData.contact} onChangeText={(val) => setFormData({ ...formData, contact: val })} keyboardType="phone-pad" placeholder="e.g. +233..." placeholderTextColor={LIGHT} />
 
-              <Text style={styles.label}>Food Type</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.foodtype}
-                onChangeText={(value) => setFormData({ ...formData, foodtype: value })}
-                placeholder="e.g. Multi-cuisine"
-                placeholderTextColor="#9CA3AF"
-              />
+              <Text style={s.inputLabelHeader}>Primary Cuisine / Food Specialization</Text>
+              <TextInput style={s.cleanInputBox} value={formData.foodtype} onChangeText={(val) => setFormData({ ...formData, foodtype: val })} placeholder="e.g. Continental & Local Dishes" placeholderTextColor={LIGHT} />
 
-              <Text style={styles.label}>Icon</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-                {diningIcons.map((icon) => (
-                  <TouchableOpacity
-                    key={icon}
-                    style={[styles.iconChip, formData.icon === icon && styles.iconChipActive]}
-                    onPress={() => setFormData({ ...formData, icon })}
-                  >
-                    <Ionicons name={icon} size={18} color={formData.icon === icon ? COLORS.white : COLORS.primary} />
+              <Text style={s.inputLabelHeader}>Display Graphic Icon Mapping</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScrollerContainer}>
+                {diningIcons.map((ico) => (
+                  <TouchableOpacity key={ico} style={[s.iconBoxSelection, formData.icon === ico && s.iconBoxActive]} onPress={() => setFormData({ ...formData, icon: ico })}>
+                    <Ionicons name={ico} size={18} color={formData.icon === ico ? '#FFF' : NAVY} />
                   </TouchableOpacity>
                 ))}
               </ScrollView>
 
-              <Text style={styles.label}>Description</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={formData.description}
-                onChangeText={(value) => setFormData({ ...formData, description: value })}
-                placeholder="Describe the dining option"
-                placeholderTextColor="#9CA3AF"
-                multiline
-                numberOfLines={5}
-              />
-            </View>
+              <Text style={s.inputLabelHeader}>Descriptive Summary Overview</Text>
+              <TextInput style={[s.cleanInputBox, s.multiLineHeightInput]} value={formData.description} onChangeText={(val) => setFormData({ ...formData, description: val })} multiline numberOfLines={4} placeholder="Describe operational specifics..." placeholderTextColor={LIGHT} />
+            </ScrollView>
 
-            <View style={styles.buttonRow}>
-              <CustomButton title="Cancel" onPress={resetForm} variant="outline" style={styles.buttonFlex} disabled={saving || deleting} />
-              {selectedDiningId ? (
-                <CustomButton title="Delete" onPress={handleDelete} variant="danger" style={styles.buttonFlex} loading={deleting} disabled={saving || deleting} />
-              ) : null}
-              <CustomButton
-                title={selectedDiningId ? 'Update' : 'Save'}
-                onPress={handleSave}
-                style={styles.buttonFlex}
-                loading={saving}
-                disabled={saving || deleting}
-              />
-            </View>
-          </ScrollView>
-        </View>
-      ) : null}
-
-      <Text style={styles.listTitle}>
-        {filteredDining.length > 0 ? `Dining Options (${filteredDining.length})` : searchQuery ? 'No matching dining options' : 'No Dining Options Yet'}
-      </Text>
-
-      <FlatList
-        data={filteredDining}
-        keyExtractor={(item) => item.id}
-        renderItem={renderDiningItem}
-        scrollEnabled
-        nestedScrollEnabled
-        showsVerticalScrollIndicator
-        style={styles.diningList}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconWrap}>
-              <Ionicons name="restaurant-outline" size={30} color={COLORS.primary} />
-            </View>
-            <Text style={styles.emptyText}>
-              {searchQuery ? 'Try a different keyword or clear the search.' : 'Tap Add Dining to create the first dining option.'}
-            </Text>
-            {!searchQuery ? <Text style={styles.emptySubtext}>Dining entries you add here will appear in the student dashboard.</Text> : null}
+            <TouchableOpacity style={[s.primarySubmitActionBtn, saving && { opacity: 0.8 }]} onPress={handleSave} disabled={saving}>
+              {saving ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={s.primarySubmitActionBtnText}>Commit Registries Save</Text>}
+            </TouchableOpacity>
           </View>
-        }
-      />
+        </KeyboardAvoidingView>
+      </Modal>
     </ScreenWrapper>
   );
-};
+}
 
-const styles = StyleSheet.create({
-  header: {
-    marginBottom: 0,
-  },
-  heroCard: {
-    backgroundColor: '#0F172A',
-    borderRadius: 28,
-    padding: 18,
-    marginBottom: 18,
-    shadowColor: '#020617',
-    shadowOpacity: 0.24,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 8,
-  },
-  heroTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 16,
-  },
-  heroTextBlock: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  heroEyebrow: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: 'rgba(255,255,255,0.72)',
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-    marginBottom: 8,
-  },
-  headerTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: COLORS.white,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.82)',
-    marginTop: 6,
-    lineHeight: 20,
-  },
-  heroIconWrap: {
-    width: 54,
-    height: 54,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-  heroStatsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 16,
-    flexWrap: 'wrap',
-  },
-  heroPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
-  },
-  heroPillSecondary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: COLORS.white,
-  },
-  heroPillText: {
-    color: COLORS.white,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  heroPillTextSecondary: {
-    color: COLORS.primary,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 16,
-    paddingVertical: 12,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-  addButtonText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  searchContainer: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 18,
-    padding: 12,
-    marginBottom: 14,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
-  },
-  searchInputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    minWidth: 0,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: COLORS.dark,
-  },
-  clearSearchButton: {
-    padding: 4,
-    marginLeft: 8,
-  },
-  searchMetaRow: {
-    marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  searchMetaText: {
-    fontSize: 12,
-    color: COLORS.muted,
-    fontWeight: '600',
-  },
-  searchMetaCount: {
-    fontSize: 12,
-    color: COLORS.primary,
-    fontWeight: '700',
-  },
-  formCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 28,
-    paddingBottom: 18,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
-  },
-  formHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8EEF9',
-  },
-  formTitleBlock: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  formEyebrow: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: COLORS.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 4,
-  },
-  formTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: COLORS.dark,
-  },
-  closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  formScroll: {
-    maxHeight: 500,
-    overflowY: 'auto',
-  },
-  formScrollContent: {
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 18,
-  },
-  formSectionCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#E8EEF9',
-    padding: 14,
-    marginBottom: 14,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 1,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: COLORS.dark,
-    marginTop: 0,
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: COLORS.dark,
-    marginBottom: 12,
-  },
-  textArea: {
-    minHeight: 110,
-    textAlignVertical: 'top',
-  },
-  pickerButton: {
-    minHeight: 48,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  pickerButtonText: {
-    flex: 1,
-    fontSize: 14,
-    color: COLORS.dark,
-    marginRight: 8,
-  },
-  pickerButtonPlaceholder: {
-    color: '#9CA3AF',
-  },
-  locationPickerPanel: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 12,
-  },
-  locationPickerTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.dark,
-    marginBottom: 10,
-  },
-  locationPickerScroll: {
-    maxHeight: 180,
-  },
-  locationOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    backgroundColor: '#F8FAFC',
-    marginBottom: 8,
-  },
-  locationOptionActive: {
-    backgroundColor: COLORS.primary,
-  },
-  locationOptionText: {
-    marginLeft: 8,
-    fontSize: 13,
-    color: COLORS.dark,
-    flex: 1,
-  },
-  locationOptionTextActive: {
-    color: COLORS.white,
-  },
-  locationPickerEmpty: {
-    fontSize: 13,
-    color: COLORS.muted,
-    paddingVertical: 8,
-  },
-  chipScroll: {
-    marginBottom: 4,
-  },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginRight: 8,
-  },
-  chipActive: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  chipText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.muted,
-  },
-  chipTextActive: {
-    color: COLORS.white,
-  },
-  iconChip: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    marginRight: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#F8FAFC',
-  },
-  iconChipActive: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 18,
-  },
-  buttonFlex: {
-    flex: 1,
-  },
-  listTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: COLORS.dark,
-    marginBottom: 12,
-    marginTop: 4,
-  },
-  listContent: {
-    paddingBottom: 20,
-  },
-  diningList: {
-    maxHeight: 460,
-  },
-  itemCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
-  },
-  itemBody: {
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8EEF9',
-  },
-  itemTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  itemHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  itemIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: '#EEF4FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  itemContent: {
-    flex: 1,
-    minWidth: 0,
-  },
-  itemTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: COLORS.dark,
-  },
-  itemSubtitle: {
-    fontSize: 12,
-    color: COLORS.muted,
-    marginTop: 2,
-  },
-  itemBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  itemMetaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#E8EEF9',
-  },
-  itemMeta: {
-    flex: 1,
-    fontSize: 12,
-    color: COLORS.muted,
-  },
-  itemActionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-    paddingTop: 12,
-  },
-  itemActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  itemActionPrimary: {
-    backgroundColor: '#EEF4FF',
-    borderColor: '#CBD5F5',
-  },
-  itemActionPrimaryText: {
-    color: COLORS.primary,
-  },
-  itemActionDanger: {
-    backgroundColor: '#DC2626',
-    borderColor: '#DC2626',
-  },
-  itemActionDangerText: {
-    color: COLORS.white,
-  },
-  itemActionText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyIconWrap: {
-    width: 78,
-    height: 78,
-    borderRadius: 24,
-    backgroundColor: '#EEF4FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: COLORS.muted,
-    textAlign: 'center',
-    marginTop: 20,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: COLORS.muted,
-    marginTop: 8,
-    textAlign: 'center',
-  },
+// ── Clean Premium UI Stylesheet ──────────────────────────────────────────────
+const s = StyleSheet.create({
+  headerBlock: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, backgroundColor: SURFACE, borderBottomWidth: 1, borderBottomColor: BORDER, gap: 12 },
+  backBtn: { width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: BORDER, backgroundColor: BG },
+  headerSubtitle: { fontSize: 10, fontWeight: '700', color: GOLD, letterSpacing: 1.2 },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: SLATE, marginTop: 1 },
+  addRoundBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: NAVY, justifyContent: 'center', alignItems: 'center' },
+
+  searchSection: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 20, marginTop: 16, paddingHorizontal: 14, height: 46, borderRadius: 12, backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER },
+  searchInputField: { flex: 1, fontSize: 14, color: SLATE },
+
+  importBarAction: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 20, marginTop: 10, paddingVertical: 11, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1.5, borderColor: BORDER, backgroundColor: SURFACE },
+  importBarText: { fontSize: 13, fontWeight: '700', color: NAVY },
+
+  listContainer: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 40, gap: 12 },
+  centeredSpinner: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 60 },
+  emptyContextCard: { alignItems: 'center', justifyContent: 'center', paddingTop: 60, gap: 12 },
+  emptyContextText: { fontSize: 14, fontWeight: '500', color: MUTED, textAlign: 'center' },
+
+  assetCard: { backgroundColor: SURFACE, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: BORDER },
+  cardIdentityRow: { flexDirection: 'row', alignItems: 'center' },
+  iconWrapperFrame: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#EDF2F7', justifyContent: 'center', alignItems: 'center' },
+  itemPrimaryName: { fontSize: 15, fontWeight: '700', color: SLATE },
+  itemCategoryLabel: { fontSize: 12, color: MUTED, marginTop: 1 },
+
+  metaDetailsContainer: { marginTop: 12, padding: 10, borderRadius: 10, backgroundColor: BG },
+  metaDataRow: { flexDirection: 'row', alignItems: 'center' },
+  metaInfoText: { fontSize: 12, color: SLATE, fontWeight: '500', flex: 1 },
+
+  cardActionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  secondaryActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: BORDER, backgroundColor: BG },
+  secondaryActionBtnText: { fontSize: 12, fontWeight: '600', color: NAVY },
+  destructiveActionBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#FEF2F2', justifyContent: 'center', alignItems: 'center' },
+
+  modalOverlayFrame: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.4)', justifyContent: 'flex-end' },
+  bottomSheetModalSurface: { backgroundColor: SURFACE, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 24, paddingTop: 12, paddingBottom: 34, maxHeight: '85%' },
+  modalIndicatorHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: BORDER, alignSelf: 'center', marginBottom: 16 },
+  modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  modalTitleText: { fontSize: 16, fontWeight: '800', color: SLATE },
+  modalFormScroll: { gap: 12, paddingBottom: 20 },
+  inputLabelHeader: { fontSize: 11, fontWeight: '700', color: SLATE, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 },
+  cleanInputBox: { height: 44, borderRadius: 10, borderWidth: 1.5, borderColor: BORDER, paddingHorizontal: 14, backgroundColor: BG, fontSize: 14, color: SLATE },
+  multiLineHeightInput: { height: 80, paddingTop: 10, textAlignVertical: 'top' },
+
+  chipScrollerContainer: { flexDirection: 'row', marginVertical: 2 },
+  categoryPillSelection: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: BG, borderWidth: 1, borderColor: BORDER, marginRight: 8 },
+  categoryPillActive: { backgroundColor: NAVY, borderColor: NAVY },
+  categoryPillText: { fontSize: 12, fontWeight: '600', color: MUTED },
+  categoryPillTextActive: { color: '#FFF' },
+
+  iconBoxSelection: { width: 40, height: 40, borderRadius: 10, backgroundColor: BG, borderWidth: 1, borderColor: BORDER, justifyContent: 'center', alignItems: 'center', marginRight: 8 },
+  iconBoxActive: { backgroundColor: NAVY, borderColor: NAVY },
+
+  dropdownBtn: { height: 44, borderRadius: 10, borderWidth: 1.5, borderColor: BORDER, paddingHorizontal: 14, backgroundColor: BG, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  dropdownBtnText: { fontSize: 14, color: SLATE, flex: 1 },
+
+  pickerInlineContainer: { backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER, borderRadius: 10, padding: 4, marginTop: -4 },
+  pickerSelectionOptionRow: { paddingVertical: 10, paddingHorizontal: 12, borderRadius: 6 },
+  pickerSelectionActiveRow: { backgroundColor: '#EEF4FF' },
+  pickerSelectionText: { fontSize: 13, color: SLATE },
+
+  primarySubmitActionBtn: { height: 48, borderRadius: 12, backgroundColor: NAVY, justifyContent: 'center', alignItems: 'center', marginTop: 12 },
+  primarySubmitActionBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
 });
-
-export default ManageDiningScreen;
