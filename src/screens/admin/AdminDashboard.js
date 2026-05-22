@@ -271,14 +271,14 @@ const AdminDashboard = ({ navigation }) => {
       sub:   'Students & Staff',
       icon:  'people-circle-outline',
       color: ADMIN_THEME.primary,
-      nav:   'CampusStructure',
+      nav:   'ManageUsers',
     },
     {
       label: 'Buildings & Locations',
       sub:   'Facilities & Maps',
       icon:  'business-outline',
       color: '#0891B2',
-      nav:   'CampusContent',
+      nav:   'CampusStructure',
     },
     {
       label: 'Events & Notifications',
@@ -288,11 +288,11 @@ const AdminDashboard = ({ navigation }) => {
       nav:   'CampusContent',
     },
     {
-      label: 'Dining & Rules',
-      sub:   'Cafeterias & Policies',
+      label: 'Dining & Cafeterias',
+      sub:   'Campus Food Outlets',
       icon:  'fast-food-outline',
       color: '#D97706',
-      nav:   'CampusContent',
+      nav:   'ManageDining',
     },
     {
       label: 'Analytics & Reports',
