@@ -15,11 +15,13 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import { useAuth } from '../../context/AuthContext';
-import { COLORS, USER_ROLES } from '../../utils/constants';
+import { COLORS, USER_ROLES, RMU_BOUNDS } from '../../utils/constants';
 import { subscribeToLocations, subscribeToBuildings } from '../../services/databaseService';
 import CustomButton from '../../components/CustomButton';
 
-const STORAGE_KEY = 'guest-dashboard-mode';
+const STORAGE_KEY   = 'guest-dashboard-mode';
+const GMAPS_KEY     = 'AIzaSyBI7i_--IVs0VEkYncUc-wPVG9IZwp3py0';
+const SEARCH_RADIUS = '500'; // metres — tight campus perimeter
 
 const GUEST_SEARCH_THEMES = {
   light: {
@@ -52,6 +54,8 @@ const SearchLocationsScreen = ({ navigation, route }) => {
   const [locations, setLocations] = useState([]);
   const [filteredLocations, setFilteredLocations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [googleResults,  setGoogleResults]  = useState([]);
+  const [googleLoading,  setGoogleLoading]  = useState(false);
   const [guestThemeMode, setGuestThemeMode] = useState('light');
 
   const isGuest = userRole === USER_ROLES.GUEST;
@@ -178,6 +182,42 @@ const SearchLocationsScreen = ({ navigation, route }) => {
       setFilteredLocations(partialMatches);
     }
   }, [searchQuery, locations, mode]);
+
+  // ── Google Places Text Search (debounced, RMU-bounded) ─────────────────────
+  useEffect(() => {
+    if (!searchQuery.trim() || searchQuery.length < 2) { setGoogleResults([]); return; }
+    const timer = setTimeout(async () => {
+      setGoogleLoading(true);
+      try {
+        const url =
+          `https://maps.googleapis.com/maps/api/place/textsearch/json` +
+          `?query=${encodeURIComponent(searchQuery)}` +
+          `&location=${RMU_BOUNDS.latitude},${RMU_BOUNDS.longitude}` +
+          `&radius=${SEARCH_RADIUS}` +
+          `&key=${GMAPS_KEY}`;
+        const res  = await fetch(url);
+        const json = await res.json();
+        if (json.status === 'OK' && json.results?.length) {
+          setGoogleResults(
+            json.results.slice(0, 5).map((r) => ({
+              place_id: r.place_id,
+              name:     r.name,
+              address:  r.formatted_address,
+              latitude:  r.geometry.location.lat,
+              longitude: r.geometry.location.lng,
+            }))
+          );
+        } else {
+          setGoogleResults([]);
+        }
+      } catch (_) {
+        setGoogleResults([]);
+      } finally {
+        setGoogleLoading(false);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const handleLocationPress = (location) => {
     navigation.navigate('LocationDetails', {
@@ -456,6 +496,44 @@ const SearchLocationsScreen = ({ navigation, route }) => {
               style={styles.resultsList}
             />
           </View>
+          {/* ── Google Places suggestions (RMU-bounded) ── */}
+          {searchQuery.length >= 2 && (googleLoading || googleResults.length > 0) && (
+            <View style={styles.googleCard}>
+              <View style={styles.googleHeader}>
+                <Ionicons name="globe-outline" size={14} color="#64748B" />
+                <Text style={styles.googleHeaderText}>Nearby on Campus</Text>
+                {googleLoading && <ActivityIndicator size="small" color="#64748B" style={{ marginLeft: 8 }} />}
+              </View>
+
+              {googleResults.map((item) => (
+                <TouchableOpacity
+                  key={item.place_id}
+                  style={styles.googleRow}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    const selectedLocation = {
+                      id:        item.place_id,
+                      name:      item.name,
+                      latitude:  item.latitude,
+                      longitude: item.longitude,
+                    };
+                    navigation.navigate('Map', { selectedLocation });
+                  }}
+                >
+                  <View style={styles.googleIconWrap}>
+                    <Ionicons name="location-outline" size={16} color="#2563EB" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.googleName} numberOfLines={1}>{item.name}</Text>
+                    {item.address ? (
+                      <Text style={styles.googleAddress} numberOfLines={1}>{item.address}</Text>
+                    ) : null}
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
       </ScreenWrapper>
     </KeyboardAvoidingView>
@@ -700,6 +778,51 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     lineHeight: 20,
   },
+
+  // Google Places section
+  googleCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  googleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  googleHeaderText: { fontSize: 11, fontWeight: '700', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5 },
+  googleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  googleIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  googleName:    { fontSize: 14, fontWeight: '600', color: '#0F172A' },
+  googleAddress: { fontSize: 12, color: '#64748B', marginTop: 1 },
 });
 
 export default SearchLocationsScreen;
