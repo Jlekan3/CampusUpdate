@@ -131,7 +131,7 @@ export default function ManageEmergencyContactsScreen({ navigation }) {
   const [form,           setForm]           = useState(EMPTY);
   const [editingId,      setEditingId]      = useState(null);
   const [saving,         setSaving]         = useState(false);
-  const [filterCat,      setFilterCat]      = useState('All');
+  const [search,         setSearch]         = useState('');
   const [errors,         setErrors]         = useState({});
   const [showImport,     setShowImport]     = useState(false);
   const [importPreview,  setImportPreview]  = useState({ valid: [], errors: [] });
@@ -151,10 +151,16 @@ export default function ManageEmergencyContactsScreen({ navigation }) {
     }).start();
   }, [form.is_available_24_7]);
 
-  const displayed = useMemo(
-    () => filterCat === 'All' ? contacts : contacts.filter((c) => c.category === filterCat),
-    [contacts, filterCat]
-  );
+  const displayed = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return contacts;
+    return contacts.filter((c) =>
+      (c.title || '').toLowerCase().includes(q) ||
+      (c.phone_number || '').toLowerCase().includes(q) ||
+      (c.category || '').toLowerCase().includes(q) ||
+      (c.description || '').toLowerCase().includes(q)
+    );
+  }, [contacts, search]);
 
   const set = (k, v) => { setForm((p) => ({ ...p, [k]: v })); if (errors[k]) setErrors((p) => ({ ...p, [k]: null })); };
   const openAdd  = () => { setForm(EMPTY); setEditingId(null); setErrors({}); setShowModal(true); };
@@ -308,32 +314,24 @@ export default function ManageEmergencyContactsScreen({ navigation }) {
             </TouchableOpacity>
           </View>
         </View>
-        {/* Glassmorphism search */}
+        {/* Search bar */}
         <View style={s.searchGlass}>
           <Ionicons name="search-outline" size={16} color="rgba(255,255,255,0.7)" />
-          <Text style={s.searchPlaceholder}>Search contacts…</Text>
+          <TextInput
+            style={s.searchInput}
+            placeholder="Search contacts…"
+            placeholderTextColor="rgba(255,255,255,0.55)"
+            value={search}
+            onChangeText={setSearch}
+            returnKeyType="search"
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close-circle" size={16} color="rgba(255,255,255,0.6)" />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
-
-      {/* ── FILTER CHIPS ── */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
-        {['All', ...CATEGORIES].map((cat) => {
-          const active = filterCat === cat;
-          const cc     = CHIP[cat] || CHIP.All;
-          return (
-            <TouchableOpacity
-              key={cat}
-              style={[s.chip, { backgroundColor: active ? cc.bg : SURFACE, borderColor: active ? cc.border : BORDER }]}
-              onPress={() => setFilterCat(cat)}
-              activeOpacity={0.8}
-            >
-              <Text style={[s.chipTxt, { color: active ? cc.text : MUTED, fontWeight: active ? '700' : '500' }]}>
-                {cat}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
 
       {/* ── LIST ── */}
       <FlatList
@@ -582,13 +580,8 @@ const s = StyleSheet.create({
   headerTitle:   { fontSize: 26, fontWeight: '700', color: '#FFFFFF', letterSpacing: 0.2 },
   headerRight:   { flexDirection: 'row', gap: 8 },
   iconBtn:       { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.14)', justifyContent: 'center', alignItems: 'center' },
-  searchGlass:   { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
-  searchPlaceholder: { fontSize: 14, color: 'rgba(255,255,255,0.55)' },
-
-  // Chips
-  chipRow:  { paddingHorizontal: 16, paddingVertical: 14, gap: 8 },
-  chip:     { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
-  chipTxt:  { fontSize: 13 },
+  searchGlass: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
+  searchInput: { flex: 1, fontSize: 14, color: '#FFFFFF', paddingVertical: 4 },
 
   // List
   list: { paddingHorizontal: 16, paddingBottom: 32, gap: 12 },
