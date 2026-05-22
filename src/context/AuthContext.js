@@ -83,10 +83,11 @@ const touchUserProfile = async (authUser) => {
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export const AuthProvider = ({ children }) => {
-  const [user,          setUser]          = useState(null);
-  const [role,          setRole]          = useState('guest');
-  const [authLoading,   setAuthLoading]   = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
+  const [user,              setUser]              = useState(null);
+  const [role,              setRole]              = useState('guest');
+  const [authLoading,       setAuthLoading]       = useState(true);
+  const [actionLoading,     setActionLoading]     = useState(false);
+  const [localMustChangePw, setLocalMustChangePw] = useState(null);
 
   const isExplicitLoginInFlight = useRef(false);
   const didStartupAuthReset     = useRef(false);
@@ -133,6 +134,11 @@ export const AuthProvider = ({ children }) => {
         }
 
         if (!didStartupAuthReset.current) didStartupAuthReset.current = true;
+
+        // Reset local override so the DB metadata is the source of truth for
+        // each new session (important: a returning user who already changed their
+        // password will have must_change_password=false in the DB).
+        setLocalMustChangePw(null);
 
         // Resolve role then commit state atomically
         const resolvedRole = await resolveRole(authUser);
@@ -298,12 +304,20 @@ export const AuthProvider = ({ children }) => {
   };
 
   // ── mustChangePassword — set by admin when creating accounts ─────────────────
-  const mustChangePassword = user?.user_metadata?.must_change_password === true;
+  // localMustChangePw=false → immediately cleared (no waiting for onAuthStateChange)
+  // localMustChangePw=null  → fall back to what the DB says
+  const mustChangePassword =
+    localMustChangePw === false
+      ? false
+      : user?.user_metadata?.must_change_password === true;
 
   const clearMustChangePassword = async () => {
+    setLocalMustChangePw(false); // Clear instantly in local state
     try {
       await supabase.auth.updateUser({ data: { must_change_password: false } });
-    } catch (_) {}
+    } catch (err) {
+      console.warn('[Auth] clearMustChangePassword failed:', err?.message);
+    }
   };
 
   // ── userRole alias (backwards compat with old Firebase AuthContext) ─────────

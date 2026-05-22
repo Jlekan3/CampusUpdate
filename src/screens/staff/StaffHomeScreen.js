@@ -84,6 +84,7 @@ export default function StaffHomeScreen() {
     // Fetch department structures and assign database listeners
     const unsubDepts = subscribeToDepartments((data) => {
       setDepartments(data || []);
+      setIsLoading(false); // clear loading as soon as either subscription resolves
     });
 
     // Fetch student/user tracking reports and assign database listeners
@@ -104,7 +105,7 @@ export default function StaffHomeScreen() {
   const fetchUsersDirectory = async () => {
     try {
       const { data, error } = await supabase
-        .from('profiles')
+        .from('users')
         .select('id, full_name, email, role')
         .order('full_name', { ascending: true });
       if (error) throw error;
