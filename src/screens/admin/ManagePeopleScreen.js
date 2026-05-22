@@ -51,8 +51,17 @@ export default function ManagePeopleScreen({ navigation }) {
   const [position, setPosition] = useState('');
   const [staffId, setStaffId] = useState('');
 
+  // Department picker
+  const [departments, setDepartments] = useState([]);
+  const [deptPickerVisible, setDeptPickerVisible] = useState(false);
+
   useEffect(() => {
     fetchUsers();
+    supabase
+      .from('departments')
+      .select('id, name')
+      .order('name')
+      .then(({ data }) => { if (data) setDepartments(data); });
   }, []);
 
   const fetchUsers = async () => {
@@ -362,7 +371,12 @@ export default function ManagePeopleScreen({ navigation }) {
               <TextInput style={s.cleanInputBox} value={staffId} onChangeText={setStaffId} placeholder="Enter institution staff index card code" placeholderTextColor={LIGHT} />
 
               <Text style={s.inputLabelHeader}>Assigned Department / Bureau</Text>
-              <TextInput style={s.cleanInputBox} value={department} onChangeText={setDepartment} placeholder="e.g. Computer Science Dept" placeholderTextColor={LIGHT} />
+              <TouchableOpacity style={s.dropdownBtn} onPress={() => setDeptPickerVisible(true)} activeOpacity={0.8}>
+                <Text style={[s.dropdownBtnText, !department && { color: LIGHT }]} numberOfLines={1}>
+                  {department || 'Select department'}
+                </Text>
+                <Ionicons name="chevron-down-outline" size={16} color={LIGHT} />
+              </TouchableOpacity>
               
               <Text style={s.inputLabelHeader}>Staff Position Rank</Text>
               <TextInput style={s.cleanInputBox} value={position} onChangeText={setPosition} placeholder="e.g. Senior Lecturer" placeholderTextColor={LIGHT} />
@@ -373,6 +387,37 @@ export default function ManagePeopleScreen({ navigation }) {
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+      {/* ── Department picker sheet ── */}
+      <Modal animationType="slide" transparent visible={deptPickerVisible} onRequestClose={() => setDeptPickerVisible(false)}>
+        <TouchableOpacity style={s.modalOverlayFrame} activeOpacity={1} onPress={() => setDeptPickerVisible(false)}>
+          <View style={s.bottomSheetModalSurface} onStartShouldSetResponder={() => true}>
+            <View style={s.modalIndicatorHandle} />
+            <View style={s.modalHeaderRow}>
+              <Text style={s.modalTitleText}>Select Department</Text>
+              <TouchableOpacity onPress={() => setDeptPickerVisible(false)}>
+                <Ionicons name="close" size={22} color={SLATE} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+              {departments.map((dept, i) => (
+                <TouchableOpacity
+                  key={dept.id}
+                  style={[s.deptOption, i < departments.length - 1 && s.deptOptionBorder]}
+                  onPress={() => { setDepartment(dept.name); setDeptPickerVisible(false); }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[s.deptOptionText, department === dept.name && s.deptOptionActive]}>
+                    {dept.name}
+                  </Text>
+                  {department === dept.name && (
+                    <Ionicons name="checkmark-circle" size={18} color={NAVY} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
       </Modal>
     </ScreenWrapper>
   );
@@ -431,5 +476,13 @@ const s = StyleSheet.create({
   roleOptionChipText: { fontSize: 12, fontWeight: '600', color: MUTED },
   
   primarySubmitActionBtn: { height: 48, borderRadius: 12, backgroundColor: NAVY, justifyContent: 'center', alignItems: 'center', marginTop: 12 },
-  primarySubmitActionBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' }
+  primarySubmitActionBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+
+  dropdownBtn: { height: 44, borderRadius: 10, borderWidth: 1.5, borderColor: BORDER, paddingHorizontal: 14, backgroundColor: BG, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  dropdownBtnText: { fontSize: 14, color: SLATE, flex: 1 },
+
+  deptOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14 },
+  deptOptionBorder: { borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  deptOptionText: { fontSize: 14, color: SLATE, flex: 1 },
+  deptOptionActive: { fontWeight: '700', color: NAVY },
 });
