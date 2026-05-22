@@ -11,6 +11,9 @@ import {
   Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import * as XLSX from 'xlsx';
 import ScreenWrapper from '../../components/ScreenWrapper';
 import CustomButton from '../../components/CustomButton';
 import {
@@ -25,6 +28,7 @@ import { useAuth } from '../../context/AuthContext';
 const ManageEventsScreen = ({ navigation }) => {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
 
@@ -126,6 +130,62 @@ const ManageEventsScreen = ({ navigation }) => {
 
   const getCategoryIcon = (cat) => {
     return EVENT_CATEGORY_ICONS[cat] || 'calendar-outline';
+  };
+
+  const handleImportRows = async (rows) => {
+    const toAdd = [], skipped = [];
+    rows.forEach((row, i) => {
+      const title = (row['title'] || row['Title'] || row['event_title'] || '').toString().trim();
+      if (!title) { skipped.push(`Row ${i + 2}: missing title`); return; }
+      toAdd.push({
+        title,
+        date:        (row['date']        || row['Date']        || '').toString().trim() || null,
+        time:        (row['time']        || row['Time']        || '').toString().trim() || null,
+        location:    (row['location']    || row['Location']    || '').toString().trim() || null,
+        category:    (row['category']    || row['Category']    || 'Academic').toString().trim(),
+        description: (row['description'] || row['Description'] || '').toString().trim() || null,
+      });
+    });
+
+    if (!toAdd.length) {
+      Alert.alert('No valid rows', skipped.length ? skipped.join('\n') : 'No valid rows found.\n\nExpected columns: title, date, time, location, category, description');
+      setImporting(false);
+      return;
+    }
+
+    let ok = 0;
+    for (const ev of toAdd) {
+      try { await addEvent(ev); ok++; } catch (_) {}
+    }
+
+    let msg = `${ok} event${ok === 1 ? '' : 's'} imported.`;
+    if (skipped.length) msg += `\n\n${skipped.length} row${skipped.length === 1 ? '' : 's'} skipped:\n${skipped.join('\n')}`;
+    Alert.alert('Import Complete', msg);
+    setImporting(false);
+  };
+
+  const handleImportEvents = async () => {
+    try {
+      setImporting(true);
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv', 'application/csv', '*/*'],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.length) { setImporting(false); return; }
+
+      const file   = result.assets[0];
+      const isCsv  = file.name?.toLowerCase().endsWith('.csv');
+      const text   = isCsv
+        ? await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.UTF8 })
+        : await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.Base64 });
+
+      const wb    = isCsv ? XLSX.read(text, { type: 'string' }) : XLSX.read(text, { type: 'base64' });
+      const rows  = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+      await handleImportRows(rows);
+    } catch (err) {
+      setImporting(false);
+      Alert.alert('Import Failed', err?.message || 'Could not read file. Use .xlsx or .csv format.');
+    }
   };
 
   const renderEventCard = ({ item }) => (
@@ -284,6 +344,27 @@ const ManageEventsScreen = ({ navigation }) => {
                 multiline
                 numberOfLines={4}
               />
+
+              {!editingEvent && (
+                <>
+                  <View style={styles.importDivider}>
+                    <View style={styles.importDividerLine} />
+                    <Text style={styles.importDividerText}>or</Text>
+                    <View style={styles.importDividerLine} />
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.importBtn, importing && { opacity: 0.6 }]}
+                    onPress={handleImportEvents}
+                    disabled={importing}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="cloud-upload-outline" size={16} color={COLORS.primary} />
+                    <Text style={styles.importBtnText}>
+                      {importing ? 'Importing…' : 'Import from Excel / CSV'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
 
               <View style={styles.modalActions}>
                 <CustomButton
@@ -511,6 +592,17 @@ const styles = StyleSheet.create({
     marginTop: 24,
     marginBottom: 16,
   },
+  importDivider: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 20,
+  },
+  importDividerLine: { flex: 1, height: 1, backgroundColor: '#E5E7EB' },
+  importDividerText: { fontSize: 12, color: COLORS.muted, fontWeight: '600' },
+  importBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    marginTop: 12, paddingVertical: 12, borderRadius: 12,
+    borderWidth: 1.5, borderColor: COLORS.primary, backgroundColor: '#EFF6FF',
+  },
+  importBtnText: { fontSize: 14, fontWeight: '700', color: COLORS.primary },
 });
 
 export default ManageEventsScreen;
