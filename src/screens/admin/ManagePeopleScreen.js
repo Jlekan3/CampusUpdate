@@ -50,6 +50,8 @@ export default function ManagePeopleScreen({ navigation }) {
   const [department, setDepartment] = useState('');
   const [position, setPosition] = useState('');
   const [staffId, setStaffId] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   // Department picker
   const [departments, setDepartments] = useState([]);
@@ -100,6 +102,8 @@ export default function ManagePeopleScreen({ navigation }) {
     setDepartment('');
     setPosition('');
     setStaffId('');
+    setPassword('');
+    setShowPassword(false);
     setModalVisible(true);
   };
 
@@ -363,6 +367,26 @@ export default function ManagePeopleScreen({ navigation }) {
               <Text style={s.inputLabelHeader}>Email Address *</Text>
               <TextInput style={s.cleanInputBox} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="name@rmu.edu.gh" placeholderTextColor={LIGHT} />
 
+              {!isEditing && (
+                <>
+                  <Text style={s.inputLabelHeader}>Password *</Text>
+                  <View style={s.passwordRow}>
+                    <TextInput
+                      style={s.passwordInput}
+                      value={password}
+                      onChangeText={setPassword}
+                      placeholder="Min. 6 characters"
+                      placeholderTextColor={LIGHT}
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                    />
+                    <TouchableOpacity onPress={() => setShowPassword(v => !v)} style={s.eyeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color={LIGHT} />
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+
 
               <Text style={s.inputLabelHeader}>Contact Phone Number</Text>
               <TextInput style={s.cleanInputBox} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="e.g. +233..." placeholderTextColor={LIGHT} />
@@ -477,6 +501,10 @@ const s = StyleSheet.create({
   
   primarySubmitActionBtn: { height: 48, borderRadius: 12, backgroundColor: NAVY, justifyContent: 'center', alignItems: 'center', marginTop: 12 },
   primarySubmitActionBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+
+  passwordRow: { flexDirection: 'row', alignItems: 'center', height: 44, borderRadius: 10, borderWidth: 1.5, borderColor: BORDER, paddingHorizontal: 14, backgroundColor: BG },
+  passwordInput: { flex: 1, fontSize: 14, color: SLATE },
+  eyeBtn: { paddingLeft: 8 },
 
   dropdownBtn: { height: 44, borderRadius: 10, borderWidth: 1.5, borderColor: BORDER, paddingHorizontal: 14, backgroundColor: BG, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   dropdownBtnText: { fontSize: 14, color: SLATE, flex: 1 },
