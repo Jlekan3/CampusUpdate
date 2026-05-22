@@ -143,10 +143,21 @@ export const createUserWithAuthAndFirestore = async (email, password, userData) 
     password,
     options: {
       data: {
-        full_name:            userData.full_name || userData.fullName || userData.name || '',
-        display_name:         userData.display_name || userData.full_name || '',
-        role:                 userData.role || 'student',
+        full_name:            userData.full_name    || userData.fullName || userData.name || '',
+        display_name:         userData.display_name || userData.full_name || userData.fullName || '',
+        role:                 userData.role         || 'student',
         must_change_password: true,
+        // All profile fields — handle_new_user trigger reads these from
+        // raw_user_meta_data and writes them directly to public.users,
+        // bypassing RLS via SECURITY DEFINER.
+        department:   userData.department   || null,
+        staff_id:     userData.staff_id     || null,
+        position:     userData.position     || null,
+        phone:        userData.phone        || null,
+        avatar_url:   userData.avatar_url   || null,
+        student_id:   userData.student_id   || userData.studentID || null,
+        index_number: userData.index_number || null,
+        programme:    userData.programme    || null,
       },
     },
   });
