@@ -370,7 +370,7 @@ export default function ManagePeopleScreen({ navigation }) {
               <Text style={s.inputLabelHeader}>Staff ID Number</Text>
               <TextInput style={s.cleanInputBox} value={staffId} onChangeText={setStaffId} placeholder="Enter institution staff index card code" placeholderTextColor={LIGHT} />
 
-              <Text style={s.inputLabelHeader}>Assigned Department / Bureau</Text>
+              <Text style={s.inputLabelHeader}>Assigned Department</Text>
               <TouchableOpacity style={s.dropdownBtn} onPress={() => setDeptPickerVisible(true)} activeOpacity={0.8}>
                 <Text style={[s.dropdownBtnText, !department && { color: LIGHT }]} numberOfLines={1}>
                   {department || 'Select department'}
