@@ -40,9 +40,19 @@ export default function ForceChangePasswordScreen() {
     setError('');
     setLoading(true);
     try {
+      // 1. Update the password
       const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
       if (updateErr) throw updateErr;
-      await clearMustChangePassword();
+
+      // 2. Clear the must_change_password flag in metadata
+      await supabase.auth.updateUser({ data: { must_change_password: false } });
+
+      // 3. Sign out completely — forces a fresh, clean login with the new password.
+      //    This avoids stale session / infinite loading on the dashboard after
+      //    a forced password reset. onAuthStateChange clears state → Auth stack shown.
+      await supabase.auth.signOut();
+
+      // setDone briefly shows the success screen before the auth state clears
       setDone(true);
     } catch (err) {
       setError(err.message || 'Could not update password. Please try again.');
@@ -60,7 +70,7 @@ export default function ForceChangePasswordScreen() {
           </View>
           <Text style={s.successTitle}>Password Updated!</Text>
           <Text style={s.successSub}>
-            Your password has been changed successfully. You'll be redirected to your dashboard now.
+            Your password has been changed successfully. Please sign in with your new password to continue.
           </Text>
         </View>
       </View>
