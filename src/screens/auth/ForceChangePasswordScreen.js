@@ -40,7 +40,6 @@ export default function ForceChangePasswordScreen() {
     setError('');
     setLoading(true);
     try {
-      // Single network call — updates password AND clears must_change_password simultaneously
       const { error: updateErr } = await supabase.auth.updateUser({
         password: newPassword,
         data: { must_change_password: false },
@@ -48,16 +47,19 @@ export default function ForceChangePasswordScreen() {
 
       if (updateErr) throw updateErr;
 
+      // Clear local context state instantly so router doesn't re-trap them
+      if (clearMustChangePassword) await clearMustChangePassword();
+
       setDone(true);
 
-      // Give the user 2.5 s to read the success card, then sign out cleanly
+      // Delay sign-out by 2 s so user can read the success card
       setTimeout(async () => {
         try {
           await supabase.auth.signOut();
         } catch (signOutErr) {
-          console.error('Signout error:', signOutErr);
+          console.warn('Signout background warning:', signOutErr.message);
         }
-      }, 2500);
+      }, 2000);
 
     } catch (err) {
       setError(err.message || 'Could not update password. Please try again.');
