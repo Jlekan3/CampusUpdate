@@ -166,21 +166,24 @@ export const createUserWithAuthAndFirestore = async (email, password, userData) 
 
   const userId = data.user?.id;
   if (userId) {
-    await supabase.from('users').upsert({
-      id:           userId,
-      email,
-      full_name:    userData.full_name    || userData.fullName || userData.name || '',
-      display_name: userData.display_name || userData.full_name || '',
-      role:         userData.role         || 'student',
-      department:   userData.department   || null,
-      programme:    userData.programme    || null,
-      student_id:   userData.student_id   || userData.studentID || null,
-      index_number: userData.index_number || null,
-      staff_id:     userData.staff_id     || null,
-      position:     userData.position     || null,
-      phone:        userData.phone        || null,
-      avatar_url:   userData.avatar_url   || null,
-    }, { onConflict: 'id' });
+    // Use a SECURITY DEFINER RPC so the admin session can write
+    // a row for a different user without hitting RLS.
+    const { error: rpcErr } = await supabase.rpc('admin_upsert_user_profile', {
+      p_id:           userId,
+      p_email:        email,
+      p_full_name:    userData.full_name    || userData.fullName || userData.name || '',
+      p_display_name: userData.display_name || userData.full_name || userData.fullName || '',
+      p_role:         userData.role         || 'staff',
+      p_department:   userData.department   || null,
+      p_staff_id:     userData.staff_id     || null,
+      p_position:     userData.position     || null,
+      p_phone:        userData.phone        || null,
+      p_avatar_url:   userData.avatar_url   || null,
+      p_student_id:   userData.student_id   || userData.studentID || null,
+      p_index_number: userData.index_number || null,
+      p_programme:    userData.programme    || null,
+    });
+    if (rpcErr) console.error('[createUser] profile RPC failed:', rpcErr.message);
   }
 
   // Send welcome email with temp credentials (graceful — don't block on failure)

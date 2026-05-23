@@ -57,41 +57,46 @@ BEGIN
   IF NEW.email_confirmed_at IS NULL THEN RETURN NEW; END IF;
 
   -- Staff / admin: create full profile
-  INSERT INTO public.users (
-    id, email, full_name, display_name, role,
-    department, staff_id, position, phone, avatar_url,
-    student_id, index_number, programme,
-    is_anonymous, created_at, updated_at
-  )
-  VALUES (
-    NEW.id,
-    NEW.email,
-    COALESCE(NEW.raw_user_meta_data->>'full_name',    ''),
-    COALESCE(NEW.raw_user_meta_data->>'display_name',
-             NEW.raw_user_meta_data->>'full_name',    ''),
-    COALESCE(NEW.raw_user_meta_data->>'role', 'staff'),
-    NEW.raw_user_meta_data->>'department',
-    NEW.raw_user_meta_data->>'staff_id',
-    NEW.raw_user_meta_data->>'position',
-    NEW.raw_user_meta_data->>'phone',
-    NEW.raw_user_meta_data->>'avatar_url',
-    NEW.raw_user_meta_data->>'student_id',
-    NEW.raw_user_meta_data->>'index_number',
-    NEW.raw_user_meta_data->>'programme',
-    false,
-    NOW(),
-    NOW()
-  )
-  ON CONFLICT (id) DO UPDATE SET
-    full_name    = EXCLUDED.full_name,
-    display_name = EXCLUDED.display_name,
-    role         = EXCLUDED.role,
-    department   = EXCLUDED.department,
-    staff_id     = EXCLUDED.staff_id,
-    position     = EXCLUDED.position,
-    phone        = EXCLUDED.phone,
-    avatar_url   = EXCLUDED.avatar_url,
-    updated_at   = NOW();
+  -- Wrapped in EXCEPTION so a column/constraint error never blocks auth creation
+  BEGIN
+    INSERT INTO public.users (
+      id, email, full_name, display_name, role,
+      department, staff_id, position, phone, avatar_url,
+      student_id, index_number, programme,
+      is_anonymous, created_at, updated_at
+    )
+    VALUES (
+      NEW.id,
+      NEW.email,
+      COALESCE(NEW.raw_user_meta_data->>'full_name',    ''),
+      COALESCE(NEW.raw_user_meta_data->>'display_name',
+               NEW.raw_user_meta_data->>'full_name',    ''),
+      COALESCE(NEW.raw_user_meta_data->>'role', 'staff'),
+      NEW.raw_user_meta_data->>'department',
+      NEW.raw_user_meta_data->>'staff_id',
+      NEW.raw_user_meta_data->>'position',
+      NEW.raw_user_meta_data->>'phone',
+      NEW.raw_user_meta_data->>'avatar_url',
+      NEW.raw_user_meta_data->>'student_id',
+      NEW.raw_user_meta_data->>'index_number',
+      NEW.raw_user_meta_data->>'programme',
+      false,
+      NOW(),
+      NOW()
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      full_name    = EXCLUDED.full_name,
+      display_name = EXCLUDED.display_name,
+      role         = EXCLUDED.role,
+      department   = EXCLUDED.department,
+      staff_id     = EXCLUDED.staff_id,
+      position     = EXCLUDED.position,
+      phone        = EXCLUDED.phone,
+      avatar_url   = EXCLUDED.avatar_url,
+      updated_at   = NOW();
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING '[handle_new_user] profile insert failed for %: %', NEW.id, SQLERRM;
+  END;
 
   RETURN NEW;
 END;
@@ -161,3 +166,59 @@ CREATE TRIGGER on_auth_user_confirmed
   AFTER UPDATE ON auth.users
   FOR EACH ROW
   EXECUTE FUNCTION public.handle_user_confirmed();
+
+
+-- ── 5. RPC: admin_upsert_user_profile ────────────────────────────────────────
+--    Called from the app after signUp to guarantee the profile row exists.
+--    SECURITY DEFINER bypasses RLS so the admin can write any user's row.
+CREATE OR REPLACE FUNCTION public.admin_upsert_user_profile(
+  p_id           uuid,
+  p_email        text,
+  p_full_name    text,
+  p_display_name text,
+  p_role         text,
+  p_department   text DEFAULT NULL,
+  p_staff_id     text DEFAULT NULL,
+  p_position     text DEFAULT NULL,
+  p_phone        text DEFAULT NULL,
+  p_avatar_url   text DEFAULT NULL,
+  p_student_id   text DEFAULT NULL,
+  p_index_number text DEFAULT NULL,
+  p_programme    text DEFAULT NULL
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.users (
+    id, email, full_name, display_name, role,
+    department, staff_id, position, phone, avatar_url,
+    student_id, index_number, programme,
+    is_anonymous, created_at, updated_at
+  )
+  VALUES (
+    p_id, p_email, p_full_name, p_display_name, p_role,
+    p_department, p_staff_id, p_position, p_phone, p_avatar_url,
+    p_student_id, p_index_number, p_programme,
+    false, NOW(), NOW()
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    email        = EXCLUDED.email,
+    full_name    = EXCLUDED.full_name,
+    display_name = EXCLUDED.display_name,
+    role         = EXCLUDED.role,
+    department   = EXCLUDED.department,
+    staff_id     = EXCLUDED.staff_id,
+    position     = EXCLUDED.position,
+    phone        = EXCLUDED.phone,
+    avatar_url   = EXCLUDED.avatar_url,
+    student_id   = EXCLUDED.student_id,
+    index_number = EXCLUDED.index_number,
+    programme    = EXCLUDED.programme,
+    updated_at   = NOW();
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.admin_upsert_user_profile TO authenticated;
