@@ -1,860 +1,372 @@
-import React, {
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-} from 'react';
+import React, { useCallback, useContext, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  Dimensions,
+  ActivityIndicator, Alert, Modal, RefreshControl,
+  ScrollView, StyleSheet, Text, TextInput,
+  TouchableOpacity, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import ScreenWrapper from '../../components/ScreenWrapper';
-import CustomButton from '../../components/CustomButton';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
 import { CampusUpdatesContext } from '../../context/CampusUpdatesContext';
 import { supabase } from '../../config/supabase';
-import {
-  subscribeToIssueReports,
-  subscribeToDepartments,
-  updateDepartment,
-  addNotification,
-  updateIssueReport,
-} from '../../services/databaseService';
 
-const { width } = Dimensions.get('window');
-
-// ── Corporate White & Blue Palette ──────────────────────────────────────────
-const C = {
-  bluePrimary:   '#1A365D', // Corporate Navy Blue
-  blueAccent:    '#2563EB', // Vibrant Informational Blue
-  blueLightBg:   '#EFF6FF', // Soft Sky Blue Contrast
-  white:         '#FFFFFF',
-  bgCanvas:      '#F8FAFC', // Crisp Professional Light Canvas
-  textDark:      '#0F172A', // Slate Dark Body Text
-  textMuted:     '#64748B', // Neutral Cool Gray Subtext
-  borderLight:   '#E2E8F0', // Clean Segment Dividers
-  greenSuccess:  '#10B981',
-  orangePending: '#F59E0B',
-};
+// ── Palette ──────────────────────────────────────────────────────────────────
+const NAVY  = '#1A365D';
+const BLUE  = '#2563EB';
+const WHITE = '#FFFFFF';
+const BG    = '#F8FAFC';
+const CARD  = '#FFFFFF';
+const BORDER= '#E2E8F0';
+const DARK  = '#0F172A';
+const MUTED = '#64748B';
+const LIGHT = '#94A3B8';
 
 export default function StaffHomeScreen() {
-  const { user } = useAuth();
-  const { events } = useContext(CampusUpdatesContext);
+  const { user, logout } = useAuth();
+  const { notifications = [], events = [] } = useContext(CampusUpdatesContext);
 
-  // --- Core State Configurations ---
-  const [activeTab, setActiveTab] = useState('Overview'); // 'Overview', 'Departments', 'Reports'
-  const [departments, setDepartments] = useState([]);
-  const [issueReports, setIssueReports] = useState([]);
-  const [usersList, setUsersList] = useState([]); // Storage for direct message targeting selections
-  const [isLoading, setIsLoading] = useState(false);
+  const [tab,          setTab]          = useState('Overview');
+  const [departments,  setDepartments]  = useState([]);
+  const [reports,      setReports]      = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [refreshing,   setRefreshing]   = useState(false);
+  const [broadcastOpen,setBroadcastOpen]= useState(false);
+  const [bTitle,       setBTitle]       = useState('');
+  const [bMessage,     setBMessage]     = useState('');
+  const [bSending,     setBSending]     = useState(false);
 
-  // --- Broadcast Modal Form States (Notifications & Events) ---
-  const [broadcastModalVisible, setBroadcastModalVisible] = useState(false);
-  const [broadcastType, setBroadcastType] = useState('Notification'); // 'Notification' or 'Event'
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [category, setCategory] = useState('Academic'); // 'Academic', 'Administrative', 'Emergency'
-  const [audienceScope, setAudienceScope] = useState('everyone'); // 'everyone', 'staff', 'direct'
-  const [selectedRecipientId, setSelectedRecipientId] = useState('');
+  const displayName =
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.display_name ||
+    user?.email?.split('@')[0] ||
+    'Staff';
 
-  // --- Department Management Modal Form States ---
-  const [deptModalVisible, setDeptModalVisible] = useState(false);
-  const [selectedDept, setSelectedDept] = useState(null);
-  const [deptName, setDeptName] = useState('');
-  const [deptCode, setDeptCode] = useState('');
-  const [deptHOD, setDeptHOD] = useState('');
-
-  // --- Campus Issue Report Context Detail States ---
-  const [reportModalVisible, setReportModalVisible] = useState(false);
-  const [selectedReport, setSelectedReport] = useState(null);
-
-  // --- Real-Time Sync Subscriptions ---
-  useEffect(() => {
-    setIsLoading(true);
-
-    // Timeout fallback — clear loading after 5 s regardless of subscription state
-    const timeout = setTimeout(() => setIsLoading(false), 5000);
-
-    const unsubDepts = subscribeToDepartments((data) => {
-      setDepartments(data || []);
-      setIsLoading(false);
-    });
-
-    const unsubIssues = subscribeToIssueReports((data) => {
-      setIssueReports(data || []);
-      setIsLoading(false);
-    });
-
-    fetchUsersDirectory();
-
-    return () => {
-      clearTimeout(timeout);
-      if (typeof unsubDepts  === 'function') unsubDepts();
-      if (typeof unsubIssues === 'function') unsubIssues();
-    };
+  // ── Data fetch ──────────────────────────────────────────────────────────────
+  const fetchData = useCallback(async () => {
+    try {
+      const [deptRes, reportRes] = await Promise.all([
+        supabase.from('departments').select('id, name, head_of_department, contact_email').order('name'),
+        supabase.from('reports').select('id, title, description, status, category, created_at').order('created_at', { ascending: false }).limit(20),
+      ]);
+      if (deptRes.data)   setDepartments(deptRes.data);
+      if (reportRes.data) setReports(reportRes.data);
+    } catch (err) {
+      console.warn('[Staff] fetch error:', err.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
-  const fetchUsersDirectory = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('id, full_name, email, role')
-        .order('full_name', { ascending: true });
-      if (error) throw error;
-      setUsersList(data || []);
-    } catch (err) {
-      console.error('Failed to load user directory matrix:', err.message);
-    }
-  };
+  useEffect(() => { fetchData(); }, [fetchData]);
 
-  // --- Execution Form Submission Logic Handler ---
-  const handlePublishBroadcast = async () => {
-    if (!title.trim() || !body.trim()) {
-      Alert.alert('Required Field Missing', 'Please provide a title and detailed body context.');
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchData();
+  }, [fetchData]);
+
+  // ── Broadcast ───────────────────────────────────────────────────────────────
+  const sendBroadcast = async () => {
+    if (!bTitle.trim() || !bMessage.trim()) {
+      Alert.alert('Required', 'Please fill in both title and message.');
       return;
     }
-
-    if (audienceScope === 'direct' && !selectedRecipientId) {
-      Alert.alert('Recipient Required', 'Please select a specific recipient for this direct message broadcast.');
-      return;
-    }
-
-    setIsLoading(true);
+    setBSending(true);
     try {
-      const payload = {
-        title: title.trim(),
-        body: body.trim(),
-        category: category,
-        type: broadcastType, // Differentiates system notifications vs events
-        sender_id: user?.id,
-        sender_name: user?.full_name || 'Staff Member',
-        target_audience: audienceScope, // 'everyone', 'staff', 'direct'
-        recipient_id: audienceScope === 'direct' ? selectedRecipientId : null,
-        created_at: new Date().toISOString(),
-      };
-
-      await addNotification(payload);
-      
-      Alert.alert('Broadcast Published', `Your ${broadcastType.toLowerCase()} has been deployed successfully.`);
-      
-      // Clean up local layout variable configurations
-      setTitle('');
-      setBody('');
-      setAudienceScope('everyone');
-      setSelectedRecipientId('');
-      setBroadcastModalVisible(false);
-    } catch (error) {
-      Alert.alert('Deployment Error', error.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleUpdateDepartmentDetails = async () => {
-    if (!deptName.trim() || !deptCode.trim()) return;
-    try {
-      await updateDepartment(selectedDept.id, {
-        name: deptName.trim(),
-        code: deptCode.trim(),
-        hod: deptHOD.trim(),
+      const { error } = await supabase.from('notifications').insert({
+        title:    bTitle.trim(),
+        message:  bMessage.trim(),
+        audience: 'everyone',
+        posted_by: user?.id,
       });
-      setDeptModalVisible(false);
-      Alert.alert('Success', 'Department data model updated.');
+      if (error) throw error;
+      Alert.alert('Sent', 'Broadcast posted successfully.');
+      setBTitle('');
+      setBMessage('');
+      setBroadcastOpen(false);
     } catch (err) {
       Alert.alert('Error', err.message);
+    } finally {
+      setBSending(false);
     }
   };
 
-  const handleUpdateReportStatus = async (reportId, newStatus) => {
-    try {
-      await updateIssueReport(reportId, { status: newStatus });
-      setReportModalVisible(false);
-      Alert.alert('Status Synchronized', `Issue status marked as ${newStatus}.`);
-    } catch (err) {
-      Alert.alert('Error', err.message);
-    }
-  };
+  // ── Loading ─────────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <SafeAreaView style={s.root}>
+        <View style={s.loadingWrap}>
+          <ActivityIndicator size="large" color={BLUE} />
+          <Text style={s.loadingText}>Loading dashboard…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <ScreenWrapper backgroundColor={C.bgCanvas} paddingHorizontal={0} paddingBottom={0}>
+    <SafeAreaView style={s.root} edges={['top']}>
 
       {/* Header */}
-      <View style={styles.brandHeader}>
-        <View>
-          <Text style={styles.brandTitle}>RMU Portal</Text>
-          <Text style={styles.brandSubtitle}>Faculty & Staff Control Centre</Text>
+      <View style={s.header}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.headerEye}>FACULTY & STAFF</Text>
+          <Text style={s.headerName} numberOfLines={1}>{displayName}</Text>
         </View>
-        <TouchableOpacity
-          style={styles.composerTriggerButton}
-          onPress={() => setBroadcastModalVisible(true)}
-        >
-          <Ionicons name="megaphone" size={18} color={C.white} />
-          <Text style={styles.composerTriggerButtonText}>Broadcast</Text>
+        <TouchableOpacity style={s.broadcastBtn} onPress={() => setBroadcastOpen(true)} activeOpacity={0.85}>
+          <Ionicons name="megaphone-outline" size={16} color={WHITE} />
+          <Text style={s.broadcastBtnText}>Broadcast</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Tab bar */}
-      <View style={styles.segmentNavigationBar}>
-        {['Overview', 'Departments', 'Reports'].map((tab) => (
+      {/* Tabs */}
+      <View style={s.tabBar}>
+        {['Overview', 'Departments', 'Reports'].map((t) => (
           <TouchableOpacity
-            key={tab}
-            style={[styles.navigationTabItem, activeTab === tab && styles.navigationTabItemActive]}
-            onPress={() => setActiveTab(tab)}
+            key={t}
+            style={[s.tabItem, tab === t && s.tabItemActive]}
+            onPress={() => setTab(t)}
+            activeOpacity={0.8}
           >
-            <Text style={[styles.navigationTabText, activeTab === tab && styles.navigationTabTextActive]}>
-              {tab}
-            </Text>
+            <Text style={[s.tabText, tab === t && s.tabTextActive]}>{t}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {/* Loading state replaces content while fetching */}
-      {isLoading ? (
-        <View style={styles.loadingCenter}>
-          <ActivityIndicator size="large" color={C.blueAccent} />
-          <Text style={styles.loadingText}>Loading dashboard…</Text>
-        </View>
-      ) : (
-      <ScrollView contentContainerStyle={styles.scrollLayoutPane} showsVerticalScrollIndicator={false}>
+      {/* Content */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={s.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={BLUE} />}
+      >
 
-        {/* OVERVIEW */}
-        {activeTab === 'Overview' && (
-          <View style={styles.contentDashboardSection}>
-            <Text style={styles.panelBlockSectionHeader}>Recent Activities & Broadcast Streams</Text>
-
-            {events.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Ionicons name="megaphone-outline" size={40} color={C.borderLight} />
-                <Text style={styles.emptyStateText}>No broadcasts yet</Text>
-                <Text style={styles.emptyStateSub}>Tap Broadcast to post a notification or event</Text>
+        {/* ── OVERVIEW ── */}
+        {tab === 'Overview' && (
+          <View style={s.section}>
+            {/* Stats row */}
+            <View style={s.statsRow}>
+              <View style={s.statCard}>
+                <Text style={s.statNum}>{departments.length}</Text>
+                <Text style={s.statLabel}>Departments</Text>
               </View>
-            ) : events.slice(0, 4).map((item) => (
-              <View key={item.id} style={styles.dataLogCardRow}>
-                <View style={styles.badgeIndicatorMarker}>
-                  <Ionicons
-                    name={item.category === 'Event' ? 'calendar-sharp' : 'notifications-sharp'}
-                    size={20}
-                    color={C.blueAccent}
-                  />
+              <View style={s.statCard}>
+                <Text style={s.statNum}>{reports.filter(r => r.status !== 'resolved').length}</Text>
+                <Text style={s.statLabel}>Open Reports</Text>
+              </View>
+              <View style={s.statCard}>
+                <Text style={s.statNum}>{(notifications || []).length}</Text>
+                <Text style={s.statLabel}>Notices</Text>
+              </View>
+            </View>
+
+            {/* Recent notifications */}
+            <Text style={s.sectionTitle}>Recent Notifications</Text>
+            {(notifications || []).length === 0 ? (
+              <View style={s.empty}>
+                <Ionicons name="notifications-outline" size={36} color={LIGHT} />
+                <Text style={s.emptyText}>No notifications yet</Text>
+              </View>
+            ) : (notifications || []).slice(0, 5).map((n) => (
+              <View key={n.id} style={s.notifCard}>
+                <View style={s.notifDot} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.notifTitle} numberOfLines={1}>{n.title}</Text>
+                  <Text style={s.notifMsg} numberOfLines={2}>{n.message || n.body || ''}</Text>
                 </View>
-                <View style={styles.dataLogCardBody}>
-                  <Text style={styles.dataLogCardTitleText}>{item.title}</Text>
-                  <Text style={styles.dataLogCardSubtitleText} numberOfLines={2}>
-                    {item.message || item.body || item.description || ''}
-                  </Text>
-                  <View style={styles.metadataCardContainerBadge}>
-                    <Text style={styles.badgeScopeIndicatorLabel}>
-                      {item.audience || item.target_audience || 'Everyone'}
-                    </Text>
+              </View>
+            ))}
+
+            {/* Recent events */}
+            {(events || []).length > 0 && (
+              <>
+                <Text style={[s.sectionTitle, { marginTop: 20 }]}>Upcoming Events</Text>
+                {(events || []).slice(0, 3).map((ev) => (
+                  <View key={ev.id} style={s.eventCard}>
+                    <View style={s.eventIconWrap}>
+                      <Ionicons name="calendar-outline" size={20} color={BLUE} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.eventTitle} numberOfLines={1}>{ev.title}</Text>
+                      {ev.date ? <Text style={s.eventMeta}>{ev.date}{ev.time ? ` · ${ev.time}` : ''}</Text> : null}
+                    </View>
                   </View>
-                </View>
-              </View>
-            ))}
+                ))}
+              </>
+            )}
           </View>
         )}
 
-        {/* TAB SUBSECTION PANEL: DEPARTMENT CONTROLS */}
-        {activeTab === 'Departments' && (
-          <View style={styles.contentDashboardSection}>
-            <Text style={styles.panelBlockSectionHeader}>Campus Academic Department Registries</Text>
+        {/* ── DEPARTMENTS ── */}
+        {tab === 'Departments' && (
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>Campus Departments</Text>
             {departments.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Ionicons name="business-outline" size={40} color={C.borderLight} />
-                <Text style={styles.emptyStateText}>No departments found</Text>
+              <View style={s.empty}>
+                <Ionicons name="business-outline" size={36} color={LIGHT} />
+                <Text style={s.emptyText}>No departments found</Text>
               </View>
-            ) : departments.map((dept) => (
-              <TouchableOpacity
-                key={dept.id}
-                style={styles.dataLogCardRow}
-                onPress={() => {
-                  setSelectedDept(dept);
-                  setDeptName(dept.name);
-                  setDeptCode(dept.code);
-                  setDeptHOD(dept.hod || '');
-                  setDeptModalVisible(true);
-                }}
-              >
-                <Ionicons name="business" size={24} color={C.bluePrimary} style={{ marginRight: 12 }} />
-                <View style={styles.dataLogCardBody}>
-                  <Text style={styles.dataLogCardTitleText}>{dept.name} ({dept.code})</Text>
-                  <Text style={styles.dataLogCardSubtitleText}>HOD: {dept.hod || 'Unassigned Faculty Head'}</Text>
+            ) : departments.map((d) => (
+              <View key={d.id} style={s.deptCard}>
+                <View style={s.deptIconWrap}>
+                  <Ionicons name="business-outline" size={20} color={NAVY} />
                 </View>
-                <Ionicons name="chevron-forward" size={16} color={C.textMuted} />
-              </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.deptName} numberOfLines={1}>{d.name}</Text>
+                  {d.head_of_department ? (
+                    <Text style={s.deptMeta}>HOD: {d.head_of_department}</Text>
+                  ) : null}
+                  {d.contact_email ? (
+                    <Text style={s.deptMeta}>{d.contact_email}</Text>
+                  ) : null}
+                </View>
+              </View>
             ))}
           </View>
         )}
 
-        {/* TAB SUBSECTION PANEL: CAMPUS INCIDENT REPORTS */}
-        {activeTab === 'Reports' && (
-          <View style={styles.contentDashboardSection}>
-            <Text style={styles.panelBlockSectionHeader}>Supervised Student Issue Tickets</Text>
-            {issueReports.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Ionicons name="document-text-outline" size={40} color={C.borderLight} />
-                <Text style={styles.emptyStateText}>No reports yet</Text>
+        {/* ── REPORTS ── */}
+        {tab === 'Reports' && (
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>Student Issue Reports</Text>
+            {reports.length === 0 ? (
+              <View style={s.empty}>
+                <Ionicons name="document-text-outline" size={36} color={LIGHT} />
+                <Text style={s.emptyText}>No reports submitted yet</Text>
               </View>
-            ) : issueReports.map((report) => (
-              <TouchableOpacity
-                key={report.id}
-                style={styles.dataLogCardRow}
-                onPress={() => {
-                  setSelectedReport(report);
-                  setReportModalVisible(true);
-                }}
-              >
-                <View style={[
-                  styles.statusFlagIndicatorNode, 
-                  { backgroundColor: report.status === 'Resolved' ? C.greenSuccess : C.orangePending }
-                ]} />
-                <View style={styles.dataLogCardBody}>
-                  <Text style={styles.dataLogCardTitleText}>{report.title}</Text>
-                  <Text style={styles.dataLogCardSubtitleText} numberOfLines={1}>{report.description}</Text>
+            ) : reports.map((r) => (
+              <View key={r.id} style={s.reportCard}>
+                <View style={[s.statusDot, { backgroundColor: r.status === 'resolved' ? '#10B981' : '#F59E0B' }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.reportTitle} numberOfLines={1}>{r.title}</Text>
+                  <Text style={s.reportMeta}>{r.category || 'General'} · {r.status || 'open'}</Text>
+                  {r.description ? (
+                    <Text style={s.reportDesc} numberOfLines={2}>{r.description}</Text>
+                  ) : null}
                 </View>
-                <Ionicons name="eye-outline" size={18} color={C.blueAccent} />
-              </TouchableOpacity>
+              </View>
             ))}
           </View>
         )}
 
       </ScrollView>
-      )} {/* end isLoading ternary */}
 
-      {/* MODAL ARCHITECTURE 1: MULTI-DIRECTION BROADCAST COMPOSER ENGINE */}
-      <Modal visible={broadcastModalVisible} animationType="slide" transparent={true}>
-        <View style={styles.overlayModalContainerViewport}>
-          <View style={styles.modalContentCardSheet}>
-            
-            <View style={styles.modalHeaderTitleBlockSection}>
-              <Text style={styles.modalHeadingTitleText}>Create Broadcast Entry</Text>
-              <TouchableOpacity onPress={() => setBroadcastModalVisible(false)}>
-                <Ionicons name="close" size={24} color={C.textDark} />
+      {/* Broadcast Modal */}
+      <Modal visible={broadcastOpen} animationType="slide" transparent onRequestClose={() => setBroadcastOpen(false)}>
+        <View style={s.modalOverlay}>
+          <View style={s.modalSheet}>
+            <View style={s.modalHandle} />
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>New Broadcast</Text>
+              <TouchableOpacity onPress={() => setBroadcastOpen(false)}>
+                <Ionicons name="close" size={22} color={DARK} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={{ paddingBottom: 30 }} showsVerticalScrollIndicator={false}>
-              
-              {/* Selector A: Broadcast Engine Type Switch */}
-              <Text style={styles.formSelectorLabelPromptText}>Broadcast Medium Type</Text>
-              <View style={styles.inlineOptionSelectorRow}>
-                {['Notification', 'Event'].map((t) => (
-                  <TouchableOpacity
-                    key={t}
-                    style={[styles.optionSelectorPillBadge, broadcastType === t && styles.optionSelectorPillBadgeActive]}
-                    onPress={() => setBroadcastType(t)}
-                  >
-                    <Text style={[styles.optionSelectorLabelText, broadcastType === t && styles.optionSelectorLabelTextActive]}>
-                      {t}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+            <Text style={s.fieldLabel}>Title</Text>
+            <TextInput
+              style={s.fieldInput}
+              value={bTitle}
+              onChangeText={setBTitle}
+              placeholder="Broadcast title…"
+              placeholderTextColor={LIGHT}
+            />
 
-              {/* Selector B: Dynamic Targeting Direction Engine */}
-              <Text style={styles.formSelectorLabelPromptText}>Target Audience Direction</Text>
-              <View style={styles.inlineOptionSelectorRow}>
-                {[
-                  { id: 'everyone', display: 'Everyone' },
-                  { id: 'staff', display: 'Staff Only' },
-                  { id: 'direct', display: 'Direct Message' }
-                ].map((scope) => (
-                  <TouchableOpacity
-                    key={scope.id}
-                    style={[styles.optionSelectorPillBadge, audienceScope === scope.id && styles.optionSelectorPillBadgeActive]}
-                    onPress={() => setAudienceScope(scope.id)}
-                  >
-                    <Text style={[styles.optionSelectorLabelText, audienceScope === scope.id && styles.optionSelectorLabelTextActive]}>
-                      {scope.display}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+            <Text style={s.fieldLabel}>Message</Text>
+            <TextInput
+              style={[s.fieldInput, { height: 100, textAlignVertical: 'top' }]}
+              value={bMessage}
+              onChangeText={setBMessage}
+              placeholder="Type your message…"
+              placeholderTextColor={LIGHT}
+              multiline
+            />
 
-              {/* Conditional Sub-Selector Layout: Direct Target User Entity Directory Picker */}
-              {audienceScope === 'direct' && (
-                <View style={styles.conditionalDropdownSectionContainer}>
-                  <Text style={styles.formSelectorLabelPromptText}>Select Target User Profile Recipient</Text>
-                  <ScrollView style={styles.recipientScrollPickerPane} nestedScrollEnabled={true}>
-                    {usersList.map((usr) => (
-                      <TouchableOpacity
-                        key={usr.id}
-                        style={[
-                          styles.recipientSelectableRowCard, 
-                          selectedRecipientId === usr.id && styles.recipientSelectableRowCardActive
-                        ]}
-                        onPress={() => setSelectedRecipientId(usr.id)}
-                      >
-                        <Text style={[
-                          styles.recipientRecordNameText, 
-                          selectedRecipientId === usr.id && styles.recipientRecordNameTextActive
-                        ]}>
-                          {usr.full_name || 'Anonymous User'} ({usr.role?.toUpperCase() || 'STUDENT'})
-                        </Text>
-                        <Text style={styles.recipientRecordSubEmailText}>{usr.email}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              )}
-
-              {/* Selector C: Categorization Selection Matrix */}
-              <Text style={styles.formSelectorLabelPromptText}>Topic Category Classification</Text>
-              <View style={styles.inlineOptionSelectorRow}>
-                {['Academic', 'Administrative', 'Emergency'].map((cat) => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[styles.optionSelectorPillBadge, category === cat && styles.optionSelectorPillBadgeActive]}
-                    onPress={() => setCategory(cat)}
-                  >
-                    <Text style={[styles.optionSelectorLabelText, category === cat && styles.optionSelectorLabelTextActive]}>
-                      {cat}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Standard Structural Input Form Fields */}
-              <Text style={styles.formSelectorLabelPromptText}>Broadcast Title</Text>
-              <TextInput
-                style={styles.textInputControlFieldBox}
-                placeholder="Enter title heading context..."
-                placeholderTextColor={C.textMuted}
-                value={title}
-                onChangeText={setTitle}
-              />
-
-              <Text style={styles.formSelectorLabelPromptText}>Detailed Body Message</Text>
-              <TextInput
-                style={[styles.textInputControlFieldBox, styles.textInputTextAreaBoxModifier]}
-                placeholder="Write message log content body text here..."
-                placeholderTextColor={C.textMuted}
-                multiline={true}
-                numberOfLines={4}
-                value={body}
-                onChangeText={setBody}
-              />
-
-              <CustomButton
-                title={`Publish ${broadcastType}`}
-                onPress={handlePublishBroadcast}
-                style={{ marginTop: 24, backgroundColor: C.blueAccent }}
-              />
-
-            </ScrollView>
+            <TouchableOpacity
+              style={[s.sendBtn, bSending && { opacity: 0.6 }]}
+              onPress={sendBroadcast}
+              disabled={bSending}
+              activeOpacity={0.85}
+            >
+              {bSending
+                ? <ActivityIndicator color={WHITE} size="small" />
+                : <Text style={s.sendBtnText}>Post Broadcast</Text>}
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* MODAL ARCHITECTURE 2: DEPARTMENT METADATA CONFIGURATION EDITOR */}
-      <Modal visible={deptModalVisible} animationType="fade" transparent={true}>
-        <View style={styles.overlayModalContainerViewport}>
-          <View style={styles.modalContentCardSheet}>
-            <View style={styles.modalHeaderTitleBlockSection}>
-              <Text style={styles.modalHeadingTitleText}>Edit Department Registry</Text>
-              <TouchableOpacity onPress={() => setDeptModalVisible(false)}>
-                <Ionicons name="close" size={24} color={C.textDark} />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.formSelectorLabelPromptText}>Department Name</Text>
-            <TextInput
-              style={styles.textInputControlFieldBox}
-              value={deptName}
-              onChangeText={setDeptName}
-            />
-
-            <Text style={styles.formSelectorLabelPromptText}>Department Registry Code</Text>
-            <TextInput
-              style={styles.textInputControlFieldBox}
-              value={deptCode}
-              onChangeText={setDeptCode}
-            />
-
-            <Text style={styles.formSelectorLabelPromptText}>Assigned Head of Department (HOD)</Text>
-            <TextInput
-              style={styles.textInputControlFieldBox}
-              value={deptHOD}
-              onChangeText={setDeptHOD}
-            />
-
-            <CustomButton
-              title="Save Modifications"
-              onPress={handleUpdateDepartmentDetails}
-              style={{ marginTop: 24, backgroundColor: C.bluePrimary }}
-            />
-          </View>
-        </View>
-      </Modal>
-
-      {/* MODAL ARCHITECTURE 3: CAMPUS ISSUE TICKETING INSPECTOR */}
-      <Modal visible={reportModalVisible} animationType="fade" transparent={true}>
-        <View style={styles.overlayModalContainerViewport}>
-          <View style={styles.modalContentCardSheet}>
-            <View style={styles.modalHeaderTitleBlockSection}>
-              <Text style={styles.modalHeadingTitleText}>Issue Ticket Details</Text>
-              <TouchableOpacity onPress={() => setReportModalVisible(false)}>
-                <Ionicons name="close" size={24} color={C.textDark} />
-              </TouchableOpacity>
-            </View>
-
-            {selectedReport && (
-              <View style={{ gap: 10 }}>
-                <Text style={styles.inspectorDetailHeadingTitleText}>{selectedReport.title}</Text>
-                <View style={styles.inspectorMetadataBadgeRowContainer}>
-                  <Text style={styles.inspectorSubtextLabel}>Status: {selectedReport.status}</Text>
-                  <Text style={styles.inspectorSubtextLabel}>Category: {selectedReport.category || 'General'}</Text>
-                </View>
-
-                <ScrollView style={styles.inspectorBodyDescriptionTextBlockScrollBox}>
-                  <Text style={styles.inspectorBodyDescriptionContentText}>
-                    {selectedReport.description || 'No descriptive content attached to this ticket submission.'}
-                  </Text>
-                </ScrollView>
-
-                <View style={styles.inspectorOperationalControlActionContainerRow}>
-                  <TouchableOpacity
-                    style={[styles.inspectorActionTriggerButton, { backgroundColor: C.greenSuccess }]}
-                    onPress={() => handleUpdateReportStatus(selectedReport.id, 'Resolved')}
-                  >
-                    <Text style={styles.inspectorActionButtonLabelText}>Resolve Ticket</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.inspectorActionTriggerButton, { backgroundColor: C.orangePending }]}
-                    onPress={() => handleUpdateReportStatus(selectedReport.id, 'Pending')}
-                  >
-                    <Text style={styles.inspectorActionButtonLabelText}>Mark Pending</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-          </View>
-        </View>
-      </Modal>
-
-    </ScreenWrapper>
+    </SafeAreaView>
   );
 }
 
-// ── Corporate Modern Structural Stylesheets ─────────────────────────────────
-const styles = StyleSheet.create({
-  loadingCenter: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 80,
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: C.textMuted,
-    fontWeight: '500',
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 48,
-    gap: 10,
-  },
-  emptyStateText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: C.textMuted,
-  },
-  emptyStateSub: {
-    fontSize: 13,
-    color: C.textMuted,
-    textAlign: 'center',
-    paddingHorizontal: 20,
-  },
-  brandHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    backgroundColor: C.white,
-    borderBottomWidth: 1,
-    borderBottomColor: C.borderLight,
-  },
-  brandTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: C.bluePrimary,
-  },
-  brandSubtitle: {
-    fontSize: 12,
-    color: C.textMuted,
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  composerTriggerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: C.blueAccent,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 10,
-    gap: 6,
-  },
-  composerTriggerButtonText: {
-    color: C.white,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  segmentNavigationBar: {
-    flexDirection: 'row',
-    backgroundColor: C.white,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: C.borderLight,
-  },
-  navigationTabItem: {
-    flex: 1,
-    paddingVertical: 14,
-    alignItems: 'center',
-    borderBottomWidth: 3,
-    borderBottomColor: 'transparent',
-  },
-  navigationTabItemActive: {
-    borderBottomColor: C.blueAccent,
-  },
-  navigationTabText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: C.textMuted,
-  },
-  navigationTabTextActive: {
-    color: C.blueAccent,
-    fontWeight: '700',
-  },
-  scrollLayoutPane: {
-    padding: 20,
-  },
-  contentDashboardSection: {
-    gap: 12,
-  },
-  panelBlockSectionHeader: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: C.textDark,
-    marginBottom: 6,
-  },
-  dataLogCardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: C.white,
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: C.borderLight,
-  },
-  badgeIndicatorMarker: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: C.blueLightBg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 14,
-  },
-  statusFlagIndicatorNode: {
-    width: 6,
-    height: 36,
-    borderRadius: 3,
-    marginRight: 14,
-  },
-  dataLogCardBody: {
-    flex: 1,
-    gap: 2,
-  },
-  dataLogCardTitleText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: C.textDark,
-  },
-  dataLogCardSubtitleText: {
-    fontSize: 13,
-    color: C.textMuted,
-    lineHeight: 18,
-  },
-  metadataCardContainerBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: C.bgCanvas,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    marginTop: 4,
-    borderWidth: 0.5,
-    borderColor: C.borderLight,
-  },
-  badgeScopeIndicatorLabel: {
-    fontSize: 10,
-    color: C.textMuted,
-    fontWeight: '600',
-  },
-  overlayModalContainerViewport: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)', // Deep Tint Backdrop
-    justifyContent: 'flex-end',
-  },
-  modalContentCardSheet: {
-    backgroundColor: C.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 40,
-    maxHeight: '85%',
-  },
-  modalHeaderTitleBlockSection: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  modalHeadingTitleText: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: C.textDark,
-  },
-  formSelectorLabelPromptText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: C.textDark,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  inlineOptionSelectorRow: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  optionSelectorPillBadge: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: C.bgCanvas,
-    borderWidth: 1,
-    borderColor: C.borderLight,
-  },
-  optionSelectorPillBadgeActive: {
-    backgroundColor: C.blueLightBg,
-    borderColor: C.blueAccent,
-  },
-  optionSelectorLabelText: {
-    fontSize: 13,
-    color: C.textMuted,
-    fontWeight: '600',
-  },
-  optionSelectorLabelTextActive: {
-    color: C.blueAccent,
-    fontWeight: '700',
-  },
-  conditionalDropdownSectionContainer: {
-    backgroundColor: C.bgCanvas,
-    padding: 12,
-    borderRadius: 14,
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: C.borderLight,
-  },
-  recipientScrollPickerPane: {
-    maxHeight: 140,
-    backgroundColor: C.white,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: C.borderLight,
-  },
-  recipientSelectableRowCard: {
-    padding: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: C.borderLight,
-  },
-  recipientSelectableRowCardActive: {
-    backgroundColor: C.blueLightBg,
-  },
-  recipientRecordNameText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: C.textDark,
-  },
-  recipientRecordNameTextActive: {
-    color: C.blueAccent,
-  },
-  recipientRecordSubEmailText: {
-    fontSize: 11,
-    color: C.textMuted,
-    marginTop: 1,
-  },
-  textInputControlFieldBox: {
-    backgroundColor: C.bgCanvas,
-    borderWidth: 1,
-    borderColor: C.borderLight,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    fontSize: 14,
-    color: C.textDark,
-  },
-  textInputTextAreaBoxModifier: {
-    height: 90,
-    textAlignVertical: 'top',
-  },
-  inspectorDetailHeadingTitleText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: C.textDark,
-  },
-  inspectorMetadataBadgeRowContainer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  inspectorSubtextLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: C.textMuted,
-    backgroundColor: C.bgCanvas,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  inspectorBodyDescriptionTextBlockScrollBox: {
-    maxHeight: 160,
-    backgroundColor: C.bgCanvas,
-    borderRadius: 12,
-    padding: 14,
-    marginVertical: 6,
-    borderWidth: 1,
-    borderColor: C.borderLight,
-  },
-  inspectorBodyDescriptionContentText: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: C.textDark,
-  },
-  inspectorOperationalControlActionContainerRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 14,
-  },
-  inspectorActionTriggerButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  inspectorActionButtonLabelText: {
-    color: C.white,
-    fontSize: 14,
-    fontWeight: '700',
-  },
+const s = StyleSheet.create({
+  root:          { flex: 1, backgroundColor: BG },
+  loadingWrap:   { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
+  loadingText:   { fontSize: 14, color: MUTED },
+
+  // Header
+  header:        { flexDirection: 'row', alignItems: 'center', backgroundColor: NAVY, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20, gap: 12 },
+  headerEye:     { fontSize: 10, fontWeight: '700', color: 'rgba(255,255,255,0.6)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 2 },
+  headerName:    { fontSize: 20, fontWeight: '800', color: WHITE },
+  broadcastBtn:  { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: BLUE, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10 },
+  broadcastBtnText: { fontSize: 13, fontWeight: '700', color: WHITE },
+
+  // Tabs
+  tabBar:        { flexDirection: 'row', backgroundColor: WHITE, borderBottomWidth: 1, borderBottomColor: BORDER },
+  tabItem:       { flex: 1, alignItems: 'center', paddingVertical: 14, borderBottomWidth: 3, borderBottomColor: 'transparent' },
+  tabItemActive: { borderBottomColor: BLUE },
+  tabText:       { fontSize: 13, fontWeight: '600', color: MUTED },
+  tabTextActive: { color: BLUE, fontWeight: '700' },
+
+  // Scroll
+  scroll: { padding: 16, paddingBottom: 40 },
+  section: { gap: 10 },
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: DARK, marginTop: 4, marginBottom: 4 },
+
+  // Stats
+  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
+  statCard: { flex: 1, backgroundColor: CARD, borderRadius: 14, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: BORDER },
+  statNum:  { fontSize: 24, fontWeight: '800', color: NAVY },
+  statLabel:{ fontSize: 11, fontWeight: '600', color: MUTED, marginTop: 2 },
+
+  // Notifications
+  notifCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: CARD, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: BORDER },
+  notifDot:  { width: 8, height: 8, borderRadius: 4, backgroundColor: BLUE, marginTop: 5 },
+  notifTitle:{ fontSize: 14, fontWeight: '700', color: DARK, marginBottom: 2 },
+  notifMsg:  { fontSize: 12, color: MUTED, lineHeight: 17 },
+
+  // Events
+  eventCard:    { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: CARD, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: BORDER },
+  eventIconWrap:{ width: 38, height: 38, borderRadius: 10, backgroundColor: '#EFF6FF', justifyContent: 'center', alignItems: 'center' },
+  eventTitle:   { fontSize: 14, fontWeight: '700', color: DARK },
+  eventMeta:    { fontSize: 12, color: MUTED, marginTop: 2 },
+
+  // Departments
+  deptCard:    { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: CARD, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: BORDER },
+  deptIconWrap:{ width: 38, height: 38, borderRadius: 10, backgroundColor: '#EFF6FF', justifyContent: 'center', alignItems: 'center' },
+  deptName:    { fontSize: 14, fontWeight: '700', color: DARK },
+  deptMeta:    { fontSize: 12, color: MUTED, marginTop: 2 },
+
+  // Reports
+  reportCard:  { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: CARD, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: BORDER },
+  statusDot:   { width: 8, height: 8, borderRadius: 4, marginTop: 5 },
+  reportTitle: { fontSize: 14, fontWeight: '700', color: DARK },
+  reportMeta:  { fontSize: 12, color: MUTED, marginTop: 2, textTransform: 'capitalize' },
+  reportDesc:  { fontSize: 12, color: MUTED, marginTop: 4, lineHeight: 17 },
+
+  // Empty
+  empty:     { alignItems: 'center', paddingVertical: 40, gap: 10 },
+  emptyText: { fontSize: 14, color: MUTED, fontWeight: '500' },
+
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalSheet:   { backgroundColor: WHITE, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+  modalHandle:  { width: 36, height: 4, borderRadius: 2, backgroundColor: BORDER, alignSelf: 'center', marginBottom: 20 },
+  modalHeader:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle:   { fontSize: 18, fontWeight: '800', color: DARK },
+  fieldLabel:   { fontSize: 13, fontWeight: '600', color: DARK, marginBottom: 6 },
+  fieldInput:   { backgroundColor: BG, borderWidth: 1.5, borderColor: BORDER, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: DARK, marginBottom: 14 },
+  sendBtn:      { height: 50, backgroundColor: BLUE, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginTop: 4 },
+  sendBtnText:  { fontSize: 15, fontWeight: '700', color: WHITE },
 });
