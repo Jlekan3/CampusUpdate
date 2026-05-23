@@ -40,23 +40,27 @@ export default function ForceChangePasswordScreen() {
     setError('');
     setLoading(true);
     try {
-      // 1. Update the password
-      const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
+      // Single network call — updates password AND clears must_change_password simultaneously
+      const { error: updateErr } = await supabase.auth.updateUser({
+        password: newPassword,
+        data: { must_change_password: false },
+      });
+
       if (updateErr) throw updateErr;
 
-      // 2. Clear the must_change_password flag in metadata
-      await supabase.auth.updateUser({ data: { must_change_password: false } });
-
-      // 3. Sign out completely — forces a fresh, clean login with the new password.
-      //    This avoids stale session / infinite loading on the dashboard after
-      //    a forced password reset. onAuthStateChange clears state → Auth stack shown.
-      await supabase.auth.signOut();
-
-      // setDone briefly shows the success screen before the auth state clears
       setDone(true);
+
+      // Give the user 2.5 s to read the success card, then sign out cleanly
+      setTimeout(async () => {
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutErr) {
+          console.error('Signout error:', signOutErr);
+        }
+      }, 2500);
+
     } catch (err) {
       setError(err.message || 'Could not update password. Please try again.');
-    } finally {
       setLoading(false);
     }
   };

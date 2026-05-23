@@ -22,7 +22,7 @@ const MUTED = '#64748B';
 const LIGHT = '#94A3B8';
 
 export default function StaffHomeScreen() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const { notifications = [], events = [] } = useContext(CampusUpdatesContext);
 
   const [tab,          setTab]          = useState('Overview');
@@ -44,14 +44,21 @@ export default function StaffHomeScreen() {
   // ── Data fetch ──────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     try {
+      setLoading(true);
+
       const [deptRes, reportRes] = await Promise.all([
         supabase.from('departments').select('id, name, head_of_department, contact_email').order('name'),
         supabase.from('reports').select('id, title, description, status, category, created_at').order('created_at', { ascending: false }).limit(20),
       ]);
+
+      if (deptRes.error)   throw deptRes.error;
+      if (reportRes.error) throw reportRes.error;
+
       if (deptRes.data)   setDepartments(deptRes.data);
       if (reportRes.data) setReports(reportRes.data);
     } catch (err) {
       console.warn('[Staff] fetch error:', err.message);
+      Alert.alert('Dashboard Fetch Error', err.message || 'Check RLS policies or database tables.');
     } finally {
       setLoading(false);
       setRefreshing(false);
