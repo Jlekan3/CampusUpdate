@@ -92,6 +92,7 @@ export const AuthProvider = ({ children }) => {
   const isExplicitLoginInFlight = useRef(false);
   const didStartupAuthReset     = useRef(false);
   const suppressOtpRouting      = useRef(false);
+  const currentUserId           = useRef(null);
 
   // ── Core auth state listener ────────────────────────────────────────────────
   useEffect(() => {
@@ -101,6 +102,8 @@ export const AuthProvider = ({ children }) => {
 
         if (!session?.user) {
           suppressOtpRouting.current = false;
+          currentUserId.current = null;
+          setLocalMustChangePw(null);
           setUser(null);
           setRole('guest');
           setActionLoading(false);
@@ -135,10 +138,14 @@ export const AuthProvider = ({ children }) => {
 
         if (!didStartupAuthReset.current) didStartupAuthReset.current = true;
 
-        // Reset local override so the DB metadata is the source of truth for
-        // each new session (important: a returning user who already changed their
-        // password will have must_change_password=false in the DB).
-        setLocalMustChangePw(null);
+        // Only reset localMustChangePw when a DIFFERENT user logs in.
+        // If it's the same user (e.g. a metadata update like password change),
+        // keep the local override so clearMustChangePassword(false) stays
+        // in effect and doesn't get wiped by the next onAuthStateChange event.
+        if (authUser.id !== currentUserId.current) {
+          currentUserId.current = authUser.id;
+          setLocalMustChangePw(null);
+        }
 
         // Resolve role then commit state atomically
         const resolvedRole = await resolveRole(authUser);
