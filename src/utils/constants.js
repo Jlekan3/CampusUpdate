@@ -50,10 +50,11 @@ export const EVENT_CATEGORY_ICONS = {
 };
 
 export const USER_ROLES = {
-  ADMIN: 'admin',
+  ADMIN:   'admin',
   STUDENT: 'student',
   FACULTY: 'faculty',
-  GUEST: 'guest',
+  STAFF:   'staff',
+  GUEST:   'guest',
 };
 
 // When true, forces sign-out on app start so users must actively log in.

@@ -18,7 +18,8 @@ const isKnownAdminEmail = (email) =>
 const normalizeRole = (raw) => {
   const r = (raw || '').toString().trim().toLowerCase().replace(/[\s_-]/g, '');
   if (['admin','administrator','superadmin','owner'].includes(r)) return 'admin';
-  if (['faculty','staff','lecturer','instructor'].includes(r))    return 'faculty';
+  if (['faculty','lecturer','instructor'].includes(r))            return 'faculty';
+  if (['staff'].includes(r))                                      return 'staff';
   if (['student','learner','user','member'].includes(r))          return 'student';
   if (r === 'guest')                                              return 'guest';
   return null;

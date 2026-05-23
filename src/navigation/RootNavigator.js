@@ -82,7 +82,7 @@ const RootNavigator = () => {
               animationTypeForReplace: 'push',
             }}
           />
-        ) : userRole === USER_ROLES.FACULTY ? (
+        ) : userRole === USER_ROLES.STAFF || userRole === USER_ROLES.FACULTY ? (
           // Staff / Faculty user — dedicated staff dashboard
           <Stack.Screen
             name="StaffMain"

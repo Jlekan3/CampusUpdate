@@ -51,20 +51,10 @@ export default function StaffHomeScreen() {
         supabase.from('reports').select('id, title, description, status, category, created_at').order('created_at', { ascending: false }).limit(20),
       ]);
 
-      if (deptRes.error) {
-        console.warn('Departments Fetch Error:', deptRes.error.message);
-        throw new Error(`Departments table: ${deptRes.error.message}`);
-      }
-      if (reportRes.error) {
-        console.warn('Reports Fetch Error:', reportRes.error.message);
-        throw new Error(`Reports table: ${reportRes.error.message}`);
-      }
-
       if (deptRes.data)   setDepartments(deptRes.data);
       if (reportRes.data) setReports(reportRes.data);
     } catch (err) {
-      console.warn('[Staff] fetch error:', err.message);
-      Alert.alert('Dashboard Sync Error', err.message || 'Could not retrieve staff records.');
+      console.warn('[Staff Home Screen Sync Error]:', err.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
